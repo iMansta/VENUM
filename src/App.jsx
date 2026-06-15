@@ -8,7 +8,7 @@ import Dashboard from './pages/Dashboard';
 import Ranking from './pages/Ranking';
 import Missions from './pages/Missions';
 import Market from './pages/Market';
-import Settings from './pages/Settings';
+import SettingsPage from './pages/Settings';
 import { getCurrentUser } from './lib/supabase/auth';
 import { getProfile } from './lib/supabase/profiles';
 
@@ -99,7 +99,7 @@ function App() {
           element={
             <ProtectedRoute>
               <DashboardLayout userId={user?.id} userRole={profile?.role}>
-                <Settings userId={user?.id} userRole={profile?.role} />
+                <SettingsPage userId={user?.id} userRole={profile?.role} />
               </DashboardLayout>
             </ProtectedRoute>
           }

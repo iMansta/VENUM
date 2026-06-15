@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Settings, User, Shield, Key, Users as UsersIcon } from 'lucide-react';
+import { Settings as SettingsIcon, User, Shield, Key, Users as UsersIcon } from 'lucide-react';
 import UserProfile from '../components/guild/members/UserProfile';
 import AdminPanel from '../components/guild/admin/AdminPanel';
 
@@ -7,7 +7,7 @@ import AdminPanel from '../components/guild/admin/AdminPanel';
  * Settings page - User settings and admin panel
  */
 
-const Settings = ({ userId, userRole }) => {
+const SettingsPage = ({ userId, userRole }) => {
   const [activeTab, setActiveTab] = useState('profile');
 
   const tabs = [
@@ -22,7 +22,7 @@ const Settings = ({ userId, userRole }) => {
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-          <Settings className="w-6 h-6 text-red-500" />
+          <SettingsIcon className="w-6 h-6 text-red-500" />
           Configurações
         </h1>
         <p className="text-gray-400 text-sm mt-1">Gerencie sua conta e configurações da guilda</p>
@@ -57,4 +57,4 @@ const Settings = ({ userId, userRole }) => {
   );
 };
 
-export default Settings;
+export default SettingsPage;
