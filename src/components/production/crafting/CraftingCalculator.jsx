@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Hammer, AlertCircle, TrendingUp, Package, Check, X } from 'lucide-react';
 
 // Sample crafting recipes - in production this would come from an API
@@ -70,17 +70,17 @@ const CraftingCalculator = () => {
   const [useFocus, setUseFocus] = useState(true);
 
   // Initialize material prices with default values
-  useState(() => {
+  useEffect(() => {
     const defaultPrices = {};
     CRAFTING_RECIPES.forEach((recipe) => {
       recipe.materials.forEach((material) => {
         if (!defaultPrices[material.id]) {
-          defaultPrices[material.id] = 1000; // Default price
+          defaultPrices[material.id] = 1000;
         }
       });
     });
     setMaterialPrices(defaultPrices);
-  });
+  }, []);
 
   const formatSilver = (value) => {
     return new Intl.NumberFormat('pt-BR').format(Math.round(value));

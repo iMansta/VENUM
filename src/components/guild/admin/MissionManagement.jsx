@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Target, Plus, Edit, Trash2, Check, X } from 'lucide-react';
-import { getActiveMissions, updateMission, deleteMission } from '@/lib/supabase/missions';
+import { getActiveMissions, updateMission, deleteMission, completeMission } from '@/lib/supabase/missions';
 import MissionForm from '../missions/MissionForm';
 
 /**
@@ -42,10 +42,11 @@ const MissionManagement = ({ userId, userRole }) => {
 
   const handleComplete = async (missionId) => {
     if (window.confirm('Tem certeza que deseja completar esta missão? Isso distribuirá pontos aos participantes.')) {
-      // Implement complete mission logic
-      const result = await updateMission(missionId, { status: 'completed' });
+      const result = await completeMission(missionId);
       if (result.success) {
         loadMissions();
+      } else {
+        alert(`Erro ao completar missão: ${result.error}`);
       }
     }
   };
