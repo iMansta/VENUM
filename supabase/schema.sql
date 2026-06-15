@@ -1,6 +1,27 @@
 -- VENUM MARKET Database Schema
 -- Run this in Supabase SQL Editor to create required tables
 
+-- Profiles Table
+CREATE TABLE IF NOT EXISTS public.profiles (
+  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  username TEXT NOT NULL UNIQUE,
+  full_name TEXT,
+  role TEXT DEFAULT 'member' CHECK (role IN ('admin', 'officer', 'member')),
+  is_active BOOLEAN DEFAULT true,
+  total_points INTEGER DEFAULT 0,
+  joined_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  avatar_url TEXT
+);
+
+-- Enable RLS on profiles
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies for Profiles
+CREATE POLICY "Users can view all profiles" ON public.profiles FOR SELECT USING (true);
+CREATE POLICY "Users can update own profile" ON public.profiles FOR UPDATE USING (id = auth.uid());
+CREATE POLICY "Users can insert own profile" ON public.profiles FOR INSERT WITH CHECK (id = auth.uid());
+
 -- Missions Table
 CREATE TABLE IF NOT EXISTS public.missions (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
