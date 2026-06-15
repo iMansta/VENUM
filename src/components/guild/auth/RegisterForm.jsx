@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Lock, User, Key, AlertCircle, Check } from 'lucide-react';
+import { Lock, Mail, User, Key, AlertCircle, Check } from 'lucide-react';
 import { signUp } from '../../../lib/supabase/auth';
 import { supabase } from '../../../lib/supabase/client';
 
@@ -11,6 +11,7 @@ import { supabase } from '../../../lib/supabase/client';
 
 const RegisterForm = ({ onSuccess, onSwitchToLogin }) => {
   const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [guildCode, setGuildCode] = useState('');
@@ -59,6 +60,18 @@ const RegisterForm = ({ onSuccess, onSwitchToLogin }) => {
     setError('');
 
     // Validation
+    if (!email) {
+      setError('Por favor, insira um email');
+      setLoading(false);
+      return;
+    }
+
+    if (!email.includes('@')) {
+      setError('Por favor, insira um email válido');
+      setLoading(false);
+      return;
+    }
+
     if (password !== confirmPassword) {
       setError('As senhas não coincidem');
       setLoading(false);
@@ -77,7 +90,7 @@ const RegisterForm = ({ onSuccess, onSwitchToLogin }) => {
       return;
     }
 
-    const result = await signUp(username, password, guildCode);
+    const result = await signUp(username, email, password, guildCode);
 
     if (result.success) {
       onSuccess(result.data);
@@ -153,13 +166,27 @@ const RegisterForm = ({ onSuccess, onSwitchToLogin }) => {
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               className="w-full bg-slate-800 border border-slate-700 rounded-lg pl-10 pr-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
-              placeholder="Ex: olos"
+              placeholder="Ex: Mansta"
               required
             />
           </div>
-          <p className="text-xs text-gray-500 mt-1">
-            Use apenas o nome de usuário (ex: olos)
-          </p>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-300 mb-2">
+            Email *
+          </label>
+          <div className="relative">
+            <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-500" />
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full bg-slate-800 border border-slate-700 rounded-lg pl-10 pr-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
+              placeholder="seu@email.com"
+              required
+            />
+          </div>
         </div>
 
         <div>

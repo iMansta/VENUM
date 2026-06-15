@@ -1,15 +1,16 @@
 import { useState } from 'react';
-import { Lock, User, AlertCircle } from 'lucide-react';
+import { Lock, Mail, AlertCircle } from 'lucide-react';
 import { signIn } from '../../../lib/supabase/auth';
 
 /**
- * LoginForm component - User login with username and password
+ * LoginForm component - User login with email and password
  * @param {Function} onSuccess - Callback when login succeeds
  * @param {Function} onSwitchToRegister - Callback to switch to registration
+ * @param {Function} onForgotPassword - Callback to switch to password reset
  */
 
-const LoginForm = ({ onSuccess, onSwitchToRegister }) => {
-  const [username, setUsername] = useState('');
+const LoginForm = ({ onSuccess, onSwitchToRegister, onForgotPassword }) => {
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -19,7 +20,7 @@ const LoginForm = ({ onSuccess, onSwitchToRegister }) => {
     setLoading(true);
     setError('');
 
-    const result = await signIn(username, password);
+    const result = await signIn(email, password);
 
     if (result.success) {
       onSuccess(result.data);
@@ -47,16 +48,16 @@ const LoginForm = ({ onSuccess, onSwitchToRegister }) => {
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label className="block text-sm font-medium text-gray-300 mb-2">
-            Usuário
+            Email
           </label>
           <div className="relative">
-            <User className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-500" />
+            <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-500" />
             <input
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
               className="w-full bg-slate-800 border border-slate-700 rounded-lg pl-10 pr-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
-              placeholder="seu_usuario"
+              placeholder="seu@email.com"
               required
             />
           </div>
@@ -79,6 +80,16 @@ const LoginForm = ({ onSuccess, onSwitchToRegister }) => {
           </div>
         </div>
 
+        <div className="text-right">
+          <button
+            type="button"
+            onClick={onForgotPassword}
+            className="text-amber-400 hover:text-amber-300 text-sm font-medium transition-colors"
+          >
+            Esqueci minha senha
+          </button>
+        </div>
+
         <button
           type="submit"
           disabled={loading}
@@ -88,7 +99,7 @@ const LoginForm = ({ onSuccess, onSwitchToRegister }) => {
         </button>
       </form>
 
-      <div className="mt-4 text-center">
+      <div className="mt-4 text-center space-y-2">
         <button
           onClick={onSwitchToRegister}
           className="text-amber-400 hover:text-amber-300 text-sm font-medium transition-colors"
