@@ -63,7 +63,6 @@ export const deductPoints = async (profileId, amount, reason, referenceId = null
 // Adjust points manually (officers/admins only)
 export const adjustPoints = async (profileId, amount, reason, createdBy) => {
   try {
-    const transactionType = amount >= 0 ? 'earned' : 'spent';
     const { error } = await supabase.from('points_ledger').insert({
       profile_id: profileId,
       amount: amount,
@@ -74,11 +73,21 @@ export const adjustPoints = async (profileId, amount, reason, createdBy) => {
 
     if (error) throw error;
 
-    // Update profile total
+    // Fetch current total and update
+    const { data: currentProfile, error: fetchError } = await supabase
+      .from('profiles')
+      .select('total_points')
+      .eq('id', profileId)
+      .single();
+
+    if (fetchError) throw fetchError;
+
+    const newTotal = (currentProfile?.total_points || 0) + amount;
+
     const { error: updateError } = await supabase
       .from('profiles')
       .update({
-        total_points: supabase.raw('total_points + ?', [amount]),
+        total_points: Math.max(newTotal, 0),
         updated_at: new Date().toISOString(),
       })
       .eq('id', profileId);
@@ -129,10 +138,10 @@ export const getUserPointsStats = async (profileId) => {
     };
 
     data.forEach((transaction) => {
-      if (transaction.transaction_type === 'earned' || transaction.transaction_type === 'adjusted') {
-        stats.totalEarned += transaction.amount > 0 ? transaction.amount : 0;
-      } else if (transaction.transaction_type === 'spent' || transaction.transaction_type === 'adjusted') {
-        stats.totalSpent += transaction.amount < 0 ? Math.abs(transaction.amount) : 0;
+      if (transaction.amount > 0) {
+        stats.totalEarned += transaction.amount;
+      } else if (transaction.amount < 0) {
+        stats.totalSpent += Math.abs(transaction.amount);
       }
     });
 

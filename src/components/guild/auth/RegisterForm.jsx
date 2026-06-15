@@ -64,7 +64,7 @@ const RegisterForm = ({ onSuccess, onSwitchToLogin }) => {
       return;
     }
 
-    const result = await signUp(email, password, username, guildCode);
+    const result = await signUp(username, password, guildCode);
 
     if (result.success) {
       onSuccess(result.data);

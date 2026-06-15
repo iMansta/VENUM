@@ -37,7 +37,7 @@ const InviteCodeGenerator = ({ userId, userRole }) => {
     console.log('Creating invite code with data:', { code: newCode, max_uses: maxUses, createdBy: userId });
     const result = await createGuildCode({
       code: newCode,
-      max_uses,
+      max_uses: maxUses,
       createdBy: userId,
     });
     console.log('Invite code creation result:', result);

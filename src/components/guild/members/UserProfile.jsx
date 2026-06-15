@@ -58,7 +58,23 @@ const UserProfile = ({ userId, currentUserId }) => {
 
   const handleSignOut = async () => {
     await signOut();
-    navigate('/login');
+    navigate('/');
+  };
+
+  const resizeImage = (file, maxWidth = 200) => {
+    return new Promise((resolve) => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      const img = new Image();
+      img.onload = () => {
+        const ratio = maxWidth / img.width;
+        canvas.width = maxWidth;
+        canvas.height = img.height * ratio;
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL('image/jpeg', 0.7));
+      };
+      img.src = URL.createObjectURL(file);
+    });
   };
 
   const handleAvatarUpload = async (e) => {
@@ -66,60 +82,40 @@ const UserProfile = ({ userId, currentUserId }) => {
     if (!file) return;
 
     setUploadingAvatar(true);
-    console.log('Starting avatar upload for user:', userId);
 
     try {
       // Upload to Supabase Storage
-      const fileName = `${userId}-${Date.now()}-${file.name}`;
-      console.log('Uploading file to Supabase Storage:', fileName);
+      const fileName = `${userId}-${Date.now()}.jpg`;
       
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('avatars')
-        .upload(fileName, file);
+        .upload(fileName, file, { upsert: true });
 
       if (uploadError) {
-        console.error('Supabase Storage upload error:', uploadError);
-        // If bucket doesn't exist, fallback to base64
-        console.warn('Supabase Storage not available, using base64 fallback');
-        const reader = new FileReader();
-        reader.onloadend = async () => {
-          const base64String = reader.result;
-          console.log('Updating profile with base64 avatar');
-          const { success } = await updateProfile(userId, { avatar_url: base64String });
-          console.log('Profile update result (base64):', success);
-          if (success) {
-            const { success: profileSuccess, data: userProfile } = await getProfile(userId);
-            if (profileSuccess) setProfile(userProfile);
-          }
-          setUploadingAvatar(false);
-        };
-        reader.readAsDataURL(file);
+        // Fallback to resized base64 if storage not available
+        const resizedBase64 = await resizeImage(file);
+        const { success } = await updateProfile(userId, { avatar_url: resizedBase64 });
+        if (success) {
+          const { success: profileSuccess, data: userProfile } = await getProfile(userId);
+          if (profileSuccess) setProfile(userProfile);
+        }
+        setUploadingAvatar(false);
         return;
       }
-
-      console.log('File uploaded successfully:', uploadData);
 
       // Get public URL
       const { data: { publicUrl } } = supabase.storage
         .from('avatars')
         .getPublicUrl(fileName);
 
-      console.log('Public URL:', publicUrl);
-
       // Update profile with avatar URL
-      console.log('Updating profile with avatar URL');
-      const { success, error: updateError } = await updateProfile(userId, { avatar_url: publicUrl });
-      console.log('Profile update result:', { success, error: updateError });
+      const { success } = await updateProfile(userId, { avatar_url: publicUrl });
       
       if (success) {
-        // Reload profile data
         const { success: profileSuccess, data: userProfile } = await getProfile(userId);
         if (profileSuccess) {
           setProfile(userProfile);
-          console.log('Profile updated successfully');
         }
-      } else {
-        console.error('Failed to update profile:', updateError);
       }
       
       setUploadingAvatar(false);
