@@ -28,6 +28,3 @@ yarn-error.log*
 
 # Vercel
 .vercel
-.env
-.env
-.env
