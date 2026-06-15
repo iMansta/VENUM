@@ -459,3 +459,145 @@ CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION handle_new_user();
 ```
+
+### Function: Get Weekly Ranking
+Returns ranking of users based on points earned in the current week.
+
+```sql
+CREATE OR REPLACE FUNCTION get_weekly_ranking(p_limit INTEGER DEFAULT 10)
+RETURNS TABLE (
+  rank INTEGER,
+  profile_id UUID,
+  username TEXT,
+  full_name TEXT,
+  points_earned INTEGER,
+  missions_completed INTEGER
+) AS $$
+BEGIN
+  RETURN QUERY
+  WITH weekly_points AS (
+    SELECT 
+      pl.profile_id,
+      COALESCE(SUM(pl.amount), 0) as points_earned,
+      COUNT(DISTINCT pl.reference_id) FILTER (WHERE pl.reference_type = 'mission') as missions_completed
+    FROM points_ledger pl
+    WHERE pl.created_at >= date_trunc('week', NOW())
+      AND pl.amount > 0
+    GROUP BY pl.profile_id
+  ),
+  ranked_users AS (
+    SELECT 
+      wp.*,
+      ROW_NUMBER() OVER (ORDER BY wp.points_earned DESC) as rank
+    FROM weekly_points wp
+  )
+  SELECT 
+    ru.rank,
+    ru.profile_id,
+    p.username,
+    p.full_name,
+    ru.points_earned,
+    ru.missions_completed
+  FROM ranked_users ru
+  JOIN profiles p ON ru.profile_id = p.id
+  WHERE p.is_active = true
+  ORDER BY ru.points_earned DESC
+  LIMIT p_limit;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+```
+
+### Function: Get Monthly Ranking
+Returns ranking of users based on points earned in the current month.
+
+```sql
+CREATE OR REPLACE FUNCTION get_monthly_ranking(p_limit INTEGER DEFAULT 10)
+RETURNS TABLE (
+  rank INTEGER,
+  profile_id UUID,
+  username TEXT,
+  full_name TEXT,
+  points_earned INTEGER,
+  missions_completed INTEGER
+) AS $$
+BEGIN
+  RETURN QUERY
+  WITH monthly_points AS (
+    SELECT 
+      pl.profile_id,
+      COALESCE(SUM(pl.amount), 0) as points_earned,
+      COUNT(DISTINCT pl.reference_id) FILTER (WHERE pl.reference_type = 'mission') as missions_completed
+    FROM points_ledger pl
+    WHERE pl.created_at >= date_trunc('month', NOW())
+      AND pl.amount > 0
+    GROUP BY pl.profile_id
+  ),
+  ranked_users AS (
+    SELECT 
+      mp.*,
+      ROW_NUMBER() OVER (ORDER BY mp.points_earned DESC) as rank
+    FROM monthly_points mp
+  )
+  SELECT 
+    ru.rank,
+    ru.profile_id,
+    p.username,
+    p.full_name,
+    ru.points_earned,
+    ru.missions_completed
+  FROM ranked_users ru
+  JOIN profiles p ON ru.profile_id = p.id
+  WHERE p.is_active = true
+  ORDER BY ru.points_earned DESC
+  LIMIT p_limit;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+```
+
+### Function: Get User Ranking Position
+Returns a user's position in weekly and monthly rankings.
+
+```sql
+CREATE OR REPLACE FUNCTION get_user_ranking_position(p_profile_id UUID)
+RETURNS JSON AS $$
+DECLARE
+  weekly_rank INTEGER;
+  monthly_rank INTEGER;
+  weekly_points INTEGER;
+  monthly_points INTEGER;
+BEGIN
+  -- Get weekly rank
+  SELECT rank, points_earned INTO weekly_rank, weekly_points
+  FROM (
+    SELECT 
+      ROW_NUMBER() OVER (ORDER BY COALESCE(SUM(amount), 0) DESC) as rank,
+      COALESCE(SUM(amount), 0) as points_earned
+    FROM points_ledger
+    WHERE created_at >= date_trunc('week', NOW())
+      AND amount > 0
+    GROUP BY profile_id
+  ) ranked
+  WHERE profile_id = p_profile_id;
+  
+  -- Get monthly rank
+  SELECT rank, points_earned INTO monthly_rank, monthly_points
+  FROM (
+    SELECT 
+      ROW_NUMBER() OVER (ORDER BY COALESCE(SUM(amount), 0) DESC) as rank,
+      COALESCE(SUM(amount), 0) as points_earned
+    FROM points_ledger
+    WHERE created_at >= date_trunc('month', NOW())
+      AND amount > 0
+    GROUP BY profile_id
+  ) ranked
+  WHERE profile_id = p_profile_id;
+  
+  RETURN json_build_object(
+    'weekly_rank', weekly_rank,
+    'weekly_points', COALESCE(weekly_points, 0),
+    'monthly_rank', monthly_rank,
+    'monthly_points', COALESCE(monthly_points, 0)
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+```
