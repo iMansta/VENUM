@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Lock, Mail, User, Key, AlertCircle, Check } from 'lucide-react';
 import { signUp } from '../../../lib/supabase/auth';
+import { supabase } from '../../../lib/supabase/client';
 
 /**
  * RegisterForm component - User registration with guild code validation
@@ -27,14 +28,27 @@ const RegisterForm = ({ onSuccess, onSwitchToLogin }) => {
     setLoading(true);
     setError('');
 
-    // Simulate validation (in production, this would call the Supabase function)
-    // For now, we'll accept any code that starts with "VENUM"
-    if (guildCode.toUpperCase().startsWith('VENUM')) {
-      setCodeValidated(true);
-      setLoading(false);
-      return true;
-    } else {
-      setError('Código de guilda inválido');
+    try {
+      const { data, error } = await supabase.rpc('validate_guild_code', {
+        p_code: guildCode.toUpperCase(),
+      });
+
+      if (error) throw error;
+
+      const result = JSON.parse(data);
+      
+      if (result.success) {
+        setCodeValidated(true);
+        setLoading(false);
+        return true;
+      } else {
+        setError(result.message || 'Código de guilda inválido');
+        setLoading(false);
+        return false;
+      }
+    } catch (error) {
+      console.error('Error validating guild code:', error);
+      setError('Erro ao validar código. Tente novamente.');
       setLoading(false);
       return false;
     }

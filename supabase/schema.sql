@@ -345,3 +345,148 @@ BEGIN
   RETURN json_build_object('success', true, 'message', 'Código válido');
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Points Ledger Table
+CREATE TABLE IF NOT EXISTS public.points_ledger (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  profile_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  amount INTEGER NOT NULL,
+  transaction_type TEXT NOT NULL, -- 'earned', 'spent', 'adjusted'
+  reason TEXT,
+  reference_id UUID,
+  reference_type TEXT, -- 'mission', 'transport', 'manual', etc
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Enable RLS on points_ledger
+ALTER TABLE public.points_ledger ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies for Points Ledger
+CREATE POLICY "Users can view own ledger" ON public.points_ledger FOR SELECT USING (profile_id = auth.uid());
+CREATE POLICY "Admins and officers can view all ledger" ON public.points_ledger FOR SELECT USING (
+  EXISTS (
+    SELECT 1 FROM public.profiles 
+    WHERE id = auth.uid() AND role IN ('admin', 'officer')
+  )
+);
+CREATE POLICY "System can insert ledger entries" ON public.points_ledger FOR INSERT WITH CHECK (true);
+
+-- Migration Script to ensure missions table has all required columns
+-- Run this in Supabase SQL Editor if you encounter schema cache errors
+
+DO $$
+BEGIN
+  -- Check if mission_type column exists, if not add it
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'missions' 
+    AND column_name = 'mission_type'
+    AND table_schema = 'public'
+  ) THEN
+    ALTER TABLE public.missions ADD COLUMN mission_type TEXT NOT NULL DEFAULT 'other';
+    RAISE NOTICE 'Added mission_type column to missions table';
+  END IF;
+
+  -- Check if other required columns exist
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'missions' 
+    AND column_name = 'target_item'
+    AND table_schema = 'public'
+  ) THEN
+    ALTER TABLE public.missions ADD COLUMN target_item TEXT;
+    RAISE NOTICE 'Added target_item column to missions table';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'missions' 
+    AND column_name = 'target_quantity'
+    AND table_schema = 'public'
+  ) THEN
+    ALTER TABLE public.missions ADD COLUMN target_quantity INTEGER DEFAULT 0;
+    RAISE NOTICE 'Added target_quantity column to missions table';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'missions' 
+    AND column_name = 'current_quantity'
+    AND table_schema = 'public'
+  ) THEN
+    ALTER TABLE public.missions ADD COLUMN current_quantity INTEGER DEFAULT 0;
+    RAISE NOTICE 'Added current_quantity column to missions table';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'missions' 
+    AND column_name = 'points_reward'
+    AND table_schema = 'public'
+  ) THEN
+    ALTER TABLE public.missions ADD COLUMN points_reward INTEGER DEFAULT 0;
+    RAISE NOTICE 'Added points_reward column to missions table';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'missions' 
+    AND column_name = 'start_date'
+    AND table_schema = 'public'
+  ) THEN
+    ALTER TABLE public.missions ADD COLUMN start_date TIMESTAMP WITH TIME ZONE DEFAULT NOW();
+    RAISE NOTICE 'Added start_date column to missions table';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'missions' 
+    AND column_name = 'end_date'
+    AND table_schema = 'public'
+  ) THEN
+    ALTER TABLE public.missions ADD COLUMN end_date TIMESTAMP WITH TIME ZONE;
+    RAISE NOTICE 'Added end_date column to missions table';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'missions' 
+    AND column_name = 'status'
+    AND table_schema = 'public'
+  ) THEN
+    ALTER TABLE public.missions ADD COLUMN status TEXT DEFAULT 'active';
+    RAISE NOTICE 'Added status column to missions table';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'missions' 
+    AND column_name = 'created_by'
+    AND table_schema = 'public'
+  ) THEN
+    ALTER TABLE public.missions ADD COLUMN created_by UUID REFERENCES auth.users(id) ON DELETE SET NULL;
+    RAISE NOTICE 'Added created_by column to missions table';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'missions' 
+    AND column_name = 'created_at'
+    AND table_schema = 'public'
+  ) THEN
+    ALTER TABLE public.missions ADD COLUMN created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW();
+    RAISE NOTICE 'Added created_at column to missions table';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'missions' 
+    AND column_name = 'updated_at'
+    AND table_schema = 'public'
+  ) THEN
+    ALTER TABLE public.missions ADD COLUMN updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW();
+    RAISE NOTICE 'Added updated_at column to missions table';
+  END IF;
+
+  RAISE NOTICE 'Migration completed successfully';
+END $$;

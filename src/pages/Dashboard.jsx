@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Trophy, Target, TrendingUp, Users, Award, Activity, Camera, Upload } from 'lucide-react';
+import { Trophy, Target, TrendingUp, Users, Award, Activity, Camera, Upload, Package } from 'lucide-react';
 import { getProfile, updateProfile } from '@/lib/supabase/profiles';
 import { getUserPointsStats, getUserPointsLedger } from '@/lib/supabase/points';
 import { getActiveMissions } from '@/lib/supabase/missions';
@@ -16,6 +16,7 @@ const Dashboard = ({ userId }) => {
   const [missions, setMissions] = useState([]);
   const [members, setMembers] = useState([]);
   const [recentActivity, setRecentActivity] = useState([]);
+  const [transportStats, setTransportStats] = useState({ completed: 0, active: 0 });
   const [loading, setLoading] = useState(true);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
@@ -27,12 +28,13 @@ const Dashboard = ({ userId }) => {
     setLoading(true);
     
     try {
-      const [profileResult, pointsResult, missionsResult, membersResult, activityResult] = await Promise.all([
+      const [profileResult, pointsResult, missionsResult, membersResult, activityResult, transportResult] = await Promise.all([
         getProfile(userId),
         getUserPointsStats(userId),
         getActiveMissions(),
         getGuildMembers(),
         getUserPointsLedger(userId, 10),
+        loadTransportStats(),
       ]);
 
       if (profileResult.success) setProfile(profileResult.data);
@@ -44,6 +46,34 @@ const Dashboard = ({ userId }) => {
       console.error('Error loading dashboard data:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadTransportStats = async () => {
+    if (!userId) return { completed: 0, active: 0 };
+    
+    try {
+      const [completedResult, activeResult] = await Promise.all([
+        supabase
+          .from('transports')
+          .select('*', { count: 'exact', head: true })
+          .eq('reserved_by', userId)
+          .eq('status', 'completed'),
+        supabase
+          .from('transports')
+          .select('*', { count: 'exact', head: true })
+          .eq('reserved_by', userId)
+          .eq('status', 'reserved'),
+      ]);
+
+      const completed = completedResult.count || 0;
+      const active = activeResult.count || 0;
+      
+      setTransportStats({ completed, active });
+      return { completed, active };
+    } catch (error) {
+      console.error('Error loading transport stats:', error);
+      return { completed: 0, active: 0 };
     }
   };
 
@@ -151,7 +181,7 @@ const Dashboard = ({ userId }) => {
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
         <div className="bg-slate-900 rounded-lg p-6 border border-slate-800">
           <div className="flex items-center gap-3 mb-2">
             <Award className="w-6 h-6 text-red-500" />
@@ -181,10 +211,19 @@ const Dashboard = ({ userId }) => {
 
         <div className="bg-slate-900 rounded-lg p-6 border border-slate-800">
           <div className="flex items-center gap-3 mb-2">
-            <Users className="w-6 h-6 text-purple-500" />
+            <Package className="w-6 h-6 text-purple-500" />
+            <span className="text-gray-400 text-sm">Transportes</span>
+          </div>
+          <p className="text-3xl font-bold text-purple-400">{transportStats.completed}</p>
+          <p className="text-xs text-gray-500 mt-1">Concluídos</p>
+        </div>
+
+        <div className="bg-slate-900 rounded-lg p-6 border border-slate-800">
+          <div className="flex items-center gap-3 mb-2">
+            <Users className="w-6 h-6 text-amber-500" />
             <span className="text-gray-400 text-sm">Membros</span>
           </div>
-          <p className="text-3xl font-bold text-purple-400">{members.length}</p>
+          <p className="text-3xl font-bold text-amber-400">{members.length}</p>
           <p className="text-xs text-gray-500 mt-1">Na guilda</p>
         </div>
       </div>

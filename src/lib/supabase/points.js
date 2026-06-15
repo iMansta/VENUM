@@ -74,17 +74,20 @@ export const adjustPoints = async (profileId, amount, reason, createdBy) => {
 
     const newTotal = (currentProfile?.total_points || 0) + amount;
 
-    // Insert into ledger
-    const transactionType = amount >= 0 ? 'earned' : 'spent';
+    // Insert into ledger with transaction_type 'adjusted'
     const { error: insertError } = await supabase.from('points_ledger').insert({
       profile_id: profileId,
       amount: amount,
       transaction_type: 'adjusted',
       reason: reason,
-      created_by: createdBy,
+      reference_id: createdBy,
+      reference_type: 'manual_adjustment',
     });
 
-    if (insertError) throw insertError;
+    if (insertError) {
+      console.error('Error inserting into points_ledger:', insertError);
+      throw insertError;
+    }
 
     // Update profile total
     const { error: updateError } = await supabase
@@ -95,7 +98,10 @@ export const adjustPoints = async (profileId, amount, reason, createdBy) => {
       })
       .eq('id', profileId);
 
-    if (updateError) throw updateError;
+    if (updateError) {
+      console.error('Error updating profile total_points:', updateError);
+      throw updateError;
+    }
 
     console.log('Points adjusted successfully:', { profileId, newTotal });
     return { success: true };

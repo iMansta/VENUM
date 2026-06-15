@@ -80,13 +80,13 @@ export const fetchItemPrice = async (itemName, locations = 1) => {
 
 /**
  * Fetch price data for multiple items
- * @param {Array<string>} itemNames - Array of item names
+ * @param {Array<Object>} items - Array of item objects with itemId, enchantment, quantity
  * @param {number} locations - Number of locations to fetch
  * @returns {Promise<Array>} Array of price data for all items
  */
-export const fetchMultipleItemPrices = async (itemNames, locations = 1) => {
+export const fetchMultipleItemPrices = async (items, locations = 1) => {
   try {
-    const promises = itemNames.map(itemName => fetchItemPrice(itemName, locations));
+    const promises = items.map(item => fetchItemPrice(item.itemId, locations));
     const results = await Promise.all(promises);
     return results.filter(result => result !== null);
   } catch (error) {
@@ -130,14 +130,14 @@ export const calculateArbitrage = (priceData, targetCity = 'Caerleon') => {
 
 /**
  * Fetch top arbitrage opportunities for a list of items
- * @param {Array<string>} itemNames - Array of item names to check
+ * @param {Array<Object>} items - Array of item objects with itemId, enchantment, quantity
  * @param {number} limit - Number of top opportunities to return
  * @returns {Promise<Array>} Array of top arbitrage opportunities
  */
-export const fetchTopOpportunities = async (itemNames, limit = 10) => {
+export const fetchTopOpportunities = async (items, limit = 10) => {
   try {
-    console.log(`Fetching top opportunities for ${itemNames.length} items`);
-    const priceData = await fetchMultipleItemPrices(itemNames);
+    console.log(`Fetching top opportunities for ${items.length} items`);
+    const priceData = await fetchMultipleItemPrices(items);
     console.log(`Received price data for ${priceData.length} items`);
     
     if (priceData.length === 0) {
@@ -145,8 +145,20 @@ export const fetchTopOpportunities = async (itemNames, limit = 10) => {
       return MOCK_OPPORTUNITIES.slice(0, limit);
     }
     
+    // Map price data with item metadata
     const opportunities = priceData
-      .map(data => calculateArbitrage(data))
+      .map((data, index) => {
+        const itemMetadata = items[index] || { enchantment: 0, quantity: 1 };
+        const arbitrage = calculateArbitrage(data);
+        if (arbitrage) {
+          return {
+            ...arbitrage,
+            enchantment: itemMetadata.enchantment,
+            quantity: itemMetadata.quantity,
+          };
+        }
+        return null;
+      })
       .filter(opp => opp !== null && opp.netProfit > 0)
       .sort((a, b) => b.netProfit - a.netProfit)
       .slice(0, limit);
@@ -166,33 +178,33 @@ export const fetchTopOpportunities = async (itemNames, limit = 10) => {
   }
 };
 
-// Common items to check for arbitrage
+// Common items to check for arbitrage with enchantment and quantity
 export const COMMON_ITEMS = [
-  'T4_BAG',
-  'T5_BAG',
-  'T6_BAG',
-  'T4_PLANKS',
-  'T5_PLANKS',
-  'T6_PLANKS',
-  'T4_METALBAR',
-  'T5_METALBAR',
-  'T6_METALBAR',
-  'T4_LEATHER',
-  'T5_LEATHER',
-  'T6_LEATHER',
-  'T4_CLOTH',
-  'T5_CLOTH',
-  'T6_CLOTH',
-  'T4_ORE',
-  'T5_ORE',
-  'T6_ORE',
-  'T4_LOG',
-  'T5_LOG',
-  'T6_LOG',
-  'T4_HIDE',
-  'T5_HIDE',
-  'T6_HIDE',
-  'T4_FIBER',
-  'T5_FIBER',
-  'T6_FIBER',
+  { itemId: 'T4_BAG', enchantment: 0, quantity: 1 },
+  { itemId: 'T5_BAG', enchantment: 0, quantity: 1 },
+  { itemId: 'T6_BAG', enchantment: 0, quantity: 1 },
+  { itemId: 'T4_PLANKS', enchantment: 0, quantity: 100 },
+  { itemId: 'T5_PLANKS', enchantment: 0, quantity: 100 },
+  { itemId: 'T6_PLANKS', enchantment: 0, quantity: 100 },
+  { itemId: 'T4_METALBAR', enchantment: 0, quantity: 100 },
+  { itemId: 'T5_METALBAR', enchantment: 0, quantity: 100 },
+  { itemId: 'T6_METALBAR', enchantment: 0, quantity: 100 },
+  { itemId: 'T4_LEATHER', enchantment: 0, quantity: 100 },
+  { itemId: 'T5_LEATHER', enchantment: 0, quantity: 100 },
+  { itemId: 'T6_LEATHER', enchantment: 0, quantity: 100 },
+  { itemId: 'T4_CLOTH', enchantment: 0, quantity: 100 },
+  { itemId: 'T5_CLOTH', enchantment: 0, quantity: 100 },
+  { itemId: 'T6_CLOTH', enchantment: 0, quantity: 100 },
+  { itemId: 'T4_ORE', enchantment: 0, quantity: 100 },
+  { itemId: 'T5_ORE', enchantment: 0, quantity: 100 },
+  { itemId: 'T6_ORE', enchantment: 0, quantity: 100 },
+  { itemId: 'T4_LOG', enchantment: 0, quantity: 100 },
+  { itemId: 'T5_LOG', enchantment: 0, quantity: 100 },
+  { itemId: 'T6_LOG', enchantment: 0, quantity: 100 },
+  { itemId: 'T4_HIDE', enchantment: 0, quantity: 100 },
+  { itemId: 'T5_HIDE', enchantment: 0, quantity: 100 },
+  { itemId: 'T6_HIDE', enchantment: 0, quantity: 100 },
+  { itemId: 'T4_FIBER', enchantment: 0, quantity: 100 },
+  { itemId: 'T5_FIBER', enchantment: 0, quantity: 100 },
+  { itemId: 'T6_FIBER', enchantment: 0, quantity: 100 },
 ];

@@ -139,6 +139,16 @@ const TopOpportunities = ({ arbitrageData = null, limit = 10 }) => {
                   <p className="text-xs text-gray-500 truncate">
                     {opportunity.itemId}
                   </p>
+                  {opportunity.enchantment !== undefined && (
+                    <p className="text-xs text-purple-400">
+                      Encantamento: .{opportunity.enchantment}
+                    </p>
+                  )}
+                  {opportunity.quantity !== undefined && (
+                    <p className="text-xs text-blue-400">
+                      Quantidade: {opportunity.quantity}
+                    </p>
+                  )}
                 </div>
               </div>
 
