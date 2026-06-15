@@ -54,6 +54,7 @@ const RegisterForm = ({ onSuccess, onSwitchToLogin }) => {
   };
 
   const handleSubmit = async (e) => {
+    console.count('handleSubmit called');
     e.preventDefault();
     setLoading(true);
     setError('');
