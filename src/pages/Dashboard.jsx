@@ -23,19 +23,23 @@ const Dashboard = ({ userId }) => {
   const loadDashboardData = async () => {
     setLoading(true);
     
-    const [profileResult, pointsResult, missionsResult, membersResult] = await Promise.all([
-      getProfile(userId),
-      getUserPointsStats(userId),
-      getActiveMissions(),
-      getGuildMembers(),
-    ]);
+    try {
+      const [profileResult, pointsResult, missionsResult, membersResult] = await Promise.all([
+        getProfile(userId),
+        getUserPointsStats(userId),
+        getActiveMissions(),
+        getGuildMembers(),
+      ]);
 
-    if (profileResult.success) setProfile(profileResult.data);
-    if (pointsResult.success) setPointsStats(pointsResult.data);
-    if (missionsResult.success) setMissions(missionsResult.data);
-    if (membersResult.success) setMembers(membersResult.data);
-
-    setLoading(false);
+      if (profileResult.success) setProfile(profileResult.data);
+      if (pointsResult.success) setPointsStats(pointsResult.data);
+      if (missionsResult.success) setMissions(missionsResult.data);
+      if (membersResult.success) setMembers(membersResult.data);
+    } catch (error) {
+      console.error('Error loading dashboard data:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const formatNumber = (value) => {

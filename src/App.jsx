@@ -83,62 +83,62 @@ function App() {
           path="/dashboard"
           element={
             <ProtectedRoute>
-              <DashboardLayout userId={user?.id} userRole={profile?.role}>
-                <Dashboard userId={user?.id} />
-              </DashboardLayout>
+              <DashboardLayout userId={user?.id} userRole={profile?.role} />
             </ProtectedRoute>
           }
-        />
+        >
+          <Route index element={<Dashboard userId={user?.id} />} />
+        </Route>
         <Route
           path="/ranking"
           element={
             <ProtectedRoute>
-              <DashboardLayout userId={user?.id} userRole={profile?.role}>
-                <Ranking userId={user?.id} />
-              </DashboardLayout>
+              <DashboardLayout userId={user?.id} userRole={profile?.role} />
             </ProtectedRoute>
           }
-        />
+        >
+          <Route index element={<Ranking userId={user?.id} />} />
+        </Route>
         <Route
           path="/missions"
           element={
             <ProtectedRoute>
-              <DashboardLayout userId={user?.id} userRole={profile?.role}>
-                <Missions userId={user?.id} userRole={profile?.role} />
-              </DashboardLayout>
+              <DashboardLayout userId={user?.id} userRole={profile?.role} />
             </ProtectedRoute>
           }
-        />
+        >
+          <Route index element={<Missions userId={user?.id} userRole={profile?.role} />} />
+        </Route>
         <Route
           path="/market"
           element={
             <ProtectedRoute>
-              <DashboardLayout userId={user?.id} userRole={profile?.role}>
-                <Market />
-              </DashboardLayout>
+              <DashboardLayout userId={user?.id} userRole={profile?.role} />
             </ProtectedRoute>
           }
-        />
+        >
+          <Route index element={<Market />} />
+        </Route>
         <Route
           path="/settings"
           element={
             <ProtectedRoute>
-              <DashboardLayout userId={user?.id} userRole={profile?.role}>
-                <SettingsPage userId={user?.id} userRole={profile?.role} />
-              </DashboardLayout>
+              <DashboardLayout userId={user?.id} userRole={profile?.role} />
             </ProtectedRoute>
           }
-        />
+        >
+          <Route index element={<SettingsPage userId={user?.id} userRole={profile?.role} />} />
+        </Route>
         <Route
           path="/admin"
           element={
             <ProtectedRoute>
-              <DashboardLayout userId={user?.id} userRole={profile?.role}>
-                <SettingsPage userId={user?.id} userRole={profile?.role} />
-              </DashboardLayout>
+              <DashboardLayout userId={user?.id} userRole={profile?.role} />
             </ProtectedRoute>
           }
-        />
+        >
+          <Route index element={<SettingsPage userId={user?.id} userRole={profile?.role} />} />
+        </Route>
 
         {/* Default redirect */}
         <Route path="*" element={<Navigate to="/" replace />} />
