@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Filter, X } from 'lucide-react';
 import CityFilter from './CityFilter';
 import TierFilter from './TierFilter';
@@ -18,7 +18,8 @@ const AdvancedFilters = ({ onFilterChange }) => {
   const [selectedQualities, setSelectedQualities] = useState([]);
   const [minProfit, setMinProfit] = useState(0);
 
-  const handleFilterChange = () => {
+  // Trigger filter change when any filter state changes
+  useEffect(() => {
     onFilterChange({
       cities: selectedCities,
       tiers: selectedTiers,
@@ -26,7 +27,7 @@ const AdvancedFilters = ({ onFilterChange }) => {
       qualities: selectedQualities,
       minProfit,
     });
-  };
+  }, [selectedCities, selectedTiers, selectedEnchantments, selectedQualities, minProfit, onFilterChange]);
 
   const handleClearAll = () => {
     setSelectedCities([]);
@@ -74,38 +75,23 @@ const AdvancedFilters = ({ onFilterChange }) => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           <CityFilter
             selectedCities={selectedCities}
-            onCityChange={(cities) => {
-              setSelectedCities(cities);
-              handleFilterChange();
-            }}
+            onCityChange={setSelectedCities}
           />
           <TierFilter
             selectedTiers={selectedTiers}
-            onTierChange={(tiers) => {
-              setSelectedTiers(tiers);
-              handleFilterChange();
-            }}
+            onTierChange={setSelectedTiers}
           />
           <EnchantmentFilter
             selectedEnchantments={selectedEnchantments}
-            onEnchantmentChange={(enchantments) => {
-              setSelectedEnchantments(enchantments);
-              handleFilterChange();
-            }}
+            onEnchantmentChange={setSelectedEnchantments}
           />
           <QualityFilter
             selectedQualities={selectedQualities}
-            onQualityChange={(qualities) => {
-              setSelectedQualities(qualities);
-              handleFilterChange();
-            }}
+            onQualityChange={setSelectedQualities}
           />
           <ProfitFilter
             minProfit={minProfit}
-            onMinProfitChange={(profit) => {
-              setMinProfit(profit);
-              handleFilterChange();
-            }}
+            onMinProfitChange={setMinProfit}
           />
         </div>
       </div>

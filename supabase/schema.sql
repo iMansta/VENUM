@@ -42,13 +42,15 @@ CREATE TABLE IF NOT EXISTS public.transports (
   item_name TEXT,
   from_city TEXT NOT NULL,
   to_city TEXT NOT NULL,
-  buy_price INTEGER NOT NULL,
-  sell_price INTEGER NOT NULL,
-  profit INTEGER NOT NULL,
-  status TEXT DEFAULT 'available', -- available, reserved, completed
-  reserved_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
-  reserved_at TIMESTAMP WITH TIME ZONE,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  buy_price NUMERIC DEFAULT 0,
+  sell_price NUMERIC DEFAULT 0,
+  profit NUMERIC DEFAULT 0,
+  quantity INTEGER DEFAULT 1,
+  status TEXT DEFAULT 'available' CHECK (status IN ('available', 'reserved', 'completed', 'cancelled')),
+  reserved_by UUID REFERENCES auth.users(id),
+  reserved_at TIMESTAMPTZ,
+  created_by UUID REFERENCES auth.users(id),
+  created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- Enable RLS on transports
@@ -96,13 +98,9 @@ CREATE POLICY "Authenticated users can join missions" ON public.mission_particip
 CREATE POLICY "Users can update their own participation" ON public.mission_participants FOR UPDATE USING (profile_id = auth.uid());
 
 -- RLS Policies for Transports
-CREATE POLICY "Anyone can view available transports" ON public.transports FOR SELECT USING (status = 'available' OR reserved_by = auth.uid());
-CREATE POLICY "Authenticated users can reserve transports" ON public.transports FOR UPDATE USING (
-  auth.uid() IS NOT NULL AND status = 'available'
-);
-CREATE POLICY "Users can cancel their own reservations" ON public.transports FOR UPDATE USING (
-  reserved_by = auth.uid()
-);
+CREATE POLICY "Transports are viewable by authenticated users" ON public.transports FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Transports can be updated by authenticated users" ON public.transports FOR UPDATE TO authenticated USING (true);
+CREATE POLICY "Transports can be inserted by authenticated users" ON public.transports FOR INSERT TO authenticated WITH CHECK (true);
 
 -- RLS Policies for Guild Codes
 CREATE POLICY "Anyone can view active codes" ON public.guild_codes FOR SELECT USING (is_active = true OR created_by = auth.uid());
@@ -258,5 +256,71 @@ BEGIN
     md.monthly_points
   FROM weekly_data wd
   CROSS JOIN monthly_data md;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Award Points Function
+CREATE OR REPLACE FUNCTION public.award_points(
+  p_profile_id UUID,
+  p_amount INTEGER,
+  p_reason TEXT,
+  p_reference_id UUID DEFAULT NULL,
+  p_reference_type TEXT DEFAULT NULL
+)
+RETURNS VOID AS $$
+BEGIN
+  -- Insert into ledger
+  INSERT INTO public.points_ledger (profile_id, amount, transaction_type, reason, reference_id, reference_type)
+  VALUES (p_profile_id, p_amount, 'earned', p_reason, p_reference_id, p_reference_type);
+
+  -- Update total points in profile
+  UPDATE public.profiles
+  SET total_points = total_points + p_amount, updated_at = NOW()
+  WHERE id = p_profile_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Deduct Points Function
+CREATE OR REPLACE FUNCTION public.deduct_points(
+  p_profile_id UUID,
+  p_amount INTEGER,
+  p_reason TEXT,
+  p_reference_id UUID DEFAULT NULL,
+  p_reference_type TEXT DEFAULT NULL
+)
+RETURNS VOID AS $$
+BEGIN
+  -- Insert into ledger (negative value)
+  INSERT INTO public.points_ledger (profile_id, amount, transaction_type, reason, reference_id, reference_type)
+  VALUES (p_profile_id, -p_amount, 'spent', p_reason, p_reference_id, p_reference_type);
+
+  -- Update total points in profile
+  UPDATE public.profiles
+  SET total_points = GREATEST(total_points - p_amount, 0), updated_at = NOW()
+  WHERE id = p_profile_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Validate Guild Code Function
+CREATE OR REPLACE FUNCTION public.validate_guild_code(p_code TEXT)
+RETURNS JSON AS $$
+DECLARE
+  v_code RECORD;
+BEGIN
+  SELECT * INTO v_code FROM public.guild_codes
+  WHERE code = p_code AND is_active = true;
+
+  IF NOT FOUND THEN
+    RETURN json_build_object('success', false, 'message', 'Código não encontrado ou inativo');
+  END IF;
+
+  IF v_code.max_uses > 0 AND v_code.used_count >= v_code.max_uses THEN
+    RETURN json_build_object('success', false, 'message', 'Código atingiu o limite de usos');
+  END IF;
+
+  -- Increment usage count
+  UPDATE public.guild_codes SET used_count = used_count + 1 WHERE id = v_code.id;
+
+  RETURN json_build_object('success', true, 'message', 'Código válido');
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;

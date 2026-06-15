@@ -63,8 +63,20 @@ export const deductPoints = async (profileId, amount, reason, referenceId = null
 // Adjust points manually (officers/admins only)
 export const adjustPoints = async (profileId, amount, reason, createdBy) => {
   try {
+    console.log('adjustPoints called with:', { profileId, amount, reason, createdBy });
+    
+    // Get current total points
+    const { data: currentProfile } = await supabase
+      .from('profiles')
+      .select('total_points')
+      .eq('id', profileId)
+      .single();
+
+    const newTotal = (currentProfile?.total_points || 0) + amount;
+
+    // Insert into ledger
     const transactionType = amount >= 0 ? 'earned' : 'spent';
-    const { error } = await supabase.from('points_ledger').insert({
+    const { error: insertError } = await supabase.from('points_ledger').insert({
       profile_id: profileId,
       amount: amount,
       transaction_type: 'adjusted',
@@ -72,19 +84,20 @@ export const adjustPoints = async (profileId, amount, reason, createdBy) => {
       created_by: createdBy,
     });
 
-    if (error) throw error;
+    if (insertError) throw insertError;
 
     // Update profile total
     const { error: updateError } = await supabase
       .from('profiles')
       .update({
-        total_points: supabase.raw('total_points + ?', [amount]),
+        total_points: newTotal,
         updated_at: new Date().toISOString(),
       })
       .eq('id', profileId);
 
     if (updateError) throw updateError;
 
+    console.log('Points adjusted successfully:', { profileId, newTotal });
     return { success: true };
   } catch (error) {
     console.error('Adjust points error:', error);
@@ -129,10 +142,10 @@ export const getUserPointsStats = async (profileId) => {
     };
 
     data.forEach((transaction) => {
-      if (transaction.transaction_type === 'earned' || transaction.transaction_type === 'adjusted') {
-        stats.totalEarned += transaction.amount > 0 ? transaction.amount : 0;
-      } else if (transaction.transaction_type === 'spent' || transaction.transaction_type === 'adjusted') {
-        stats.totalSpent += transaction.amount < 0 ? Math.abs(transaction.amount) : 0;
+      if (transaction.amount > 0) {
+        stats.totalEarned += transaction.amount;
+      } else if (transaction.amount < 0) {
+        stats.totalSpent += Math.abs(transaction.amount);
       }
     });
 

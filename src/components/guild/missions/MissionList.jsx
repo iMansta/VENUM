@@ -6,7 +6,7 @@ import { getActiveMissions } from '@/lib/supabase/missions';
  * MissionList component - Display list of active guild missions
  */
 
-const MissionList = ({ userRole }) => {
+const MissionList = ({ userId, userRole }) => {
   const [missions, setMissions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all'); // all, gathering, crafting, pvp, trading

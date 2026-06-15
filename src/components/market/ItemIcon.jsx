@@ -14,31 +14,9 @@ const ItemIcon = ({ itemId, size = 32, className = '' }) => {
   const [error, setError] = useState(false);
 
   useEffect(() => {
-    const fetchIcon = async () => {
-      setLoading(true);
-      setError(false);
-
-      try {
-        // Albion Online Data Project API for item icons
-        // Format: https://render.albiononline.com/v1/item/ITEM_ID
-        const response = await fetch(`https://render.albiononline.com/v1/item/${itemId}`);
-        
-        if (response.ok) {
-          // The API returns the image directly
-          setIconUrl(`https://render.albiononline.com/v1/item/${itemId}`);
-        } else {
-          throw new Error('Failed to fetch icon');
-        }
-      } catch (err) {
-        console.error(`Error fetching icon for ${itemId}:`, err);
-        setError(true);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     if (itemId) {
-      fetchIcon();
+      setIconUrl(`https://render.albiononline.com/v1/item/${itemId}`);
+      setLoading(false);
     }
   }, [itemId]);
 

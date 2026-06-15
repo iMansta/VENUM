@@ -1,15 +1,15 @@
 import { useState } from 'react';
-import { Lock, Mail, AlertCircle } from 'lucide-react';
+import { Lock, User, AlertCircle } from 'lucide-react';
 import { signIn } from '../../../lib/supabase/auth';
 
 /**
- * LoginForm component - User login with email and password
+ * LoginForm component - User login with username and password
  * @param {Function} onSuccess - Callback when login succeeds
  * @param {Function} onSwitchToRegister - Callback to switch to registration
  */
 
 const LoginForm = ({ onSuccess, onSwitchToRegister }) => {
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -19,7 +19,7 @@ const LoginForm = ({ onSuccess, onSwitchToRegister }) => {
     setLoading(true);
     setError('');
 
-    const result = await signIn(email, password);
+    const result = await signIn(username, password);
 
     if (result.success) {
       onSuccess(result.data);
@@ -47,16 +47,16 @@ const LoginForm = ({ onSuccess, onSwitchToRegister }) => {
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label className="block text-sm font-medium text-gray-300 mb-2">
-            Email
+            Usuário
           </label>
           <div className="relative">
-            <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-500" />
+            <User className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-500" />
             <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
               className="w-full bg-slate-800 border border-slate-700 rounded-lg pl-10 pr-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
-              placeholder="seu@email.com"
+              placeholder="seu_usuario"
               required
             />
           </div>
