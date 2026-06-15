@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { TrendingUp, Search, Filter, ArrowUpDown } from 'lucide-react';
+import { TrendingUp, Search, Filter, ArrowUpDown, RefreshCw } from 'lucide-react';
 import TopOpportunities from '@/components/market/TopOpportunities';
 import AdvancedFilters from '@/components/market/filters/AdvancedFilters';
 import TransportList from '@/components/market/TransportList';
@@ -11,12 +11,28 @@ import TransportList from '@/components/market/TransportList';
 const Market = ({ userId }) => {
   const [showFilters, setShowFilters] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [transportFilters, setTransportFilters] = useState(null);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     // Simulate loading or check if data is ready
     const timer = setTimeout(() => setLoading(false), 300);
     return () => clearTimeout(timer);
   }, []);
+
+  const handleFilterChange = (filters) => {
+    setTransportFilters(filters);
+  };
+
+  const handleApplyFilters = () => {
+    // Trigger refresh with current filters
+    setRefreshKey(prev => prev + 1);
+  };
+
+  const handleRefresh = () => {
+    // Refresh both Top Opportunities and Transport List
+    setRefreshKey(prev => prev + 1);
+  };
 
   if (loading) {
     return (
@@ -37,19 +53,36 @@ const Market = ({ userId }) => {
           </h1>
           <p className="text-gray-400 text-sm mt-1">Análise de arbitragem Albion Online</p>
         </div>
-        <button
-          onClick={() => setShowFilters(!showFilters)}
-          className="bg-slate-800 hover:bg-slate-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors"
-        >
-          <Filter className="w-5 h-5" />
-          Filtros
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleRefresh}
+            className="bg-slate-800 hover:bg-slate-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors"
+          >
+            <RefreshCw className="w-5 h-5" />
+            Atualizar
+          </button>
+          <button
+            onClick={() => setShowFilters(!showFilters)}
+            className="bg-slate-800 hover:bg-slate-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors"
+          >
+            <Filter className="w-5 h-5" />
+            Filtros
+          </button>
+        </div>
       </div>
 
       {/* Filters */}
       {showFilters && (
         <div className="bg-slate-900 rounded-lg border border-slate-800 p-6">
-          <AdvancedFilters onFilterChange={(filters) => console.log('Filters:', filters)} />
+          <AdvancedFilters onFilterChange={handleFilterChange} />
+          <div className="mt-4 flex justify-end">
+            <button
+              onClick={handleApplyFilters}
+              className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold px-6 py-2 rounded-lg transition-colors"
+            >
+              Aplicar Filtros
+            </button>
+          </div>
         </div>
       )}
 
@@ -60,9 +93,10 @@ const Market = ({ userId }) => {
             <ArrowUpDown className="w-5 h-5 text-red-500" />
             Top Oportunidades
           </h2>
+          <p className="text-gray-400 text-sm mt-1">Melhores oportunidades de arbitragem (sem filtro)</p>
         </div>
         <div className="p-6">
-          <TopOpportunities />
+          <TopOpportunities refreshKey={refreshKey} />
         </div>
       </div>
 
@@ -73,9 +107,10 @@ const Market = ({ userId }) => {
             <ArrowUpDown className="w-5 h-5 text-red-500" />
             Lista de Transporte
           </h2>
+          <p className="text-gray-400 text-sm mt-1">Oportunidades de transporte (com filtro)</p>
         </div>
         <div className="p-6">
-          <TransportList />
+          <TransportList userId={userId} filters={transportFilters} refreshKey={refreshKey} />
         </div>
       </div>
     </div>

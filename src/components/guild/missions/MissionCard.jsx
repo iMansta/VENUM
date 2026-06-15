@@ -10,19 +10,37 @@ const MissionCard = ({ mission, userId, isParticipating, onParticipationChange }
   const [loading, setLoading] = useState(false);
 
   const handleParticipate = async () => {
+    console.log('handleParticipate called with missionId:', mission.id, 'userId:', userId);
+    if (!userId) {
+      console.error('userId is undefined');
+      alert('Você precisa estar logado para participar de missões');
+      return;
+    }
     setLoading(true);
     const result = await joinMission(mission.id, userId);
+    console.log('joinMission result:', result);
     if (result.success) {
       onParticipationChange(mission.id, true);
+    } else {
+      alert(`Erro ao participar: ${result.error}`);
     }
     setLoading(false);
   };
 
   const handleLeave = async () => {
+    console.log('handleLeave called with missionId:', mission.id, 'userId:', userId);
+    if (!userId) {
+      console.error('userId is undefined');
+      alert('Você precisa estar logado para sair de missões');
+      return;
+    }
     setLoading(true);
     const result = await leaveMission(mission.id, userId);
+    console.log('leaveMission result:', result);
     if (result.success) {
       onParticipationChange(mission.id, false);
+    } else {
+      alert(`Erro ao sair: ${result.error}`);
     }
     setLoading(false);
   };

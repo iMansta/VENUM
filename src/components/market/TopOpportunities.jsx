@@ -10,7 +10,7 @@ import { fetchTopOpportunities, COMMON_ITEMS } from '@/lib/albion/api';
  * @param {number} limit - Number of cards to display (default: 10)
  */
 
-const TopOpportunities = ({ arbitrageData = null, limit = 10 }) => {
+const TopOpportunities = ({ arbitrageData = null, limit = 10, refreshKey = 0 }) => {
   const [opportunities, setOpportunities] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -23,7 +23,7 @@ const TopOpportunities = ({ arbitrageData = null, limit = 10 }) => {
     } else {
       loadOpportunities();
     }
-  }, [arbitrageData]);
+  }, [arbitrageData, refreshKey]);
 
   const loadOpportunities = async () => {
     setLoading(true);

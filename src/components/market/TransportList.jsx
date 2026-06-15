@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase/client';
 import ItemIcon from './ItemIcon';
 import { getItemName } from '@/lib/i18n/itemNames';
 
-const TransportList = ({ userId }) => {
+const TransportList = ({ userId, filters, refreshKey }) => {
   const [opportunities, setOpportunities] = useState([]);
   const [myTransports, setMyTransports] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -14,7 +14,7 @@ const TransportList = ({ userId }) => {
   const [showFilters, setShowFilters] = useState(false);
   const [filterCity, setFilterCity] = useState('');
   const [filterMinProfit, setFilterMinProfit] = useState(0);
-  const [opportunityCount, setOpportunityCount] = useState(50);
+  const [opportunityCount, setOpportunityCount] = useState(100); // Aumentado para mostrar mais oportunidades
 
   useEffect(() => {
     loadOpportunities();
@@ -26,15 +26,37 @@ const TransportList = ({ userId }) => {
     }, 60000);
     
     return () => clearInterval(interval);
-  }, [opportunityCount]);
+  }, [opportunityCount, refreshKey, filters]);
 
   const loadOpportunities = async () => {
     setLoading(true);
     try {
       const data = await fetchTopOpportunities(COMMON_ITEMS, opportunityCount);
       
-      // Apply filters
+      // Apply filters from props if provided
       let filtered = data;
+      if (filters) {
+        if (filters.cities && filters.cities.length > 0) {
+          filtered = filtered.filter(opp => filters.cities.includes(opp.lowestCity));
+        }
+        if (filters.tiers && filters.tiers.length > 0) {
+          filtered = filtered.filter(opp => {
+            const tier = opp.itemId.match(/T(\d+)/)?.[1];
+            return tier && filters.tiers.includes(parseInt(tier));
+          });
+        }
+        if (filters.enchantments && filters.enchantments.length > 0) {
+          filtered = filtered.filter(opp => {
+            const enchantment = opp.itemId.match(/\.(\d+)$/)?.[1];
+            return enchantment && filters.enchantments.includes(parseInt(enchantment));
+          });
+        }
+        if (filters.minProfit > 0) {
+          filtered = filtered.filter(opp => opp.netProfit >= filters.minProfit);
+        }
+      }
+      
+      // Apply local filters if set
       if (filterCity) {
         filtered = filtered.filter(opp => opp.lowestCity === filterCity);
       }
@@ -245,77 +267,61 @@ const TransportList = ({ userId }) => {
               </p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="space-y-2">
               {opportunities && opportunities.length > 0 ? (
                 opportunities.map((opportunity, index) => (
                   <div
                     key={`${opportunity.itemId}-${index}`}
-                    className="bg-slate-800/50 rounded-lg p-4 border border-slate-700 hover:border-amber-500/50 transition-all"
+                    className="bg-slate-800/50 rounded-lg p-3 border border-slate-700 hover:border-amber-500/50 transition-all"
                   >
-                    {/* Item Info */}
-                    <div className="flex items-center gap-3 mb-3">
-                      <ItemIcon itemId={opportunity.itemId} size={48} />
-                      <div className="flex-1">
-                        <h3 className="font-semibold text-white text-sm">{getItemName(opportunity.itemId)}</h3>
-                        <p className="text-xs text-gray-500">{opportunity.itemId}</p>
-                        {opportunity.enchantment !== undefined && (
-                          <p className="text-xs text-purple-400">Encantamento: .{opportunity.enchantment}</p>
+                    <div className="flex items-center gap-3">
+                      {/* Item Icon */}
+                      <ItemIcon itemId={opportunity.itemId} size={32} />
+                      
+                      {/* Item Info */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <h3 className="font-semibold text-white text-sm truncate">{getItemName(opportunity.itemId)}</h3>
+                          {opportunity.enchantment !== undefined && (
+                            <span className="text-xs text-purple-400">.{opportunity.enchantment}</span>
+                          )}
+                          {opportunity.quantity !== undefined && (
+                            <span className="text-xs text-blue-400">x{opportunity.quantity}</span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 text-xs mt-1">
+                          <span className="text-blue-400">{opportunity.lowestCity}</span>
+                          <span className="text-gray-500">→</span>
+                          <span className="text-amber-400">Caerleon</span>
+                          <span className="text-gray-500">|</span>
+                          <span className="text-green-400">{formatSilver(opportunity.netProfit)}</span>
+                          <span className="text-gray-500">|</span>
+                          <span className="text-purple-400">{opportunity.margin.toFixed(1)}%</span>
+                        </div>
+                      </div>
+
+                      {/* Reserve Button */}
+                      <button
+                        onClick={() => handleReserve(opportunity)}
+                        disabled={reservingId === opportunity.itemId}
+                        className="bg-amber-500 hover:bg-amber-600 disabled:bg-slate-700 disabled:text-gray-500 text-slate-950 font-semibold py-1.5 px-3 rounded-lg flex items-center gap-1 transition-colors text-sm"
+                      >
+                        {reservingId === opportunity.itemId ? (
+                          <>
+                            <div className="w-3 h-3 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
+                          </>
+                        ) : (
+                          <>
+                            <Lock className="w-3 h-3" />
+                            Reservar
+                          </>
                         )}
-                        {opportunity.quantity !== undefined && (
-                          <p className="text-xs text-blue-400">Quantidade: {opportunity.quantity}</p>
-                        )}
-                      </div>
+                      </button>
                     </div>
-
-                    {/* Route */}
-                    <div className="flex items-center gap-2 mb-3 text-sm">
-                      <span className="text-blue-400 font-medium text-xs">{opportunity.lowestCity}</span>
-                      <span className="text-gray-500">→</span>
-                      <span className="text-amber-400 font-medium text-xs">Caerleon</span>
-                    </div>
-
-                    {/* Price Details */}
-                    <div className="space-y-2 mb-3 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-gray-400">Compra:</span>
-                        <span className="text-white">{formatSilver(opportunity.lowestPrice)}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-400">Venda:</span>
-                        <span className="text-white">{formatSilver(opportunity.bmPrice)}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-400">Lucro:</span>
-                        <span className="text-green-400 font-medium">{formatSilver(opportunity.netProfit)}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-400">Margem:</span>
-                        <span className="text-purple-400 font-medium">{opportunity.margin.toFixed(1)}%</span>
-                      </div>
-                    </div>
-
-                    {/* Reserve Button */}
-                    <button
-                      onClick={() => handleReserve(opportunity)}
-                      disabled={reservingId === opportunity.itemId}
-                      className="w-full bg-amber-500 hover:bg-amber-600 disabled:bg-slate-700 disabled:text-gray-500 text-slate-950 font-semibold py-2 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors"
-                    >
-                      {reservingId === opportunity.itemId ? (
-                        <>
-                          <div className="w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
-                          Reservando...
-                        </>
-                      ) : (
-                        <>
-                          <Lock className="w-4 h-4" />
-                          Reservar
-                        </>
-                      )}
-                    </button>
                   </div>
                 ))
               ) : (
-                <div className="col-span-full text-center py-12">
+                <div className="text-center py-12">
                   <Package className="w-16 h-16 text-gray-600 mx-auto mb-4" />
                   <h3 className="text-xl font-semibold text-gray-400 mb-2">
                     Nenhuma Oportunidade

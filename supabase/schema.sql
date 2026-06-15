@@ -56,6 +56,17 @@ CREATE TABLE IF NOT EXISTS public.mission_participants (
 -- Enable RLS on mission_participants
 ALTER TABLE public.mission_participants ENABLE ROW LEVEL SECURITY;
 
+-- RLS Policies for Mission Participants
+CREATE POLICY "Users can view mission participants" ON public.mission_participants FOR SELECT USING (true);
+CREATE POLICY "Users can insert own participation" ON public.mission_participants FOR INSERT WITH CHECK (profile_id = auth.uid());
+CREATE POLICY "Users can delete own participation" ON public.mission_participants FOR DELETE USING (profile_id = auth.uid());
+CREATE POLICY "Admins and officers can manage all participants" ON public.mission_participants FOR ALL USING (
+  EXISTS (
+    SELECT 1 FROM public.profiles 
+    WHERE id = auth.uid() AND role IN ('admin', 'officer')
+  )
+);
+
 -- Transports Table
 CREATE TABLE IF NOT EXISTS public.transports (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
