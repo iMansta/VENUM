@@ -9,7 +9,7 @@ import Ranking from '@/pages/Ranking';
 import Missions from '@/pages/Missions';
 import Market from '@/pages/Market';
 import SettingsPage from '@/pages/Settings';
-import { getCurrentUser } from '@/lib/supabase/auth';
+import { getCurrentUser, onAuthStateChange } from '@/lib/supabase/auth';
 import { getProfile } from '@/lib/supabase/profiles';
 
 function App() {
@@ -18,16 +18,41 @@ function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    console.log('App mounted - checking auth...');
     checkAuth();
+
+    // Listen to auth state changes
+    const { data: { subscription } } = onAuthStateChange(async (event, session) => {
+      console.log('Auth state changed:', event, session?.user?.id);
+      
+      if (event === 'SIGNED_IN' && session?.user) {
+        setUser(session.user);
+        const { success, data: userProfile } = await getProfile(session.user.id);
+        if (success) {
+          setProfile(userProfile);
+        }
+      } else if (event === 'SIGNED_OUT') {
+        setUser(null);
+        setProfile(null);
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   const checkAuth = async () => {
     try {
-      const { user: currentUser } = await getCurrentUser();
-      if (currentUser) {
+      console.log('Checking current user...');
+      const { success, user: currentUser } = await getCurrentUser();
+      console.log('Current user check result:', success, currentUser?.id);
+      
+      if (success && currentUser) {
         setUser(currentUser);
-        const { success, data: userProfile } = await getProfile(currentUser.id);
-        if (success) {
+        const { success: profileSuccess, data: userProfile } = await getProfile(currentUser.id);
+        console.log('Profile check result:', profileSuccess, userProfile);
+        if (profileSuccess) {
           setProfile(userProfile);
         }
       }
