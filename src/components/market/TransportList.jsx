@@ -246,73 +246,85 @@ const TransportList = ({ userId }) => {
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {opportunities.map((opportunity, index) => (
-                <div
-                  key={`${opportunity.itemId}-${index}`}
-                  className="bg-slate-800/50 rounded-lg p-4 border border-slate-700 hover:border-amber-500/50 transition-all"
-                >
-                  {/* Item Info */}
-                  <div className="flex items-center gap-3 mb-3">
-                    <ItemIcon itemId={opportunity.itemId} size={48} />
-                    <div className="flex-1">
-                      <h3 className="font-semibold text-white text-sm">{getItemName(opportunity.itemId)}</h3>
-                      <p className="text-xs text-gray-500">{opportunity.itemId}</p>
-                      {opportunity.enchantment !== undefined && (
-                        <p className="text-xs text-purple-400">Encantamento: .{opportunity.enchantment}</p>
-                      )}
-                      {opportunity.quantity !== undefined && (
-                        <p className="text-xs text-blue-400">Quantidade: {opportunity.quantity}</p>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Route */}
-                  <div className="flex items-center gap-2 mb-3 text-sm">
-                    <span className="text-blue-400 font-medium text-xs">{opportunity.lowestCity}</span>
-                    <span className="text-gray-500">→</span>
-                    <span className="text-amber-400 font-medium text-xs">Caerleon</span>
-                  </div>
-
-                  {/* Price Details */}
-                  <div className="space-y-2 mb-3 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-gray-400">Compra:</span>
-                      <span className="text-white">{formatSilver(opportunity.lowestPrice)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-400">Venda:</span>
-                      <span className="text-white">{formatSilver(opportunity.bmPrice)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-400">Lucro:</span>
-                      <span className="text-green-400 font-medium">{formatSilver(opportunity.netProfit)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-400">Margem:</span>
-                      <span className="text-purple-400 font-medium">{opportunity.margin.toFixed(1)}%</span>
-                    </div>
-                  </div>
-
-                  {/* Reserve Button */}
-                  <button
-                    onClick={() => handleReserve(opportunity)}
-                    disabled={reservingId === opportunity.itemId}
-                    className="w-full bg-amber-500 hover:bg-amber-600 disabled:bg-slate-700 disabled:text-gray-500 text-slate-950 font-semibold py-2 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors"
+              {opportunities && opportunities.length > 0 ? (
+                opportunities.map((opportunity, index) => (
+                  <div
+                    key={`${opportunity.itemId}-${index}`}
+                    className="bg-slate-800/50 rounded-lg p-4 border border-slate-700 hover:border-amber-500/50 transition-all"
                   >
-                    {reservingId === opportunity.itemId ? (
-                      <>
-                        <div className="w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
-                        Reservando...
-                      </>
-                    ) : (
-                      <>
-                        <Lock className="w-4 h-4" />
-                        Reservar
-                      </>
-                    )}
-                  </button>
+                    {/* Item Info */}
+                    <div className="flex items-center gap-3 mb-3">
+                      <ItemIcon itemId={opportunity.itemId} size={48} />
+                      <div className="flex-1">
+                        <h3 className="font-semibold text-white text-sm">{getItemName(opportunity.itemId)}</h3>
+                        <p className="text-xs text-gray-500">{opportunity.itemId}</p>
+                        {opportunity.enchantment !== undefined && (
+                          <p className="text-xs text-purple-400">Encantamento: .{opportunity.enchantment}</p>
+                        )}
+                        {opportunity.quantity !== undefined && (
+                          <p className="text-xs text-blue-400">Quantidade: {opportunity.quantity}</p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Route */}
+                    <div className="flex items-center gap-2 mb-3 text-sm">
+                      <span className="text-blue-400 font-medium text-xs">{opportunity.lowestCity}</span>
+                      <span className="text-gray-500">→</span>
+                      <span className="text-amber-400 font-medium text-xs">Caerleon</span>
+                    </div>
+
+                    {/* Price Details */}
+                    <div className="space-y-2 mb-3 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-gray-400">Compra:</span>
+                        <span className="text-white">{formatSilver(opportunity.lowestPrice)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-400">Venda:</span>
+                        <span className="text-white">{formatSilver(opportunity.bmPrice)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-400">Lucro:</span>
+                        <span className="text-green-400 font-medium">{formatSilver(opportunity.netProfit)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-400">Margem:</span>
+                        <span className="text-purple-400 font-medium">{opportunity.margin.toFixed(1)}%</span>
+                      </div>
+                    </div>
+
+                    {/* Reserve Button */}
+                    <button
+                      onClick={() => handleReserve(opportunity)}
+                      disabled={reservingId === opportunity.itemId}
+                      className="w-full bg-amber-500 hover:bg-amber-600 disabled:bg-slate-700 disabled:text-gray-500 text-slate-950 font-semibold py-2 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors"
+                    >
+                      {reservingId === opportunity.itemId ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
+                          Reservando...
+                        </>
+                      ) : (
+                        <>
+                          <Lock className="w-4 h-4" />
+                          Reservar
+                        </>
+                      )}
+                    </button>
+                  </div>
+                ))
+              ) : (
+                <div className="col-span-full text-center py-12">
+                  <Package className="w-16 h-16 text-gray-600 mx-auto mb-4" />
+                  <h3 className="text-xl font-semibold text-gray-400 mb-2">
+                    Nenhuma Oportunidade
+                  </h3>
+                  <p className="text-gray-500">
+                    Ajuste os filtros ou aguarde novas oportunidades.
+                  </p>
                 </div>
-              ))}
+              )}
             </div>
           )}
         </div>

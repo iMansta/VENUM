@@ -490,3 +490,77 @@ BEGIN
 
   RAISE NOTICE 'Migration completed successfully';
 END $$;
+
+-- Migration Script to ensure transports table has all required columns
+-- Run this in Supabase SQL Editor if you encounter schema cache errors
+
+DO $$
+BEGIN
+  -- Check if quantity column exists, if not add it
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'transports' 
+    AND column_name = 'quantity'
+    AND table_schema = 'public'
+  ) THEN
+    ALTER TABLE public.transports ADD COLUMN quantity INTEGER DEFAULT 1;
+    RAISE NOTICE 'Added quantity column to transports table';
+  END IF;
+
+  -- Check if status column exists, if not add it
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'transports' 
+    AND column_name = 'status'
+    AND table_schema = 'public'
+  ) THEN
+    ALTER TABLE public.transports ADD COLUMN status TEXT DEFAULT 'available' CHECK (status IN ('available', 'reserved', 'completed', 'cancelled'));
+    RAISE NOTICE 'Added status column to transports table';
+  END IF;
+
+  -- Check if reserved_by column exists, if not add it
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'transports' 
+    AND column_name = 'reserved_by'
+    AND table_schema = 'public'
+  ) THEN
+    ALTER TABLE public.transports ADD COLUMN reserved_by UUID REFERENCES auth.users(id);
+    RAISE NOTICE 'Added reserved_by column to transports table';
+  END IF;
+
+  -- Check if reserved_at column exists, if not add it
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'transports' 
+    AND column_name = 'reserved_at'
+    AND table_schema = 'public'
+  ) THEN
+    ALTER TABLE public.transports ADD COLUMN reserved_at TIMESTAMPTZ;
+    RAISE NOTICE 'Added reserved_at column to transports table';
+  END IF;
+
+  -- Check if created_by column exists, if not add it
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'transports' 
+    AND column_name = 'created_by'
+    AND table_schema = 'public'
+  ) THEN
+    ALTER TABLE public.transports ADD COLUMN created_by UUID REFERENCES auth.users(id);
+    RAISE NOTICE 'Added created_by column to transports table';
+  END IF;
+
+  -- Check if created_at column exists, if not add it
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'transports' 
+    AND column_name = 'created_at'
+    AND table_schema = 'public'
+  ) THEN
+    ALTER TABLE public.transports ADD COLUMN created_at TIMESTAMPTZ DEFAULT NOW();
+    RAISE NOTICE 'Added created_at column to transports table';
+  END IF;
+
+  RAISE NOTICE 'Transports table migration completed successfully';
+END $$;
