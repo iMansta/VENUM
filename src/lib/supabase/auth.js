@@ -4,8 +4,13 @@ import { supabase } from './client';
  * Authentication utilities for VENUM MARKET
  */
 
-// Sign up with email and password
-export const signUp = async (email, password, username, guildCode = null) => {
+// Helper function to generate email from username for Supabase Auth
+const generateEmailFromUsername = (username) => {
+  return `${username.toLowerCase()}@venum.local`;
+};
+
+// Sign up with username and password
+export const signUp = async (username, password, guildCode = null) => {
   try {
     // First, validate guild code if provided
     if (guildCode) {
@@ -16,6 +21,9 @@ export const signUp = async (email, password, username, guildCode = null) => {
         throw new Error(codeData?.message || 'Código de guilda inválido');
       }
     }
+
+    // Generate email from username for Supabase Auth
+    const email = generateEmailFromUsername(username);
 
     // Sign up the user
     const { data, error } = await supabase.auth.signUp({
@@ -39,9 +47,12 @@ export const signUp = async (email, password, username, guildCode = null) => {
   }
 };
 
-// Sign in with email and password
-export const signIn = async (email, password) => {
+// Sign in with username and password
+export const signIn = async (username, password) => {
   try {
+    // Generate email from username for Supabase Auth
+    const email = generateEmailFromUsername(username);
+
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,

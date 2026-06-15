@@ -8,7 +8,7 @@ import { signIn } from '@/lib/supabase/auth';
  */
 
 const LandingPage = () => {
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -19,7 +19,7 @@ const LandingPage = () => {
     setLoading(true);
     setError('');
 
-    const result = await signIn(email, password);
+    const result = await signIn(username, password);
     
     if (result.success) {
       navigate('/dashboard');
@@ -31,20 +31,30 @@ const LandingPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
-      {/* Background Pattern */}
+    <div className="min-h-screen bg-black flex items-center justify-center p-4 relative">
+      {/* Background Image */}
       <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950" />
-        <div className="absolute inset-0 opacity-5">
-          <div className="absolute top-20 left-20 w-96 h-96 bg-red-500 rounded-full blur-3xl" />
-          <div className="absolute bottom-20 right-20 w-96 h-96 bg-red-600 rounded-full blur-3xl" />
-        </div>
+        <img
+          src="/cobra-real.png"
+          alt="Background"
+          className="absolute inset-0 w-full h-full object-cover opacity-30"
+        />
+        <div className="absolute inset-0 bg-black/70" />
+      </div>
+
+      {/* Logo */}
+      <div className="absolute top-8 left-8 z-20">
+        <img
+          src="/venum-logo.png"
+          alt="VENUM MARKET"
+          className="h-16 w-auto"
+        />
       </div>
 
       {/* Content */}
       <div className="relative z-10 w-full max-w-md">
         {/* Logo/Brand */}
-        <div className="text-center mb-8">
+        <div className="text-center mb-8 mt-16">
           <h1 className="text-4xl font-bold text-white mb-2">VENUM MARKET</h1>
           <p className="text-gray-400">Sistema de Inteligência de Mercado Albion Online</p>
         </div>
@@ -63,19 +73,19 @@ const LandingPage = () => {
 
           {/* Login Form */}
           <form onSubmit={handleLogin} className="space-y-4">
-            {/* Email */}
+            {/* Username */}
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">
-                Email
+                Nome de Usuário
               </label>
               <div className="relative">
                 <User className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-500" />
                 <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
                   className="w-full bg-slate-800 border border-slate-700 rounded-lg pl-10 pr-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all"
-                  placeholder="seu@email.com"
+                  placeholder="Seu nome de usuário"
                   required
                 />
               </div>
@@ -110,7 +120,7 @@ const LandingPage = () => {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-red-500 hover:bg-red-600 text-white font-semibold py-3 px-4 rounded-lg flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full bg-transparent border-2 border-white hover:bg-white hover:text-black text-white font-semibold py-3 px-4 rounded-lg flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? (
                 <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />

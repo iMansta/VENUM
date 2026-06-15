@@ -9,7 +9,8 @@ import {
   LogOut,
   Menu,
   X,
-  User
+  User,
+  Shield
 } from 'lucide-react';
 import { signOut } from '@/lib/supabase/auth';
 
@@ -34,6 +35,14 @@ const DashboardLayout = ({ userId, userRole }) => {
     { name: 'Mercado', path: '/market', icon: TrendingUp },
     { name: 'Configurações', path: '/settings', icon: Settings },
   ];
+
+  const adminNavigation = [
+    { name: 'Administração', path: '/settings', icon: Shield },
+  ];
+
+  const filteredNavigation = userRole === 'admin' 
+    ? [...navigation, ...adminNavigation] 
+    : navigation;
 
   const isActive = (path) => location.pathname === path;
 
@@ -69,7 +78,7 @@ const DashboardLayout = ({ userId, userRole }) => {
 
         {/* Navigation */}
         <nav className="p-4 space-y-2">
-          {navigation.map((item) => (
+          {filteredNavigation.map((item) => (
             <button
               key={item.path}
               onClick={() => {

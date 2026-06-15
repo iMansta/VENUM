@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { User, Lock, Mail, ArrowLeft, ArrowRight } from 'lucide-react';
+import { User, Lock, ArrowLeft, ArrowRight } from 'lucide-react';
 import { signUp } from '@/lib/supabase/auth';
 
 /**
@@ -9,7 +9,6 @@ import { signUp } from '@/lib/supabase/auth';
 
 const RegisterPage = () => {
   const [username, setUsername] = useState('');
-  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [guildCode, setGuildCode] = useState('');
   const [loading, setLoading] = useState(false);
@@ -21,7 +20,7 @@ const RegisterPage = () => {
     setLoading(true);
     setError('');
 
-    const result = await signUp(email, password, username, guildCode);
+    const result = await signUp(username, password, guildCode);
     
     if (result.success) {
       navigate('/dashboard');
@@ -33,14 +32,24 @@ const RegisterPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
-      {/* Background Pattern */}
+    <div className="min-h-screen bg-black flex items-center justify-center p-4 relative">
+      {/* Background Image */}
       <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950" />
-        <div className="absolute inset-0 opacity-5">
-          <div className="absolute top-20 left-20 w-96 h-96 bg-red-500 rounded-full blur-3xl" />
-          <div className="absolute bottom-20 right-20 w-96 h-96 bg-red-600 rounded-full blur-3xl" />
-        </div>
+        <img
+          src="/cobra-real.png"
+          alt="Background"
+          className="absolute inset-0 w-full h-full object-cover opacity-30"
+        />
+        <div className="absolute inset-0 bg-black/70" />
+      </div>
+
+      {/* Logo */}
+      <div className="absolute top-8 left-8 z-20">
+        <img
+          src="/venum-logo.png"
+          alt="VENUM MARKET"
+          className="h-16 w-auto"
+        />
       </div>
 
       {/* Content */}
@@ -55,7 +64,7 @@ const RegisterPage = () => {
         </button>
 
         {/* Logo/Brand */}
-        <div className="text-center mb-8">
+        <div className="text-center mb-8 mt-16">
           <h1 className="text-4xl font-bold text-white mb-2">VENUM MARKET</h1>
           <p className="text-gray-400">Crie sua conta para acessar o sistema</p>
         </div>
@@ -87,24 +96,6 @@ const RegisterPage = () => {
                   onChange={(e) => setUsername(e.target.value)}
                   className="w-full bg-slate-800 border border-slate-700 rounded-lg pl-10 pr-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all"
                   placeholder="Seu nome de usuário"
-                  required
-                />
-              </div>
-            </div>
-
-            {/* Email */}
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Email
-              </label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-500" />
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-lg pl-10 pr-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all"
-                  placeholder="seu@email.com"
                   required
                 />
               </div>
@@ -161,7 +152,7 @@ const RegisterPage = () => {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-red-500 hover:bg-red-600 text-white font-semibold py-3 px-4 rounded-lg flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full bg-transparent border-2 border-white hover:bg-white hover:text-black text-white font-semibold py-3 px-4 rounded-lg flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? (
                 <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
