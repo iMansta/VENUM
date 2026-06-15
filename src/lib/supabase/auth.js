@@ -6,7 +6,8 @@ import { supabase } from './client';
 
 // Helper function to generate email from username for Supabase Auth
 const generateEmailFromUsername = (username) => {
-  return `${username.toLowerCase()}@venum.local`;
+  // Use a valid domain format to avoid Supabase validation errors
+  return `${username.toLowerCase()}@tempmail.com`;
 };
 
 // Sign up with username and password
