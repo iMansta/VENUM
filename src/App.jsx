@@ -117,7 +117,7 @@ function App() {
             </ProtectedRoute>
           }
         >
-          <Route index element={<Market />} />
+          <Route index element={<Market userId={user?.id} />} />
         </Route>
         <Route
           path="/settings"

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Target, Users, Calendar, Award, Plus, Filter } from 'lucide-react';
+import { Target, Users, Calendar, Award, Filter } from 'lucide-react';
 import { getActiveMissions } from '@/lib/supabase/missions';
 
 /**
@@ -68,12 +68,6 @@ const MissionList = ({ userRole }) => {
             <Target className="w-6 h-6 text-amber-500" />
             <h2 className="text-xl font-bold text-white">Missões da Guilda</h2>
           </div>
-          {userRole === 'admin' || userRole === 'officer' ? (
-            <button className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold py-2 px-4 rounded-lg flex items-center gap-2 transition-colors">
-              <Plus className="w-5 h-5" />
-              Nova Missão
-            </button>
-          ) : null}
         </div>
       </div>
 

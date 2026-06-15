@@ -8,7 +8,7 @@ import TransportList from '@/components/market/TransportList';
  * Market page - Market intelligence and arbitrage opportunities
  */
 
-const Market = () => {
+const Market = ({ userId }) => {
   const [showFilters, setShowFilters] = useState(false);
   const [loading, setLoading] = useState(true);
 

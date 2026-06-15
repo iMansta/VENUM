@@ -1,47 +1,69 @@
-import { useTransportStore } from '@/store/transportStore';
-import { Trash2, Plus, Package, TrendingUp, X } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Trash2, Plus, Package, TrendingUp, X, Lock, Unlock } from 'lucide-react';
+import { getAvailableTransports, reserveTransport, cancelTransportReservation } from '@/lib/supabase/transports';
 
-const TransportList = () => {
-  const {
-    routes,
-    removeRoute,
-    updateRouteQuantity,
-    clearAllRoutes,
-    getTotalProfit,
-    getTotalQuantity,
-  } = useTransportStore();
+const TransportList = ({ userId }) => {
+  const [transports, setTransports] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [reservingId, setReservingId] = useState(null);
+
+  useEffect(() => {
+    loadTransports();
+  }, []);
+
+  const loadTransports = async () => {
+    setLoading(true);
+    const { success, data } = await getAvailableTransports();
+    if (success) {
+      setTransports(data);
+    }
+    setLoading(false);
+  };
+
+  const handleReserve = async (transportId) => {
+    if (!userId) {
+      alert('Você precisa estar logado para reservar um transporte');
+      return;
+    }
+
+    setReservingId(transportId);
+    const { success } = await reserveTransport(transportId, userId);
+    
+    if (success) {
+      // Reload transports to remove the reserved one
+      loadTransports();
+    } else {
+      alert('Falha ao reservar transporte. Tente novamente.');
+    }
+    
+    setReservingId(null);
+  };
 
   const formatSilver = (value) => {
-    return new Intl.NumberFormat('pt-BR').format(Math.round(value));
+    return new Intl.NumberFormat('pt-BR').format(Math.round(value || 0));
   };
 
-  const handleQuantityChange = (id, newQuantity) => {
-    const quantity = Math.max(1, parseInt(newQuantity) || 1);
-    updateRouteQuantity(id, quantity);
-  };
+  if (loading) {
+    return (
+      <div className="bg-slate-900 rounded-lg border border-slate-800 p-8">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-red-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-400">Carregando transportes...</p>
+        </div>
+      </div>
+    );
+  }
 
-  const handleRemoveRoute = (id) => {
-    if (window.confirm('Tem certeza que deseja remover esta rota?')) {
-      removeRoute(id);
-    }
-  };
-
-  const handleClearAll = () => {
-    if (window.confirm('Tem certeza que deseja limpar todas as rotas?')) {
-      clearAllRoutes();
-    }
-  };
-
-  if (routes.length === 0) {
+  if (transports.length === 0) {
     return (
       <div className="bg-slate-900 rounded-lg border border-slate-800 p-8">
         <div className="text-center">
           <Package className="w-16 h-16 text-gray-600 mx-auto mb-4" />
           <h3 className="text-xl font-semibold text-gray-400 mb-2">
-            Nenhuma Rota de Transporte
+            Nenhuma Oportunidade de Transporte
           </h3>
           <p className="text-gray-500">
-            Selecione itens na tabela de arbitragem para adicionar às suas rotas de transporte.
+            Aguarde novas oportunidades de transporte aparecerem.
           </p>
         </div>
       </div>
@@ -55,145 +77,77 @@ const TransportList = () => {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Package className="w-6 h-6 text-amber-500" />
-            <h2 className="text-xl font-bold text-white">Minhas Rotas de Transporte</h2>
+            <h2 className="text-xl font-bold text-white">Oportunidades de Transporte</h2>
             <span className="bg-amber-500/20 text-amber-400 px-3 py-1 rounded-full text-sm font-medium">
-              {routes.length} rotas
+              {transports.length} disponíveis
             </span>
           </div>
-          <button
-            onClick={handleClearAll}
-            className="text-red-400 hover:text-red-300 text-sm font-medium flex items-center gap-1 transition-colors"
-          >
-            <Trash2 className="w-4 h-4" />
-            Limpar Tudo
-          </button>
         </div>
       </div>
 
-      {/* Stats Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-6 border-b border-slate-800">
-        <div className="bg-slate-800/50 rounded-lg p-4">
-          <div className="flex items-center gap-2 mb-1">
-            <Package className="w-5 h-5 text-blue-400" />
-            <span className="text-gray-400 text-sm">Total de Itens</span>
-          </div>
-          <p className="text-2xl font-bold text-white">{getTotalQuantity()}</p>
-        </div>
-        <div className="bg-slate-800/50 rounded-lg p-4">
-          <div className="flex items-center gap-2 mb-1">
-            <TrendingUp className="w-5 h-5 text-green-400" />
-            <span className="text-gray-400 text-sm">Lucro Total Estimado</span>
-          </div>
-          <p className="text-2xl font-bold text-green-400">
-            {formatSilver(getTotalProfit())}
-          </p>
-        </div>
-        <div className="bg-slate-800/50 rounded-lg p-4">
-          <div className="flex items-center gap-2 mb-1">
-            <Plus className="w-5 h-5 text-amber-400" />
-            <span className="text-gray-400 text-sm">Lucro Médio por Rota</span>
-          </div>
-          <p className="text-2xl font-bold text-amber-400">
-            {formatSilver(getTotalProfit() / routes.length || 0)}
-          </p>
-        </div>
-      </div>
+      {/* Transport Cards */}
+      <div className="p-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {transports.map((transport) => (
+            <div
+              key={transport.id}
+              className="bg-slate-800/50 rounded-lg p-4 border border-slate-700 hover:border-amber-500/50 transition-all"
+            >
+              {/* Item Info */}
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-12 h-12 bg-slate-700 rounded-lg flex items-center justify-center">
+                  <Package className="w-6 h-6 text-amber-500" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-semibold text-white">{transport.item_name || transport.item_id}</h3>
+                  <p className="text-xs text-gray-500">{transport.item_id}</p>
+                </div>
+              </div>
 
-      {/* Routes Table */}
-      <div className="overflow-x-auto">
-        <table className="w-full">
-          <thead className="bg-slate-800/50">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                Item
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                Rota
-              </th>
-              <th className="px-6 py-3 text-right text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                Compra
-              </th>
-              <th className="px-6 py-3 text-right text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                Venda
-              </th>
-              <th className="px-6 py-3 text-center text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                Qtd
-              </th>
-              <th className="px-6 py-3 text-right text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                Lucro/Un
-              </th>
-              <th className="px-6 py-3 text-right text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                Lucro Total
-              </th>
-              <th className="px-6 py-3 text-right text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                Margem
-              </th>
-              <th className="px-6 py-3 text-center text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                Ações
-              </th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-800">
-            {routes.map((route) => (
-              <tr key={route.id} className="hover:bg-slate-800/30 transition-colors">
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="font-medium text-white">{route.itemName}</div>
-                  <div className="text-xs text-gray-500">{route.itemId}</div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="flex items-center gap-2">
-                    <span className="text-blue-400">{route.fromCity}</span>
-                    <span className="text-gray-500">→</span>
-                    <span className="text-amber-400">{route.toCity}</span>
-                  </div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-right">
-                  <span className="text-white">{formatSilver(route.buyPrice)}</span>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-right">
-                  <span className="text-white">{formatSilver(route.sellPrice)}</span>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-center">
-                  <input
-                    type="number"
-                    value={route.quantity}
-                    onChange={(e) => handleQuantityChange(route.id, e.target.value)}
-                    className="w-20 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-center text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
-                    min="1"
-                  />
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-right">
-                  <span className={route.netProfit > 0 ? 'text-green-400' : 'text-red-400'}>
-                    {formatSilver(route.netProfit)}
-                  </span>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-right">
-                  <span className="font-medium text-green-400">
-                    {formatSilver(route.netProfit * route.quantity)}
-                  </span>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-right">
-                  <span
-                    className={`font-medium ${
-                      route.margin >= 20 ? 'text-green-400' : 'text-gray-300'
-                    }`}
-                  >
-                    {route.margin.toFixed(2)}%
-                  </span>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-center">
-                  <button
-                    onClick={() => handleRemoveRoute(route.id)}
-                    className="text-red-400 hover:text-red-300 hover:bg-red-500/10 p-2 rounded-lg transition-colors"
-                    title="Remover rota"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+              {/* Route */}
+              <div className="flex items-center gap-2 mb-3 text-sm">
+                <span className="text-blue-400 font-medium">{transport.from_city}</span>
+                <span className="text-gray-500">→</span>
+                <span className="text-amber-400 font-medium">{transport.to_city}</span>
+              </div>
+
+              {/* Price Details */}
+              <div className="space-y-2 mb-3 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Compra:</span>
+                  <span className="text-white">{formatSilver(transport.buy_price)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Venda:</span>
+                  <span className="text-white">{formatSilver(transport.sell_price)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Lucro:</span>
+                  <span className="text-green-400 font-medium">{formatSilver(transport.profit)}</span>
+                </div>
+              </div>
+
+              {/* Reserve Button */}
+              <button
+                onClick={() => handleReserve(transport.id)}
+                disabled={reservingId === transport.id}
+                className="w-full bg-amber-500 hover:bg-amber-600 disabled:bg-slate-700 disabled:text-gray-500 text-slate-950 font-semibold py-2 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors"
+              >
+                {reservingId === transport.id ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
+                    Reservando...
+                  </>
+                ) : (
+                  <>
+                    <Lock className="w-4 h-4" />
+                    Reservar
+                  </>
+                )}
+              </button>
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* Footer */}
@@ -203,7 +157,7 @@ const TransportList = () => {
             Última atualização: {new Date().toLocaleString('pt-BR')}
           </span>
           <span>
-            Dados salvos automaticamente no navegador
+            Itens reservados ficam bloqueados para outros usuários
           </span>
         </div>
       </div>

@@ -144,7 +144,7 @@ const UserManagement = ({ userId, userRole }) => {
         </div>
       </div>
 
-      {/* Members Table */}
+      {/* User Cards */}
       {loading ? (
         <div className="text-center py-12">
           <div className="w-12 h-12 border-4 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
@@ -161,136 +161,90 @@ const UserManagement = ({ userId, userRole }) => {
           </p>
         </div>
       ) : (
-        <div className="bg-slate-800/50 rounded-lg border border-slate-700 overflow-hidden">
-          {/* Table Header */}
-          <div className="grid grid-cols-12 gap-4 px-6 py-3 bg-slate-800 border-b border-slate-700 text-xs font-semibold text-gray-400 uppercase tracking-wider">
-            <div className="col-span-3 cursor-pointer hover:text-white" onClick={() => handleSort('username')}>
-              Usuário {sortField === 'username' && (sortDirection === 'asc' ? <ChevronUp className="inline w-4 h-4" /> : <ChevronDown className="inline w-4 h-4" />)}
-            </div>
-            <div className="col-span-2">Função</div>
-            <div className="col-span-2 cursor-pointer hover:text-white" onClick={() => handleSort('total_points')}>
-              Pontos {sortField === 'total_points' && (sortDirection === 'asc' ? <ChevronUp className="inline w-4 h-4" /> : <ChevronDown className="inline w-4 h-4" />)}
-            </div>
-            <div className="col-span-2 cursor-pointer hover:text-white" onClick={() => handleSort('joined_at')}>
-              Entrou {sortField === 'joined_at' && (sortDirection === 'asc' ? <ChevronUp className="inline w-4 h-4" /> : <ChevronDown className="inline w-4 h-4" />)}
-            </div>
-            <div className="col-span-2">Status</div>
-            <div className="col-span-1">Ações</div>
-          </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {sortedMembers.map((member) => (
+            <div
+              key={member.id}
+              className="bg-slate-800/50 rounded-lg p-4 border border-slate-700 hover:border-amber-500/50 transition-all"
+            >
+              {/* User Header */}
+              <div className="flex items-start gap-3 mb-4">
+                <div className="w-12 h-12 bg-slate-700 rounded-full flex items-center justify-center text-white font-bold text-lg">
+                  {member.username?.charAt(0).toUpperCase()}
+                </div>
+                <div className="flex-1">
+                  <h4 className="font-semibold text-white">{member.username}</h4>
+                  {member.full_name && (
+                    <p className="text-sm text-gray-400">{member.full_name}</p>
+                  )}
+                  <span className={`inline-block mt-1 px-2 py-0.5 rounded text-xs font-medium border ${getRoleColor(member.role)}`}>
+                    {getRoleName(member.role)}
+                  </span>
+                </div>
+              </div>
 
-          {/* Table Body */}
-          <div className="divide-y divide-slate-700">
-            {sortedMembers.map((member) => (
-              <div key={member.id}>
-                {/* Main Row */}
-                <div className="grid grid-cols-12 gap-4 px-6 py-4 hover:bg-slate-800/50 transition-colors items-center">
-                  <div className="col-span-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-slate-700 rounded-full flex items-center justify-center text-white font-bold">
-                        {member.username?.charAt(0).toUpperCase()}
-                      </div>
-                      <div>
-                        <p className="font-medium text-white">{member.username}</p>
-                        {member.full_name && (
-                          <p className="text-xs text-gray-500">{member.full_name}</p>
-                        )}
-                      </div>
-                    </div>
+              {/* Stats */}
+              <div className="grid grid-cols-2 gap-2 mb-4">
+                <div className="bg-slate-900/50 rounded p-2 text-center">
+                  <div className="flex items-center justify-center gap-1 text-amber-400 mb-1">
+                    <Award className="w-3 h-3" />
+                    <span className="text-xs text-gray-400">Pontos</span>
                   </div>
-                  <div className="col-span-2">
-                    <select
-                      value={member.role}
-                      onChange={(e) => handleRoleChange(member.id, e.target.value)}
-                      disabled={member.id === userId}
-                      className={`px-2 py-1 rounded text-xs font-medium border ${getRoleColor(member.role)} ${member.id === userId ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-                    >
-                      <option value="member">Membro</option>
-                      <option value="officer">Oficial</option>
-                      <option value="admin">Admin</option>
-                    </select>
+                  <p className="font-bold text-white text-sm">{formatNumber(member.total_points)}</p>
+                </div>
+                <div className="bg-slate-900/50 rounded p-2 text-center">
+                  <div className="flex items-center justify-center gap-1 text-gray-400 mb-1">
+                    <Clock className="w-3 h-3" />
+                    <span className="text-xs text-gray-400">Entrou</span>
                   </div>
-                  <div className="col-span-2">
-                    <div className="flex items-center gap-1 text-amber-400">
-                      <Award className="w-4 h-4" />
-                      <span className="font-medium">{formatNumber(member.total_points)}</span>
-                    </div>
-                  </div>
-                  <div className="col-span-2">
-                    <div className="flex items-center gap-1 text-gray-400 text-sm">
-                      <Clock className="w-4 h-4" />
-                      <span>{formatDate(member.joined_at)}</span>
-                    </div>
-                  </div>
-                  <div className="col-span-2">
-                    <span className={`px-2 py-1 rounded text-xs font-medium ${member.is_active ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
-                      {member.is_active ? 'Ativo' : 'Inativo'}
-                    </span>
-                  </div>
-                  <div className="col-span-1">
-                    <button
-                      onClick={() => handleExpandUser(member)}
-                      className="text-gray-400 hover:text-white p-1 rounded hover:bg-slate-700 transition-colors"
-                    >
-                      {expandedUser === member.id ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
-                    </button>
-                  </div>
+                  <p className="font-bold text-white text-xs">{formatDate(member.joined_at).split(' ')[0]}</p>
+                </div>
+              </div>
+
+              {/* Status */}
+              <div className="mb-4">
+                <span className={`px-2 py-1 rounded text-xs font-medium ${member.is_active ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+                  {member.is_active ? 'Ativo' : 'Inativo'}
+                </span>
+              </div>
+
+              {/* Actions */}
+              <div className="space-y-2">
+                {/* Role Management */}
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-400">Cargo:</span>
+                  <select
+                    value={member.role}
+                    onChange={(e) => handleRoleChange(member.id, e.target.value)}
+                    disabled={member.id === userId}
+                    className={`flex-1 px-2 py-1 rounded text-xs font-medium border ${getRoleColor(member.role)} ${member.id === userId ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                  >
+                    <option value="member">Membro</option>
+                    <option value="officer">Oficial</option>
+                    <option value="admin">Admin</option>
+                  </select>
                 </div>
 
-                {/* Expanded Details */}
-                {expandedUser === member.id && (
-                  <div className="px-6 py-4 bg-slate-900/50 border-t border-slate-700">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      {/* Activity */}
-                      <div>
-                        <h4 className="text-sm font-semibold text-white mb-3 flex items-center gap-2">
-                          <Activity className="w-4 h-4 text-amber-500" />
-                          Atividade Recente
-                        </h4>
-                        {userActivity[member.id] ? (
-                          <div className="space-y-2">
-                            {userActivity[member.id].map((activity) => (
-                              <div key={activity.id} className="text-sm">
-                                <div className="flex justify-between">
-                                  <span className="text-gray-400">{activity.reason}</span>
-                                  <span className={`font-medium ${activity.amount > 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                    {activity.amount > 0 ? '+' : ''}{formatNumber(activity.amount)} pts
-                                  </span>
-                                </div>
-                                <div className="text-xs text-gray-500">{formatDate(activity.created_at)}</div>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="text-sm text-gray-500">Nenhuma atividade recente</p>
-                        )}
-                      </div>
-
-                      {/* Actions */}
-                      <div>
-                        <h4 className="text-sm font-semibold text-white mb-3">Ações</h4>
-                        <div className="space-y-2">
-                          {member.is_active && member.id !== userId && (
-                            <button
-                              onClick={() => handleDeactivate(member.id)}
-                              className="w-full bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 font-medium py-2 px-4 rounded-lg transition-colors text-sm"
-                            >
-                              Desativar Usuário
-                            </button>
-                          )}
-                          <button
-                            onClick={() => window.open(`/profile/${member.id}`, '_blank')}
-                            className="w-full bg-slate-700 hover:bg-slate-600 text-white font-medium py-2 px-4 rounded-lg transition-colors text-sm"
-                          >
-                            Ver Perfil Completo
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
+                {/* Action Buttons */}
+                <div className="flex gap-2">
+                  {member.is_active && member.id !== userId && (
+                    <button
+                      onClick={() => handleDeactivate(member.id)}
+                      className="flex-1 bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 font-medium py-1.5 px-3 rounded transition-colors text-xs"
+                    >
+                      Desativar
+                    </button>
+                  )}
+                  <button
+                    onClick={() => window.open(`/profile/${member.id}`, '_blank')}
+                    className="flex-1 bg-slate-700 hover:bg-slate-600 text-white font-medium py-1.5 px-3 rounded transition-colors text-xs"
+                  >
+                    Ver Perfil
+                  </button>
+                </div>
               </div>
-            ))}
-          </div>
+            </div>
+          ))}
         </div>
       )}
     </div>
