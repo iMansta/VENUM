@@ -17,11 +17,16 @@ const MissionList = ({ userRole }) => {
 
   const loadMissions = async () => {
     setLoading(true);
-    const { success, data } = await getActiveMissions();
-    if (success) {
-      setMissions(data);
+    try {
+      const { success, data } = await getActiveMissions();
+      if (success) {
+        setMissions(data);
+      }
+    } catch (error) {
+      console.error('Error loading missions:', error);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const filteredMissions = filter === 'all' 

@@ -5,6 +5,7 @@ import { getUserPointsLedger, getUserPointsStats } from '@/lib/supabase/points';
 import { getUserMissions } from '@/lib/supabase/missions';
 import { signOut } from '@/lib/supabase/auth';
 import { useNavigate } from 'react-router-dom';
+import { supabase } from '@/lib/supabase/client';
 
 /**
  * UserProfile component - User profile interface with stats and activity
@@ -67,25 +68,46 @@ const UserProfile = ({ userId, currentUserId }) => {
     setUploadingAvatar(true);
 
     try {
-      // Convert image to base64 for storage
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        const base64String = reader.result;
-        
-        // Update profile with avatar URL
-        const { success } = await updateProfile(userId, { avatar_url: base64String });
-        
-        if (success) {
-          // Reload profile data
-          const { success: profileSuccess, data: userProfile } = await getProfile(userId);
-          if (profileSuccess) {
-            setProfile(userProfile);
+      // Upload to Supabase Storage
+      const fileName = `${userId}-${Date.now()}-${file.name}`;
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(fileName, file);
+
+      if (uploadError) {
+        // If bucket doesn't exist, fallback to base64
+        console.warn('Supabase Storage not available, using base64 fallback');
+        const reader = new FileReader();
+        reader.onloadend = async () => {
+          const base64String = reader.result;
+          const { success } = await updateProfile(userId, { avatar_url: base64String });
+          if (success) {
+            const { success: profileSuccess, data: userProfile } = await getProfile(userId);
+            if (profileSuccess) setProfile(userProfile);
           }
+          setUploadingAvatar(false);
+        };
+        reader.readAsDataURL(file);
+        return;
+      }
+
+      // Get public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(fileName);
+
+      // Update profile with avatar URL
+      const { success } = await updateProfile(userId, { avatar_url: publicUrl });
+      
+      if (success) {
+        // Reload profile data
+        const { success: profileSuccess, data: userProfile } = await getProfile(userId);
+        if (profileSuccess) {
+          setProfile(userProfile);
         }
-        
-        setUploadingAvatar(false);
-      };
-      reader.readAsDataURL(file);
+      }
+      
+      setUploadingAvatar(false);
     } catch (error) {
       console.error('Error uploading avatar:', error);
       setUploadingAvatar(false);

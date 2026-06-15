@@ -16,6 +16,7 @@ const TopOpportunities = ({ arbitrageData = [], limit = 4 }) => {
 
   // Sort by net profit and get top opportunities
   const topOpportunities = useMemo(() => {
+    if (!arbitrageData || arbitrageData.length === 0) return [];
     return [...arbitrageData]
       .sort((a, b) => b.netProfit - a.netProfit)
       .slice(0, limit);

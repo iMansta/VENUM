@@ -20,18 +20,22 @@ const RankingDisplay = ({ userId }) => {
   const loadRankings = async () => {
     setLoading(true);
 
-    // Load rankings
-    const [weeklyResult, monthlyResult, positionResult] = await Promise.all([
-      getWeeklyRanking(10),
-      getMonthlyRanking(10),
-      userId ? getUserRankingPosition(userId) : Promise.resolve({ success: false }),
-    ]);
+    try {
+      // Load rankings
+      const [weeklyResult, monthlyResult, positionResult] = await Promise.all([
+        getWeeklyRanking(10),
+        getMonthlyRanking(10),
+        userId ? getUserRankingPosition(userId) : Promise.resolve({ success: false }),
+      ]);
 
-    if (weeklyResult.success) setWeeklyRanking(weeklyResult.data);
-    if (monthlyResult.success) setMonthlyRanking(monthlyResult.data);
-    if (positionResult.success) setUserPosition(positionResult.data);
-
-    setLoading(false);
+      if (weeklyResult.success) setWeeklyRanking(weeklyResult.data);
+      if (monthlyResult.success) setMonthlyRanking(monthlyResult.data);
+      if (positionResult.success) setUserPosition(positionResult.data);
+    } catch (error) {
+      console.error('Error loading rankings:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const formatNumber = (value) => {

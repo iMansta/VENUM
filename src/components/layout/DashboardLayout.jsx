@@ -67,7 +67,7 @@ const DashboardLayout = ({ userId, userRole }) => {
       >
         {/* Sidebar Header */}
         <div className="flex items-center justify-between p-6 border-b border-slate-800">
-          <h1 className="text-xl font-bold text-white">VENUM MARKET</h1>
+          <img src="/venum-logo.png" alt="VENUM MARKET" className="h-12 w-auto" />
           <button
             onClick={() => setSidebarOpen(false)}
             className="lg:hidden text-gray-400 hover:text-white"
@@ -132,7 +132,7 @@ const DashboardLayout = ({ userId, userRole }) => {
             >
               <Menu className="w-6 h-6" />
             </button>
-            <h1 className="text-lg font-bold text-white">VENUM MARKET</h1>
+            <img src="/venum-logo.png" alt="VENUM MARKET" className="h-8 w-auto" />
             <div className="w-6" />
           </div>
         </header>
