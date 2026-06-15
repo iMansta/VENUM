@@ -2,15 +2,14 @@ import { useState } from 'react';
 import { Shield, Users } from 'lucide-react';
 import LoginForm from './LoginForm';
 import RegisterForm from './RegisterForm';
-import ForgotPasswordForm from './ForgotPasswordForm';
 
 /**
  * GuildAuth component - Main authentication container for Guild Hub
- * Handles switching between login, registration, and password reset
+ * Handles switching between login and registration
  */
 
 const GuildAuth = ({ onAuthSuccess }) => {
-  const [authMode, setAuthMode] = useState('login'); // 'login', 'register', 'forgot-password'
+  const [isLogin, setIsLogin] = useState(true);
 
   const handleLoginSuccess = (data) => {
     onAuthSuccess(data);
@@ -18,10 +17,6 @@ const GuildAuth = ({ onAuthSuccess }) => {
 
   const handleRegisterSuccess = (data) => {
     onAuthSuccess(data);
-  };
-
-  const handleForgotPasswordSuccess = () => {
-    // Stay on forgot password form to show success message
   };
 
   return (
@@ -41,25 +36,15 @@ const GuildAuth = ({ onAuthSuccess }) => {
         </div>
 
         {/* Auth Form */}
-        {authMode === 'login' && (
+        {isLogin ? (
           <LoginForm
             onSuccess={handleLoginSuccess}
-            onSwitchToRegister={() => setAuthMode('register')}
-            onForgotPassword={() => setAuthMode('forgot-password')}
+            onSwitchToRegister={() => setIsLogin(false)}
           />
-        )}
-
-        {authMode === 'register' && (
+        ) : (
           <RegisterForm
             onSuccess={handleRegisterSuccess}
-            onSwitchToLogin={() => setAuthMode('login')}
-          />
-        )}
-
-        {authMode === 'forgot-password' && (
-          <ForgotPasswordForm
-            onSuccess={handleForgotPasswordSuccess}
-            onBackToLogin={() => setAuthMode('login')}
+            onSwitchToLogin={() => setIsLogin(true)}
           />
         )}
 

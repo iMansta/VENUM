@@ -10,8 +10,8 @@ const generateEmailFromUsername = (username) => {
   return `${username.toLowerCase()}@tempmail.com`;
 };
 
-// Sign up with username, email and password
-export const signUp = async (username, email, password, guildCode = null) => {
+// Sign up with username and password
+export const signUp = async (username, password, guildCode = null) => {
   try {
     // First, validate guild code if provided
     if (guildCode) {
@@ -23,7 +23,10 @@ export const signUp = async (username, email, password, guildCode = null) => {
       }
     }
 
-    // Sign up the user with provided email
+    // Generate email from username for Supabase Auth
+    const email = generateEmailFromUsername(username);
+
+    // Sign up the user
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -45,9 +48,12 @@ export const signUp = async (username, email, password, guildCode = null) => {
   }
 };
 
-// Sign in with email and password
-export const signIn = async (email, password) => {
+// Sign in with username and password
+export const signIn = async (username, password) => {
   try {
+    // Generate email from username for Supabase Auth
+    const email = generateEmailFromUsername(username);
+
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
