@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Store, Filter, ShoppingCart, Package } from 'lucide-react';
-import { getShopItems, purchaseShopItem } from '../../../lib/supabase/shop';
+import { getShopItems, purchaseShopItem } from '@/lib/supabase/shop';
 import ShopItem from './ShopItem';
 
 /**

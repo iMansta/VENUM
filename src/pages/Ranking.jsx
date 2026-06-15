@@ -1,4 +1,4 @@
-import RankingDisplay from '../components/guild/ranking/RankingDisplay';
+import RankingDisplay from '@/components/guild/ranking/RankingDisplay';
 
 /**
  * Ranking page - Display weekly and monthly rankings

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Lock, User, ArrowRight } from 'lucide-react';
-import { signIn } from '../../../lib/supabase/auth';
+import { signIn } from '@/lib/supabase/auth';
 
 /**
  * LandingPage component - Modern landing page with centered login

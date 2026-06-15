@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { X, Save, Calendar, Target, Award } from 'lucide-react';
-import { createMission } from '../../../lib/supabase/missions';
+import { createMission } from '@/lib/supabase/missions';
 
 /**
  * MissionForm component - Form for creating/editing guild missions (Admin/Officer only)

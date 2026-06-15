@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Target, Plus, Edit, Trash2, Check, X } from 'lucide-react';
-import { getActiveMissions, updateMission, deleteMission } from '../../../lib/supabase/missions';
+import { getActiveMissions, updateMission, deleteMission } from '@/lib/supabase/missions';
 import MissionForm from '../missions/MissionForm';
 
 /**

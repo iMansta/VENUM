@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Shield } from 'lucide-react';
-import { getCurrentUser } from '../../../lib/supabase/auth';
-import { getProfile } from '../../../lib/supabase/profiles';
+import { getCurrentUser } from '@/lib/supabase/auth';
+import { getProfile } from '@/lib/supabase/profiles';
 
 /**
  * ProtectedRoute component - Wraps protected guild routes with authentication

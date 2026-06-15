@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { Trophy, Target, TrendingUp, Users, Award, Activity } from 'lucide-react';
-import { getProfile } from '../lib/supabase/profiles';
-import { getUserPointsStats } from '../lib/supabase/points';
-import { getActiveMissions } from '../lib/supabase/missions';
-import { getGuildMembers } from '../lib/supabase/profiles';
+import { getProfile } from '@/lib/supabase/profiles';
+import { getUserPointsStats } from '@/lib/supabase/points';
+import { getActiveMissions } from '@/lib/supabase/missions';
+import { getGuildMembers } from '@/lib/supabase/profiles';
 
 /**
  * Dashboard page - Overview of guild and user statistics

@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { TrendingUp, Search, Filter, ArrowUpDown } from 'lucide-react';
-import TopOpportunities from '../components/market/TopOpportunities';
-import AdvancedFilters from '../components/market/filters/AdvancedFilters';
-import TransportList from '../components/market/TransportList';
+import TopOpportunities from '@/components/market/TopOpportunities';
+import AdvancedFilters from '@/components/market/filters/AdvancedFilters';
+import TransportList from '@/components/market/TransportList';
 
 /**
  * Market page - Market intelligence and arbitrage opportunities

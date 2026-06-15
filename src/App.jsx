@@ -1,16 +1,16 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import LandingPage from './components/landing/LandingPage';
-import RegisterPage from './components/landing/RegisterPage';
-import DashboardLayout from './components/layout/DashboardLayout';
-import ProtectedRoute from './components/guild/auth/ProtectedRoute';
-import Dashboard from './pages/Dashboard';
-import Ranking from './pages/Ranking';
-import Missions from './pages/Missions';
-import Market from './pages/Market';
-import SettingsPage from './pages/Settings';
-import { getCurrentUser } from './lib/supabase/auth';
-import { getProfile } from './lib/supabase/profiles';
+import LandingPage from '@/components/landing/LandingPage';
+import RegisterPage from '@/components/landing/RegisterPage';
+import DashboardLayout from '@/components/layout/DashboardLayout';
+import ProtectedRoute from '@/components/guild/auth/ProtectedRoute';
+import Dashboard from '@/pages/Dashboard';
+import Ranking from '@/pages/Ranking';
+import Missions from '@/pages/Missions';
+import Market from '@/pages/Market';
+import SettingsPage from '@/pages/Settings';
+import { getCurrentUser } from '@/lib/supabase/auth';
+import { getProfile } from '@/lib/supabase/profiles';
 
 function App() {
   const [user, setUser] = useState(null);

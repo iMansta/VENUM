@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Trophy, Medal, Award, TrendingUp, Calendar, RefreshCw } from 'lucide-react';
-import { getWeeklyRanking, getMonthlyRanking, getUserRankingPosition } from '../../../lib/supabase/ranking';
+import { getWeeklyRanking, getMonthlyRanking, getUserRankingPosition } from '@/lib/supabase/ranking';
 
 /**
  * RankingDisplay component - Shows weekly and monthly mission rankings

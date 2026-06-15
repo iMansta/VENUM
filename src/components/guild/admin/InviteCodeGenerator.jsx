@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Key, Plus, Copy, Check, X, RefreshCw, Trash2 } from 'lucide-react';
-import { getGuildCodes, createGuildCode, deactivateGuildCode, deleteGuildCode, generateGuildCode } from '../../../lib/supabase/guildCodes';
+import { getGuildCodes, createGuildCode, deactivateGuildCode, deleteGuildCode, generateGuildCode } from '@/lib/supabase/guildCodes';
 
 /**
  * InviteCodeGenerator component - Generate and manage guild invite codes

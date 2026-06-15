@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { User, Award, Calendar, Activity, Shield, Settings, Edit2, LogOut } from 'lucide-react';
-import { getProfile } from '../../../lib/supabase/profiles';
-import { getUserPointsLedger, getUserPointsStats } from '../../../lib/supabase/points';
-import { getUserMissions } from '../../../lib/supabase/missions';
-import { signOut } from '../../../lib/supabase/auth';
+import { getProfile } from '@/lib/supabase/profiles';
+import { getUserPointsLedger, getUserPointsStats } from '@/lib/supabase/points';
+import { getUserMissions } from '@/lib/supabase/missions';
+import { signOut } from '@/lib/supabase/auth';
 import { useNavigate } from 'react-router-dom';
 
 /**

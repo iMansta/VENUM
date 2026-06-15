@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { User, Lock, Mail, ArrowLeft, ArrowRight } from 'lucide-react';
-import { signUp } from '../../../lib/supabase/auth';
+import { signUp } from '@/lib/supabase/auth';
 
 /**
  * RegisterPage component - Registration page with guild code validation

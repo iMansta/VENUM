@@ -1,4 +1,4 @@
-import { useTransportStore } from '../../store/transportStore';
+import { useTransportStore } from '@/store/transportStore';
 import { Trash2, Plus, Package, TrendingUp, X } from 'lucide-react';
 
 const TransportList = () => {

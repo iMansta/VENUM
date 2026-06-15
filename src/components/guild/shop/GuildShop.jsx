@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Store, Award, Package } from 'lucide-react';
-import { getProfile } from '../../../lib/supabase/profiles';
-import { getUserPointsStats } from '../../../lib/supabase/points';
+import { getProfile } from '@/lib/supabase/profiles';
+import { getUserPointsStats } from '@/lib/supabase/points';
 import PointsDisplay from './PointsDisplay';
 import ShopGrid from './ShopGrid';
 import PurchaseModal from './PurchaseModal';

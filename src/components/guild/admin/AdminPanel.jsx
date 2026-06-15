@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Shield, Users, Key, Plus, Copy, Check, X, RefreshCw } from 'lucide-react';
-import { getGuildMembers, updateUserRole } from '../../../lib/supabase/profiles';
-import { createGuildCode } from '../../../lib/supabase/guildCodes';
+import { getGuildMembers, updateUserRole } from '@/lib/supabase/profiles';
+import { createGuildCode } from '@/lib/supabase/guildCodes';
 import UserManagement from './UserManagement';
 import InviteCodeGenerator from './InviteCodeGenerator';
 import MissionManagement from './MissionManagement';

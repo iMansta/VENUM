@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { TrendingUp, ArrowUpRight, Star } from 'lucide-react';
 import ItemIcon from './ItemIcon';
-import { getItemName } from '../../lib/i18n/itemNames';
+import { getItemName } from '@/lib/i18n/itemNames';
 
 /**
  * TopOpportunities component - Displays top 4-5 best profit opportunities

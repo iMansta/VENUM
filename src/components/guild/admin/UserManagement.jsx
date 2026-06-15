@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Users, Shield, Award, Clock, Activity, Search, ChevronDown, ChevronUp } from 'lucide-react';
-import { getGuildMembers, updateUserRole, deactivateUser } from '../../../lib/supabase/profiles';
-import { getUserPointsLedger } from '../../../lib/supabase/points';
+import { getGuildMembers, updateUserRole, deactivateUser } from '@/lib/supabase/profiles';
+import { getUserPointsLedger } from '@/lib/supabase/points';
 
 /**
  * UserManagement component - Admin panel for managing guild members

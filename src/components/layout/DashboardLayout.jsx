@@ -11,7 +11,7 @@ import {
   X,
   User
 } from 'lucide-react';
-import { signOut } from '../../../lib/supabase/auth';
+import { signOut } from '@/lib/supabase/auth';
 
 /**
  * DashboardLayout component - Main layout with sidebar for authenticated users

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Target, Users, Calendar, Award, Check, X, TrendingUp } from 'lucide-react';
-import { joinMission, leaveMission } from '../../../lib/supabase/missions';
+import { joinMission, leaveMission } from '@/lib/supabase/missions';
 
 /**
  * MissionCard component - Individual mission card with participation controls

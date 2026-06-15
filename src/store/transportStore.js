@@ -1,43 +1,13 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-// Transport route interface
-export interface TransportRoute {
-  id: string;
-  itemId: string;
-  itemName: string;
-  fromCity: string;
-  toCity: string;
-  buyPrice: number;
-  sellPrice: number;
-  quantity: number;
-  netProfit: number;
-  margin: number;
-  taxRate: number;
-  transportCost: number;
-  createdAt: string;
-  updatedAt: string;
-}
-
-interface TransportStore {
-  routes: TransportRoute[];
-  addRoute: (route: Omit<TransportRoute, 'id' | 'createdAt' | 'updatedAt'>) => void;
-  removeRoute: (id: string) => void;
-  updateRouteQuantity: (id: string, quantity: number) => void;
-  updateRoute: (id: string, updates: Partial<TransportRoute>) => void;
-  clearAllRoutes: () => void;
-  getRouteById: (id: string) => TransportRoute | undefined;
-  getTotalProfit: () => number;
-  getTotalQuantity: () => number;
-}
-
-export const useTransportStore = create<TransportStore>()(
+export const useTransportStore = create(
   persist(
     (set, get) => ({
       routes: [],
 
       addRoute: (routeData) => {
-        const newRoute: TransportRoute = {
+        const newRoute = {
           ...routeData,
           id: crypto.randomUUID(),
           createdAt: new Date().toISOString(),

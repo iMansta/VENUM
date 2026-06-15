@@ -1,4 +1,4 @@
-import MissionList from '../components/guild/missions/MissionList';
+import MissionList from '@/components/guild/missions/MissionList';
 
 /**
  * Missions page - Display and manage guild missions

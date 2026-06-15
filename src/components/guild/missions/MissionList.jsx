@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Target, Users, Calendar, Award, Plus, Filter } from 'lucide-react';
-import { getActiveMissions } from '../../../lib/supabase/missions';
+import { getActiveMissions } from '@/lib/supabase/missions';
 
 /**
  * MissionList component - Display list of active guild missions

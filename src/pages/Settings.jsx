@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Settings as SettingsIcon, User, Shield, Key, Users as UsersIcon } from 'lucide-react';
-import UserProfile from '../components/guild/members/UserProfile';
-import AdminPanel from '../components/guild/admin/AdminPanel';
+import UserProfile from '@/components/guild/members/UserProfile';
+import AdminPanel from '@/components/guild/admin/AdminPanel';
 
 /**
  * Settings page - User settings and admin panel
