@@ -34,17 +34,22 @@ const InviteCodeGenerator = ({ userId, userRole }) => {
   const handleCreateCode = async () => {
     if (!newCode.trim()) return;
 
+    console.log('Creating invite code with data:', { code: newCode, max_uses: maxUses, createdBy: userId });
     const result = await createGuildCode({
       code: newCode,
       max_uses,
       createdBy: userId,
     });
+    console.log('Invite code creation result:', result);
 
     if (result.success) {
       setShowCreateForm(false);
       setNewCode('');
       setMaxUses(1);
       loadCodes();
+    } else {
+      console.error('Failed to create invite code:', result.error);
+      alert(`Erro ao criar código: ${result.error}`);
     }
   };
 

@@ -23,6 +23,7 @@ export const getGuildCodes = async () => {
 // Create new guild code
 export const createGuildCode = async (codeData) => {
   try {
+    console.log('createGuildCode called with:', codeData);
     const { data, error } = await supabase
       .from('guild_codes')
       .insert({
@@ -34,7 +35,11 @@ export const createGuildCode = async (codeData) => {
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      console.error('Supabase insert error:', error);
+      throw error;
+    }
+    console.log('Guild code created successfully:', data);
     return { success: true, data };
   } catch (error) {
     console.error('Create guild code error:', error);

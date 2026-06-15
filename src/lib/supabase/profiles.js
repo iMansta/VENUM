@@ -24,6 +24,7 @@ export const getProfile = async (userId) => {
 // Update user profile
 export const updateProfile = async (userId, updates) => {
   try {
+    console.log('updateProfile called with:', { userId, updates });
     const { data, error } = await supabase
       .from('profiles')
       .update(updates)
@@ -31,7 +32,11 @@ export const updateProfile = async (userId, updates) => {
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      console.error('Supabase profile update error:', error);
+      throw error;
+    }
+    console.log('Profile updated successfully:', data);
     return { success: true, data };
   } catch (error) {
     console.error('Update profile error:', error);

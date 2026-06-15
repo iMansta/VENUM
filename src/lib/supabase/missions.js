@@ -60,13 +60,18 @@ export const getMissionById = async (missionId) => {
 // Create new mission (officers/admins only)
 export const createMission = async (missionData) => {
   try {
+    console.log('createMission called with:', missionData);
     const { data, error } = await supabase
       .from('missions')
       .insert(missionData)
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      console.error('Supabase mission insert error:', error);
+      throw error;
+    }
+    console.log('Mission created successfully:', data);
     return { success: true, data };
   } catch (error) {
     console.error('Create mission error:', error);

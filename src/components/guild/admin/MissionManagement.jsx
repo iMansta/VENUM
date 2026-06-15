@@ -112,6 +112,7 @@ const MissionManagement = ({ userId, userRole }) => {
       {(showCreateForm || editingMission) && (
         <MissionForm
           mission={editingMission}
+          userId={userId}
           onSuccess={editingMission ? handleEditSuccess : handleCreateSuccess}
           onClose={() => {
             setShowCreateForm(false);

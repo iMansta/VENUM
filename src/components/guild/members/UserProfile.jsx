@@ -66,21 +66,27 @@ const UserProfile = ({ userId, currentUserId }) => {
     if (!file) return;
 
     setUploadingAvatar(true);
+    console.log('Starting avatar upload for user:', userId);
 
     try {
       // Upload to Supabase Storage
       const fileName = `${userId}-${Date.now()}-${file.name}`;
+      console.log('Uploading file to Supabase Storage:', fileName);
+      
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('avatars')
         .upload(fileName, file);
 
       if (uploadError) {
+        console.error('Supabase Storage upload error:', uploadError);
         // If bucket doesn't exist, fallback to base64
         console.warn('Supabase Storage not available, using base64 fallback');
         const reader = new FileReader();
         reader.onloadend = async () => {
           const base64String = reader.result;
+          console.log('Updating profile with base64 avatar');
           const { success } = await updateProfile(userId, { avatar_url: base64String });
+          console.log('Profile update result (base64):', success);
           if (success) {
             const { success: profileSuccess, data: userProfile } = await getProfile(userId);
             if (profileSuccess) setProfile(userProfile);
@@ -91,20 +97,29 @@ const UserProfile = ({ userId, currentUserId }) => {
         return;
       }
 
+      console.log('File uploaded successfully:', uploadData);
+
       // Get public URL
       const { data: { publicUrl } } = supabase.storage
         .from('avatars')
         .getPublicUrl(fileName);
 
+      console.log('Public URL:', publicUrl);
+
       // Update profile with avatar URL
-      const { success } = await updateProfile(userId, { avatar_url: publicUrl });
+      console.log('Updating profile with avatar URL');
+      const { success, error: updateError } = await updateProfile(userId, { avatar_url: publicUrl });
+      console.log('Profile update result:', { success, error: updateError });
       
       if (success) {
         // Reload profile data
         const { success: profileSuccess, data: userProfile } = await getProfile(userId);
         if (profileSuccess) {
           setProfile(userProfile);
+          console.log('Profile updated successfully');
         }
+      } else {
+        console.error('Failed to update profile:', updateError);
       }
       
       setUploadingAvatar(false);

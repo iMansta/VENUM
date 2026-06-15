@@ -6,7 +6,7 @@ import { createMission } from '@/lib/supabase/missions';
  * MissionForm component - Form for creating/editing guild missions (Admin/Officer only)
  */
 
-const MissionForm = ({ onClose, onSuccess }) => {
+const MissionForm = ({ onClose, onSuccess, userId }) => {
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -46,6 +46,7 @@ const MissionForm = ({ onClose, onSuccess }) => {
 
     const missionData = {
       ...formData,
+      created_by: userId,
       target_quantity: parseInt(formData.target_quantity),
       points_reward: parseInt(formData.points_reward),
       start_date: new Date(formData.start_date).toISOString(),
@@ -53,13 +54,16 @@ const MissionForm = ({ onClose, onSuccess }) => {
       status: 'active',
     };
 
+    console.log('Creating mission with data:', missionData);
     const result = await createMission(missionData);
+    console.log('Mission creation result:', result);
 
     if (result.success) {
       onSuccess(result.data);
       onClose();
     } else {
       setError(result.error);
+      console.error('Mission creation failed:', result.error);
     }
 
     setLoading(false);

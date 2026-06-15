@@ -13,11 +13,13 @@ const ALBION_API_BASE = 'https://www.albion-online-data.com/api/v2/stats/prices'
  */
 export const fetchItemPrice = async (itemName, locations = 1) => {
   try {
+    console.log(`Fetching price for ${itemName} from Albion API`);
     const response = await fetch(`${ALBION_API_BASE}/${itemName}?locations=${locations}`);
     if (!response.ok) {
-      throw new Error(`Failed to fetch price for ${itemName}`);
+      throw new Error(`Failed to fetch price for ${itemName}: ${response.status} ${response.statusText}`);
     }
     const data = await response.json();
+    console.log(`Price data for ${itemName}:`, data);
     return data[0] || null;
   } catch (error) {
     console.error(`Error fetching price for ${itemName}:`, error);
@@ -83,13 +85,17 @@ export const calculateArbitrage = (priceData, targetCity = 'Caerleon') => {
  */
 export const fetchTopOpportunities = async (itemNames, limit = 10) => {
   try {
+    console.log(`Fetching top opportunities for ${itemNames.length} items`);
     const priceData = await fetchMultipleItemPrices(itemNames);
+    console.log(`Received price data for ${priceData.length} items`);
+    
     const opportunities = priceData
       .map(data => calculateArbitrage(data))
       .filter(opp => opp !== null && opp.netProfit > 0)
       .sort((a, b) => b.netProfit - a.netProfit)
       .slice(0, limit);
 
+    console.log(`Calculated ${opportunities.length} profitable opportunities`);
     return opportunities;
   } catch (error) {
     console.error('Error fetching top opportunities:', error);
