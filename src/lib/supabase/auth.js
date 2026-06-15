@@ -19,8 +19,12 @@ const generateEmailFromUsernameForSignup = (username) => {
 // Sign up with username and password
 export const signUp = async (username, password, guildCode = null) => {
   try {
-    const u = String(username ?? '').trim();
+    const u = String(username ?? '').trim().toLowerCase();
     if (!u) throw new Error('Username inválido.');
+    if (u.length < 3) throw new Error('Username deve ter pelo menos 3 caracteres.');
+    if (!/^[a-z0-9_]+$/.test(u)) {
+      throw new Error('Username deve conter apenas letras, números e underscore (_).');
+    }
 
     // First, validate guild code if provided
     if (guildCode) {
