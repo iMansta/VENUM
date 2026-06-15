@@ -4,14 +4,24 @@ import { supabase } from './client';
  * Authentication utilities for VENUM MARKET
  */
 
-// Helper function to generate email from username for Supabase Auth
-const generateEmailFromUsername = (username) => {
-  return `${username.toLowerCase()}@venum.local`;
+// Helper function to generate email from username for Supabase Auth (Login - legacy)
+const generateEmailFromUsernameForLogin = (username) => {
+  const u = String(username ?? '').trim().toLowerCase();
+  return `${u}@venum.local`; // legado (compatível com usuários existentes)
+};
+
+// Helper function to generate email from username for Supabase Auth (Signup - new users)
+const generateEmailFromUsernameForSignup = (username) => {
+  const u = String(username ?? '').trim().toLowerCase();
+  return `${u}@example.com`; // domínio válido para criar novos usuários
 };
 
 // Sign up with username and password
 export const signUp = async (username, password, guildCode = null) => {
   try {
+    const u = String(username ?? '').trim();
+    if (!u) throw new Error('Username inválido.');
+
     // First, validate guild code if provided
     if (guildCode) {
       const { data: codeData, error: codeError } = await supabase
@@ -22,8 +32,13 @@ export const signUp = async (username, password, guildCode = null) => {
       }
     }
 
-    // Generate email from username for Supabase Auth
-    const email = generateEmailFromUsername(username);
+    // Generate email from username for Supabase Auth (NEW users)
+    const email = generateEmailFromUsernameForSignup(u);
+
+    // Basic email validation BEFORE calling supabase.auth.signUp
+    if (!/@.+\..+/.test(email)) {
+      throw new Error('Email gerado inválido. Verifique o domínio configurado.');
+    }
 
     // Sign up the user
     const { data, error } = await supabase.auth.signUp({
@@ -31,8 +46,8 @@ export const signUp = async (username, password, guildCode = null) => {
       password,
       options: {
         data: {
-          username,
-          full_name: username,
+          username: u,
+          full_name: u,
           guild_code: guildCode,
         },
       },
@@ -50,8 +65,15 @@ export const signUp = async (username, password, guildCode = null) => {
 // Sign in with username and password
 export const signIn = async (username, password) => {
   try {
-    // Generate email from username for Supabase Auth
-    const email = generateEmailFromUsername(username);
+    const u = String(username ?? '').trim();
+    if (!u) throw new Error('Username inválido.');
+
+    const email = generateEmailFromUsernameForLogin(u);
+
+    // Basic (opcional) validação pra não enviar lixo pro Supabase
+    if (!/@.+\..+/.test(email)) {
+      throw new Error('Email gerado inválido para login.');
+    }
 
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
