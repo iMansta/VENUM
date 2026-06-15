@@ -7,11 +7,13 @@ import { getProfile } from '@/lib/supabase/profiles';
 /**
  * ProtectedRoute component - Wraps protected guild routes with authentication
  * @param {ReactNode} children - Child components to render if authenticated
+ * @param {string} requiredRole - Optional required role ('admin', 'officer', 'member')
  */
 
-const ProtectedRoute = ({ children }) => {
+const ProtectedRoute = ({ children, requiredRole = null }) => {
   const [loading, setLoading] = useState(true);
   const [authenticated, setAuthenticated] = useState(false);
+  const [authorized, setAuthorized] = useState(true);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -27,12 +29,21 @@ const ProtectedRoute = ({ children }) => {
         console.log('ProtectedRoute - Profile check result:', success, userProfile);
         
         if (success && userProfile && userProfile.is_active) {
+          // Check role if required
+          if (requiredRole) {
+            const hasRole = checkUserRole(userProfile.role, requiredRole);
+            setAuthorized(hasRole);
+            if (!hasRole) {
+              navigate('/dashboard');
+            }
+          }
           setAuthenticated(true);
         } else {
           navigate('/');
         }
       } else if (event === 'SIGNED_OUT') {
         setAuthenticated(false);
+        setAuthorized(false);
         navigate('/');
       }
     });
@@ -40,7 +51,16 @@ const ProtectedRoute = ({ children }) => {
     return () => {
       subscription.unsubscribe();
     };
-  }, [navigate]);
+  }, [navigate, requiredRole]);
+
+  const checkUserRole = (userRole, required) => {
+    if (required === 'admin') {
+      return userRole === 'admin';
+    } else if (required === 'officer') {
+      return userRole === 'admin' || userRole === 'officer';
+    }
+    return true;
+  };
 
   const checkAuth = async () => {
     try {
@@ -56,6 +76,15 @@ const ProtectedRoute = ({ children }) => {
         if (profileSuccess && userProfile) {
           // Check if user is active
           if (userProfile.is_active) {
+            // Check role if required
+            if (requiredRole) {
+              const hasRole = checkUserRole(userProfile.role, requiredRole);
+              setAuthorized(hasRole);
+              if (!hasRole) {
+                console.log('ProtectedRoute - User does not have required role');
+                navigate('/dashboard');
+              }
+            }
             setAuthenticated(true);
           } else {
             console.log('ProtectedRoute - User is not active');
@@ -92,7 +121,18 @@ const ProtectedRoute = ({ children }) => {
     return null;
   }
 
-  // User is authenticated, render children
+  if (!authorized) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+        <div className="text-center">
+          <Shield className="w-12 h-12 text-red-500 mx-auto mb-4" />
+          <p className="text-gray-400">Acesso não autorizado</p>
+        </div>
+      </div>
+    );
+  }
+
+  // User is authenticated and authorized, render children
   return <>{children}</>;
 };
 
