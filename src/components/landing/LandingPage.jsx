@@ -1,0 +1,149 @@
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Lock, User, ArrowRight } from 'lucide-react';
+import { signIn } from '../../../lib/supabase/auth';
+
+/**
+ * LandingPage component - Modern landing page with centered login
+ */
+
+const LandingPage = () => {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const navigate = useNavigate();
+
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+
+    const result = await signIn(email, password);
+    
+    if (result.success) {
+      navigate('/dashboard');
+    } else {
+      setError(result.error || 'Erro ao fazer login');
+    }
+    
+    setLoading(false);
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
+      {/* Background Pattern */}
+      <div className="absolute inset-0 overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950" />
+        <div className="absolute inset-0 opacity-5">
+          <div className="absolute top-20 left-20 w-96 h-96 bg-red-500 rounded-full blur-3xl" />
+          <div className="absolute bottom-20 right-20 w-96 h-96 bg-red-600 rounded-full blur-3xl" />
+        </div>
+      </div>
+
+      {/* Content */}
+      <div className="relative z-10 w-full max-w-md">
+        {/* Logo/Brand */}
+        <div className="text-center mb-8">
+          <h1 className="text-4xl font-bold text-white mb-2">VENUM MARKET</h1>
+          <p className="text-gray-400">Sistema de Inteligência de Mercado Albion Online</p>
+        </div>
+
+        {/* Login Card */}
+        <div className="bg-slate-900/80 backdrop-blur-xl rounded-2xl border border-slate-800 p-8 shadow-2xl">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-12 h-12 bg-red-500/20 rounded-lg flex items-center justify-center">
+              <Lock className="w-6 h-6 text-red-500" />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold text-white">Acessar Sistema</h2>
+              <p className="text-sm text-gray-400">Entre com suas credenciais</p>
+            </div>
+          </div>
+
+          {/* Login Form */}
+          <form onSubmit={handleLogin} className="space-y-4">
+            {/* Email */}
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Email
+              </label>
+              <div className="relative">
+                <User className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-500" />
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full bg-slate-800 border border-slate-700 rounded-lg pl-10 pr-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all"
+                  placeholder="seu@email.com"
+                  required
+                />
+              </div>
+            </div>
+
+            {/* Password */}
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Senha
+              </label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-500" />
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full bg-slate-800 border border-slate-700 rounded-lg pl-10 pr-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all"
+                  placeholder="••••••••"
+                  required
+                />
+              </div>
+            </div>
+
+            {/* Error Message */}
+            {error && (
+              <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-red-400 text-sm">
+                {error}
+              </div>
+            )}
+
+            {/* Login Button */}
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-red-500 hover:bg-red-600 text-white font-semibold py-3 px-4 rounded-lg flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading ? (
+                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <>
+                  Entrar
+                  <ArrowRight className="w-5 h-5" />
+                </>
+              )}
+            </button>
+          </form>
+
+          {/* Register Link */}
+          <div className="mt-6 text-center">
+            <p className="text-gray-400 text-sm">
+              Não tem uma conta?{' '}
+              <button
+                onClick={() => navigate('/register')}
+                className="text-red-500 hover:text-red-400 font-medium transition-colors"
+              >
+                Cadastre-se
+              </button>
+            </p>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="mt-8 text-center text-gray-500 text-sm">
+          <p>© 2024 VENUM MARKET. Todos os direitos reservados.</p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default LandingPage;
