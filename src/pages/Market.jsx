@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { TrendingUp, Search, Filter, ArrowUpDown } from 'lucide-react';
 import TopOpportunities from '@/components/market/TopOpportunities';
 import AdvancedFilters from '@/components/market/filters/AdvancedFilters';
@@ -10,6 +10,21 @@ import TransportList from '@/components/market/TransportList';
 
 const Market = () => {
   const [showFilters, setShowFilters] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    // Simulate loading or check if data is ready
+    const timer = setTimeout(() => setLoading(false), 500);
+    return () => clearTimeout(timer);
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="w-12 h-12 border-4 border-red-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

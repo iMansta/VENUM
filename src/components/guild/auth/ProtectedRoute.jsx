@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Shield } from 'lucide-react';
-import { getCurrentUser, onAuthStateChange } from '@/lib/supabase/auth';
+import { getSession, onAuthStateChange } from '@/lib/supabase/auth';
 import { getProfile } from '@/lib/supabase/profiles';
 
 /**
@@ -44,13 +44,13 @@ const ProtectedRoute = ({ children }) => {
 
   const checkAuth = async () => {
     try {
-      console.log('ProtectedRoute - Checking current user...');
-      const { success: userSuccess, user: currentUser } = await getCurrentUser();
-      console.log('ProtectedRoute - Current user check result:', userSuccess, currentUser?.id);
+      console.log('ProtectedRoute - Checking session...');
+      const { success, session } = await getSession();
+      console.log('ProtectedRoute - Session check result:', success, session?.user?.id);
       
-      if (userSuccess && currentUser) {
+      if (success && session?.user) {
         // Get user profile
-        const { success: profileSuccess, data: userProfile } = await getProfile(currentUser.id);
+        const { success: profileSuccess, data: userProfile } = await getProfile(session.user.id);
         console.log('ProtectedRoute - Profile check result:', profileSuccess, userProfile);
         
         if (profileSuccess && userProfile) {

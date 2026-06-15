@@ -37,7 +37,7 @@ const DashboardLayout = ({ userId, userRole }) => {
   ];
 
   const adminNavigation = [
-    { name: 'Administração', path: '/settings', icon: Shield },
+    { name: 'Administração', path: '/admin', icon: Shield },
   ];
 
   const filteredNavigation = userRole === 'admin' 

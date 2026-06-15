@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { User, Award, Calendar, Activity, Shield, Settings, Edit2, LogOut } from 'lucide-react';
-import { getProfile } from '@/lib/supabase/profiles';
+import { User, Award, Calendar, Activity, Shield, Settings, Edit2, LogOut, Camera } from 'lucide-react';
+import { getProfile, updateProfile } from '@/lib/supabase/profiles';
 import { getUserPointsLedger, getUserPointsStats } from '@/lib/supabase/points';
 import { getUserMissions } from '@/lib/supabase/missions';
 import { signOut } from '@/lib/supabase/auth';
@@ -17,6 +17,7 @@ const UserProfile = ({ userId, currentUserId }) => {
   const [userMissions, setUserMissions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isOwnProfile, setIsOwnProfile] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -57,6 +58,38 @@ const UserProfile = ({ userId, currentUserId }) => {
   const handleSignOut = async () => {
     await signOut();
     navigate('/login');
+  };
+
+  const handleAvatarUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setUploadingAvatar(true);
+
+    try {
+      // Convert image to base64 for storage
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const base64String = reader.result;
+        
+        // Update profile with avatar URL
+        const { success } = await updateProfile(userId, { avatar_url: base64String });
+        
+        if (success) {
+          // Reload profile data
+          const { success: profileSuccess, data: userProfile } = await getProfile(userId);
+          if (profileSuccess) {
+            setProfile(userProfile);
+          }
+        }
+        
+        setUploadingAvatar(false);
+      };
+      reader.readAsDataURL(file);
+    } catch (error) {
+      console.error('Error uploading avatar:', error);
+      setUploadingAvatar(false);
+    }
   };
 
   const formatNumber = (value) => {
@@ -145,8 +178,35 @@ const UserProfile = ({ userId, currentUserId }) => {
         <div className="bg-slate-800/50 rounded-lg p-6 border border-slate-700 mb-6">
           <div className="flex items-start gap-6">
             {/* Avatar */}
-            <div className="w-24 h-24 bg-gradient-to-br from-amber-500 to-amber-600 rounded-full flex items-center justify-center text-slate-950 text-3xl font-bold">
-              {profile.username?.charAt(0).toUpperCase()}
+            <div className="relative">
+              {profile.avatar_url ? (
+                <img
+                  src={profile.avatar_url}
+                  alt={profile.username}
+                  className="w-24 h-24 rounded-full object-cover border-4 border-slate-700"
+                />
+              ) : (
+                <div className="w-24 h-24 bg-gradient-to-br from-amber-500 to-amber-600 rounded-full flex items-center justify-center text-slate-950 text-3xl font-bold">
+                  {profile.username?.charAt(0).toUpperCase()}
+                </div>
+              )}
+              {isOwnProfile && (
+                <label className="absolute bottom-0 right-0 bg-red-500 hover:bg-red-600 text-white p-2 rounded-full cursor-pointer transition-colors">
+                  <Camera className="w-4 h-4" />
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleAvatarUpload}
+                    className="hidden"
+                    disabled={uploadingAvatar}
+                  />
+                </label>
+              )}
+              {uploadingAvatar && (
+                <div className="absolute inset-0 bg-black/50 rounded-full flex items-center justify-center">
+                  <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                </div>
+              )}
             </div>
 
             {/* Info */}

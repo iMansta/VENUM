@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Settings as SettingsIcon, User, Shield, Key, Users as UsersIcon } from 'lucide-react';
 import UserProfile from '@/components/guild/members/UserProfile';
 import AdminPanel from '@/components/guild/admin/AdminPanel';
@@ -9,6 +9,13 @@ import AdminPanel from '@/components/guild/admin/AdminPanel';
 
 const SettingsPage = ({ userId, userRole }) => {
   const [activeTab, setActiveTab] = useState('profile');
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    // Simulate loading or check if data is ready
+    const timer = setTimeout(() => setLoading(false), 500);
+    return () => clearTimeout(timer);
+  }, []);
 
   const tabs = [
     { id: 'profile', label: 'Perfil', icon: User },
@@ -16,6 +23,14 @@ const SettingsPage = ({ userId, userRole }) => {
   ];
 
   const availableTabs = tabs.filter(tab => !tab.adminOnly || userRole === 'admin');
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="w-12 h-12 border-4 border-red-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

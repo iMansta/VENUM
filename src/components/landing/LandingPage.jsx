@@ -19,11 +19,15 @@ const LandingPage = () => {
     setLoading(true);
     setError('');
 
+    console.log('Attempting login with username:', username);
     const result = await signIn(username, password);
+    console.log('Login result:', result);
     
     if (result.success) {
+      console.log('Login successful, navigating to dashboard');
       navigate('/dashboard');
     } else {
+      console.error('Login failed:', result.error);
       setError(result.error || 'Erro ao fazer login');
     }
     

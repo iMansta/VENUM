@@ -9,7 +9,7 @@ import Ranking from '@/pages/Ranking';
 import Missions from '@/pages/Missions';
 import Market from '@/pages/Market';
 import SettingsPage from '@/pages/Settings';
-import { getCurrentUser, onAuthStateChange } from '@/lib/supabase/auth';
+import { getSession, onAuthStateChange } from '@/lib/supabase/auth';
 import { getProfile } from '@/lib/supabase/profiles';
 
 function App() {
@@ -44,13 +44,13 @@ function App() {
 
   const checkAuth = async () => {
     try {
-      console.log('Checking current user...');
-      const { success, user: currentUser } = await getCurrentUser();
-      console.log('Current user check result:', success, currentUser?.id);
+      console.log('Checking session...');
+      const { success, session } = await getSession();
+      console.log('Session check result:', success, session?.user?.id);
       
-      if (success && currentUser) {
-        setUser(currentUser);
-        const { success: profileSuccess, data: userProfile } = await getProfile(currentUser.id);
+      if (success && session?.user) {
+        setUser(session.user);
+        const { success: profileSuccess, data: userProfile } = await getProfile(session.user.id);
         console.log('Profile check result:', profileSuccess, userProfile);
         if (profileSuccess) {
           setProfile(userProfile);
@@ -121,6 +121,16 @@ function App() {
         />
         <Route
           path="/settings"
+          element={
+            <ProtectedRoute>
+              <DashboardLayout userId={user?.id} userRole={profile?.role}>
+                <SettingsPage userId={user?.id} userRole={profile?.role} />
+              </DashboardLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin"
           element={
             <ProtectedRoute>
               <DashboardLayout userId={user?.id} userRole={profile?.role}>
