@@ -1,0 +1,151 @@
+PROMPT PARA AGENTE SQL - CONFIGURAÇÃO DO BANCO SUPABASE
+========================================================
+
+CONTEXTO:
+Aplicação VENUM MARKET - Guilda Albion Online
+Projeto React com Supabase como backend
+
+TAREFA: Configurar o banco de dados Supabase completamente
+
+========================================================
+PASSO 1: VERIFICAR MAPEAMENTO DE IDs
+========================================================
+
+Antes de executar o schema, execute estas queries para verificar o mapeamento:
+
+```sql
+select id from auth.users limit 1;
+select id from public.profiles limit 1;
+```
+
+- Se os IDs forem IGUAIS (padrão Supabase): O schema está correto
+- Se os IDs forem DIFERENTES: Ajuste todas as foreign keys de auth.users para public.profiles
+
+========================================================
+PASSO 2: EXECUTAR SCHEMA SQL COMPLETO
+========================================================
+
+Execute o arquivo completo: supabase/schema.sql
+
+Este SQL cria:
+- Tabela missions com coluna end_date
+- Tabela mission_participants
+- Tabela transports (corrigida com quantity, status CHECK, created_by, reserved_at)
+- Tabela guild_codes
+- RLS Policies para todas as tabelas
+- Índices para performance
+- Funções RPC: get_weekly_ranking, get_monthly_ranking, get_user_ranking_position
+- Funções RPC: award_points, deduct_points, validate_guild_code
+
+========================================================
+PASSO 3: CRIAR BUCKET DE STORAGE
+========================================================
+
+1. Acesse Storage no painel Supabase
+2. Clique em "Create a new bucket"
+3. Nome: avatars
+4. Marque como Public
+5. Clique em "Create bucket"
+
+========================================================
+PASSO 4: CONFIGURAR POLICIES DO STORAGE
+========================================================
+
+No bucket avatars, crie estas policies:
+
+Policy 1: Public Read Access
+- Allowed Operation: SELECT
+- Target Roles: anon, authenticated
+- Policy Definition: true
+
+Policy 2: Authenticated Upload
+- Allowed Operation: INSERT
+- Target Roles: authenticated
+- Policy Definition: auth.role() = 'authenticated'
+
+========================================================
+PASSO 5: VERIFICAÇÃO
+========================================================
+
+Verifique no Table Editor se todas as tabelas existem:
+- missions (com coluna end_date)
+- mission_participants
+- transports (com todas as colunas corretas)
+- guild_codes
+- profiles (já deve existir)
+- points_ledger (já deve existir)
+
+Verifique em Database > Functions se todas as funções RPC existem:
+- get_weekly_ranking(p_limit)
+- get_monthly_ranking(p_limit)
+- get_user_ranking_position(p_profile_id)
+- award_points(p_profile_id, p_amount, p_reason, p_reference_id, p_reference_type)
+- deduct_points(p_profile_id, p_amount, p_reason, p_reference_id, p_reference_type)
+- validate_guild_code(p_code)
+
+========================================================
+PASSO 6: AJUSTE SE NECESSÁRIO (SE IDs FOREM DIFERENTES)
+========================================================
+
+Se profiles.id != auth.users.id, execute:
+
+```sql
+-- Ajustar foreign keys em missions
+ALTER TABLE public.missions DROP CONSTRAINT missions_created_by_fkey;
+ALTER TABLE public.missions ADD CONSTRAINT missions_created_by_fkey 
+  FOREIGN KEY (created_by) REFERENCES public.profiles(id) ON DELETE SET NULL;
+
+-- Ajustar foreign keys em transports
+ALTER TABLE public.transports DROP CONSTRAINT transports_reserved_by_fkey;
+ALTER TABLE public.transports ADD CONSTRAINT transports_reserved_by_fkey 
+  FOREIGN KEY (reserved_by) REFERENCES public.profiles(id) ON DELETE SET NULL;
+
+ALTER TABLE public.transports DROP CONSTRAINT transports_created_by_fkey;
+ALTER TABLE public.transports ADD CONSTRAINT transports_created_by_fkey 
+  FOREIGN KEY (created_by) REFERENCES public.profiles(id) ON DELETE SET NULL;
+```
+
+========================================================
+PASSO 7: TESTAR FUNÇÕES RPC
+========================================================
+
+Execute estas queries para testar:
+
+```sql
+-- Testar validate_guild_code
+SELECT public.validate_guild_code('TESTCODE');
+
+-- Testar get_weekly_ranking
+SELECT * FROM public.get_weekly_ranking(10);
+
+-- Testar get_monthly_ranking
+SELECT * FROM public.get_monthly_ranking(10);
+```
+
+========================================================
+RESUMO DAS CONFIGURAÇÕES NECESSÁRIAS
+========================================================
+
+1. Executar schema.sql completo no SQL Editor
+2. Criar bucket avatars no Storage (público)
+3. Configurar 2 policies no Storage (read público, upload autenticado)
+4. Verificar se profiles.id == auth.users.id
+5. Se diferente, ajustar foreign keys para usar public.profiles
+6. Testar funções RPC
+
+========================================================
+ARQUIVOS DO PROJETO
+========================================================
+
+Schema SQL: supabase/schema.sql
+Tutorial detalhado: docs/SUPABASE_SETUP_TUTORIAL.md
+
+========================================================
+NOTAS IMPORTANTES
+========================================================
+
+- O schema assume que profiles.id == auth.users.id (padrão Supabase)
+- Se o projeto usa um mapeamento diferente, ajuste as foreign keys
+- O bucket avatars deve ser público para exibir imagens
+- As RLS policies permitem operações baseadas em roles de perfil
+- As funções RPC usam SECURITY DEFINER para executar com permissões elevadas

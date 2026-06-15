@@ -8,7 +8,7 @@ import Dashboard from '@/pages/Dashboard';
 import Ranking from '@/pages/Ranking';
 import Missions from '@/pages/Missions';
 import Market from '@/pages/Market';
-import SettingsPage from '@/pages/Settings';
+import AdminPanel from '@/components/guild/admin/AdminPanel';
 import { getSession, onAuthStateChange } from '@/lib/supabase/auth';
 import { getProfile } from '@/lib/supabase/profiles';
 
@@ -83,7 +83,7 @@ function App() {
           path="/dashboard"
           element={
             <ProtectedRoute>
-              <DashboardLayout userId={user?.id} userRole={profile?.role} />
+              <DashboardLayout userId={user?.id} userRole={profile?.role} profile={profile} />
             </ProtectedRoute>
           }
         >
@@ -93,7 +93,7 @@ function App() {
           path="/ranking"
           element={
             <ProtectedRoute>
-              <DashboardLayout userId={user?.id} userRole={profile?.role} />
+              <DashboardLayout userId={user?.id} userRole={profile?.role} profile={profile} />
             </ProtectedRoute>
           }
         >
@@ -103,7 +103,7 @@ function App() {
           path="/missions"
           element={
             <ProtectedRoute>
-              <DashboardLayout userId={user?.id} userRole={profile?.role} />
+              <DashboardLayout userId={user?.id} userRole={profile?.role} profile={profile} />
             </ProtectedRoute>
           }
         >
@@ -113,31 +113,21 @@ function App() {
           path="/market"
           element={
             <ProtectedRoute>
-              <DashboardLayout userId={user?.id} userRole={profile?.role} />
+              <DashboardLayout userId={user?.id} userRole={profile?.role} profile={profile} />
             </ProtectedRoute>
           }
         >
           <Route index element={<Market userId={user?.id} />} />
         </Route>
         <Route
-          path="/settings"
-          element={
-            <ProtectedRoute>
-              <DashboardLayout userId={user?.id} userRole={profile?.role} />
-            </ProtectedRoute>
-          }
-        >
-          <Route index element={<SettingsPage userId={user?.id} userRole={profile?.role} />} />
-        </Route>
-        <Route
           path="/admin"
           element={
             <ProtectedRoute>
-              <DashboardLayout userId={user?.id} userRole={profile?.role} />
+              <DashboardLayout userId={user?.id} userRole={profile?.role} profile={profile} />
             </ProtectedRoute>
           }
         >
-          <Route index element={<SettingsPage userId={user?.id} userRole={profile?.role} />} />
+          <Route index element={<AdminPanel userId={user?.id} userRole={profile?.role} />} />
         </Route>
 
         {/* Default redirect */}

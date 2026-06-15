@@ -169,9 +169,17 @@ const UserManagement = ({ userId, userRole }) => {
             >
               {/* User Header */}
               <div className="flex items-start gap-3 mb-4">
-                <div className="w-12 h-12 bg-slate-700 rounded-full flex items-center justify-center text-white font-bold text-lg">
-                  {member.username?.charAt(0).toUpperCase()}
-                </div>
+                {member.avatar_url ? (
+                  <img
+                    src={member.avatar_url}
+                    alt={member.username || 'Avatar'}
+                    className="w-12 h-12 rounded-full object-cover"
+                  />
+                ) : (
+                  <div className="w-12 h-12 bg-slate-700 rounded-full flex items-center justify-center text-white font-bold text-lg">
+                    {member.username?.charAt(0).toUpperCase()}
+                  </div>
+                )}
                 <div className="flex-1">
                   <h4 className="font-semibold text-white">{member.username}</h4>
                   {member.full_name && (

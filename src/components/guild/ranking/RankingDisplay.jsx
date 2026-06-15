@@ -171,9 +171,17 @@ const RankingDisplay = ({ userId }) => {
                 {/* User Info */}
                 <div className="flex-1">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-slate-700 rounded-full flex items-center justify-center text-white font-bold">
-                      {user.username?.charAt(0).toUpperCase()}
-                    </div>
+                    {user.avatar_url ? (
+                      <img
+                        src={user.avatar_url}
+                        alt={user.username || 'Avatar'}
+                        className="w-10 h-10 rounded-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-10 h-10 bg-slate-700 rounded-full flex items-center justify-center text-white font-bold">
+                        {user.username?.charAt(0).toUpperCase()}
+                      </div>
+                    )}
                     <div>
                       <h4 className="font-semibold text-white">{user.username}</h4>
                       {user.full_name && (

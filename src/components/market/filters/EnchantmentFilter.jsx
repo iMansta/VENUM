@@ -26,7 +26,8 @@ const EnchantmentFilter = ({ selectedEnchantments = [], onEnchantmentChange }) =
   };
 
   const getEnchantmentSymbol = (level) => {
-    return '@'.repeat(level);
+    if (level === 0) return '0';
+    return `.${level}`;
   };
 
   return (

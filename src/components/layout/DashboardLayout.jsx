@@ -18,7 +18,7 @@ import { signOut } from '@/lib/supabase/auth';
  * DashboardLayout component - Main layout with sidebar for authenticated users
  */
 
-const DashboardLayout = ({ userId, userRole }) => {
+const DashboardLayout = ({ userId, userRole, profile }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
@@ -33,15 +33,14 @@ const DashboardLayout = ({ userId, userRole }) => {
     { name: 'Ranking', path: '/ranking', icon: Trophy },
     { name: 'Missões', path: '/missions', icon: Target },
     { name: 'Mercado', path: '/market', icon: TrendingUp },
-    { name: 'Configurações', path: '/settings', icon: Settings },
   ];
 
   const adminNavigation = [
     { name: 'Administração', path: '/admin', icon: Shield },
   ];
 
-  const filteredNavigation = userRole === 'admin' 
-    ? [...navigation, ...adminNavigation] 
+  const filteredNavigation = (userRole === 'admin' || userRole === 'officer')
+    ? [...navigation, ...adminNavigation]
     : navigation;
 
   const isActive = (path) => location.pathname === path;
@@ -102,11 +101,22 @@ const DashboardLayout = ({ userId, userRole }) => {
         {/* User Section */}
         <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-slate-800">
           <div className="flex items-center gap-3 mb-4">
-            <div className="w-10 h-10 bg-red-500/20 rounded-full flex items-center justify-center text-red-500 font-bold">
-              <User className="w-5 h-5" />
-            </div>
+            {profile?.avatar_url ? (
+              <img
+                src={profile.avatar_url}
+                alt={profile.username || 'Avatar'}
+                className="w-10 h-10 rounded-full object-cover"
+              />
+            ) : (
+              <div className="w-10 h-10 bg-red-500/20 rounded-full flex items-center justify-center text-red-500 font-bold">
+                <User className="w-5 h-5" />
+              </div>
+            )}
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-white truncate">
+                {profile?.username || 'Usuário'}
+              </p>
+              <p className="text-xs text-gray-400 truncate">
                 {userRole === 'admin' ? 'Administrador' : userRole === 'officer' ? 'Oficial' : 'Membro'}
               </p>
             </div>
