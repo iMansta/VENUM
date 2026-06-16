@@ -5,6 +5,8 @@ import TierFilter from './TierFilter';
 import EnchantmentFilter from './EnchantmentFilter';
 import QualityFilter from './QualityFilter';
 import ProfitFilter from './ProfitFilter';
+import QuantityFilter from './QuantityFilter';
+import PremiumFilter from './PremiumFilter';
 
 /**
  * AdvancedFilters component - Container for all market filters
@@ -17,6 +19,8 @@ const AdvancedFilters = ({ onFilterChange }) => {
   const [selectedEnchantments, setSelectedEnchantments] = useState([]);
   const [selectedQualities, setSelectedQualities] = useState([]);
   const [minProfit, setMinProfit] = useState(0);
+  const [quantity, setQuantity] = useState(100);
+  const [premium, setPremium] = useState('all');
 
   // Trigger filter change when any filter state changes
   useEffect(() => {
@@ -26,8 +30,10 @@ const AdvancedFilters = ({ onFilterChange }) => {
       enchantments: selectedEnchantments,
       qualities: selectedQualities,
       minProfit,
+      quantity,
+      premium,
     });
-  }, [selectedCities, selectedTiers, selectedEnchantments, selectedQualities, minProfit, onFilterChange]);
+  }, [selectedCities, selectedTiers, selectedEnchantments, selectedQualities, minProfit, quantity, premium, onFilterChange]);
 
   const handleClearAll = () => {
     setSelectedCities([]);
@@ -35,6 +41,8 @@ const AdvancedFilters = ({ onFilterChange }) => {
     setSelectedEnchantments([]);
     setSelectedQualities([]);
     setMinProfit(0);
+    setQuantity(100);
+    setPremium('all');
   };
 
   const hasActiveFilters =
@@ -42,7 +50,9 @@ const AdvancedFilters = ({ onFilterChange }) => {
     selectedTiers.length > 0 ||
     selectedEnchantments.length > 0 ||
     selectedQualities.length > 0 ||
-    minProfit > 0;
+    minProfit > 0 ||
+    quantity !== 100 ||
+    premium !== 'all';
 
   return (
     <div className="bg-slate-900 rounded-lg border border-slate-800 overflow-hidden">
@@ -93,6 +103,14 @@ const AdvancedFilters = ({ onFilterChange }) => {
             minProfit={minProfit}
             onMinProfitChange={setMinProfit}
           />
+          <QuantityFilter
+            quantity={quantity}
+            onQuantityChange={setQuantity}
+          />
+          <PremiumFilter
+            premium={premium}
+            onPremiumChange={setPremium}
+          />
         </div>
       </div>
 
@@ -123,6 +141,16 @@ const AdvancedFilters = ({ onFilterChange }) => {
             {minProfit > 0 && (
               <span className="text-gray-400">
                 Lucro Mínimo: <span className="text-green-400">{minProfit}%</span>
+              </span>
+            )}
+            {quantity !== 100 && (
+              <span className="text-gray-400">
+                Quantidade: <span className="text-white">{quantity}</span>
+              </span>
+            )}
+            {premium !== 'all' && (
+              <span className="text-gray-400">
+                Premium: <span className="text-white">{premium === 'with' ? 'Com' : 'Sem'}</span>
               </span>
             )}
           </div>

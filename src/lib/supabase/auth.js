@@ -31,11 +31,6 @@ export const signUp = async (username, password, guildCode = null) => {
 
     const u = normalizeUsername(username);
 
-    // Debug logs for character codes
-    console.log('u =', JSON.stringify(u));
-    console.log('u length =', u.length);
-    console.log('u codepoints =', [...u].map(ch => ch.charCodeAt(0)));
-
     if (!u) throw new Error('Username inválido.');
     if (u.length < 3) throw new Error('Username deve ter pelo menos 3 caracteres.');
     if (!/^[a-z0-9_]+$/.test(u)) {
@@ -54,11 +49,6 @@ export const signUp = async (username, password, guildCode = null) => {
 
     // Generate email from username for Supabase Auth (NEW users)
     const email = `${u}@example.com`;
-
-    // Debug logs for email
-    console.log('email =', JSON.stringify(email));
-    console.log('email length =', email.length);
-    console.log('email codepoints =', [...email].map(ch => ch.charCodeAt(0)));
 
     // Basic email validation BEFORE calling supabase.auth.signUp
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {

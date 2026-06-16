@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Trash2, Plus, Package, TrendingUp, X, Lock, Unlock, CheckCircle, Clock, Filter } from 'lucide-react';
+import { Trash2, Plus, Package, TrendingUp, X, Lock, Unlock, CheckCircle, Clock } from 'lucide-react';
 import { fetchTopOpportunities, COMMON_ITEMS } from '@/lib/albion/api';
 import { supabase } from '@/lib/supabase/client';
 import ItemIcon from './ItemIcon';
@@ -11,28 +11,25 @@ const TransportList = ({ userId, filters, refreshKey }) => {
   const [loading, setLoading] = useState(true);
   const [reservingId, setReservingId] = useState(null);
   const [completingId, setCompletingId] = useState(null);
-  const [showFilters, setShowFilters] = useState(false);
-  const [filterCity, setFilterCity] = useState('');
-  const [filterMinProfit, setFilterMinProfit] = useState(0);
-  const [opportunityCount, setOpportunityCount] = useState(100); // Aumentado para mostrar mais oportunidades
 
   useEffect(() => {
     loadOpportunities();
     loadMyTransports();
-    
+
     // Auto-refresh every minute
     const interval = setInterval(() => {
       loadOpportunities();
     }, 60000);
-    
+
     return () => clearInterval(interval);
-  }, [opportunityCount, refreshKey, filters]);
+  }, [refreshKey, filters]);
 
   const loadOpportunities = async () => {
     setLoading(true);
     try {
+      const opportunityCount = filters?.quantity || 100;
       const data = await fetchTopOpportunities(COMMON_ITEMS, opportunityCount);
-      
+
       // Apply filters from props if provided
       let filtered = data;
       if (filters) {
@@ -54,16 +51,12 @@ const TransportList = ({ userId, filters, refreshKey }) => {
         if (filters.minProfit > 0) {
           filtered = filtered.filter(opp => opp.netProfit >= filters.minProfit);
         }
+        if (filters.premium && filters.premium !== 'all') {
+          // Filter by premium status (this would need to be implemented in the API)
+          // For now, we'll skip this as it requires backend changes
+        }
       }
-      
-      // Apply local filters if set
-      if (filterCity) {
-        filtered = filtered.filter(opp => opp.lowestCity === filterCity);
-      }
-      if (filterMinProfit > 0) {
-        filtered = filtered.filter(opp => opp.netProfit >= filterMinProfit);
-      }
-      
+
       setOpportunities(filtered);
     } catch (error) {
       console.error('Error loading opportunities:', error);
@@ -118,10 +111,9 @@ const TransportList = ({ userId, filters, refreshKey }) => {
         .single();
 
       if (error) throw error;
-      
+
       // Reload my transports
       loadMyTransports();
-      alert('Transporte reservado com sucesso!');
     } catch (error) {
       console.error('Error reserving transport:', error);
       alert('Falha ao reservar transporte. Tente novamente.');
@@ -178,6 +170,7 @@ const TransportList = ({ userId, filters, refreshKey }) => {
   };
 
   const cities = [...new Set(opportunities.map(opp => opp.lowestCity))];
+  const opportunityCount = filters?.quantity || 100;
 
   return (
     <div className="space-y-6">
@@ -194,60 +187,12 @@ const TransportList = ({ userId, filters, refreshKey }) => {
               </span>
             </div>
             <div className="flex items-center gap-2">
-              <select
-                value={opportunityCount}
-                onChange={(e) => setOpportunityCount(parseInt(e.target.value))}
-                className="bg-slate-700 border border-slate-600 rounded px-3 py-1 text-white text-sm"
-              >
-                <option value={10}>10 oportunidades</option>
-                <option value={50}>50 oportunidades</option>
-                <option value={200}>200 oportunidades</option>
-              </select>
-              <button
-                onClick={() => setShowFilters(!showFilters)}
-                className="bg-slate-700 hover:bg-slate-600 text-white p-2 rounded-lg transition-colors"
-                title="Filtros"
-              >
-                <Filter className="w-5 h-5" />
-              </button>
+              <span className="text-sm text-gray-400">
+                {opportunityCount} oportunidades carregadas
+              </span>
             </div>
           </div>
         </div>
-
-        {/* Filters */}
-        {showFilters && (
-          <div className="p-4 bg-slate-800/50 border-b border-slate-700">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Cidade de Origem
-                </label>
-                <select
-                  value={filterCity}
-                  onChange={(e) => setFilterCity(e.target.value)}
-                  className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white"
-                >
-                  <option value="">Todas as cidades</option>
-                  {cities.map(city => (
-                    <option key={city} value={city}>{city}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Lucro Mínimo (prata)
-                </label>
-                <input
-                  type="number"
-                  value={filterMinProfit}
-                  onChange={(e) => setFilterMinProfit(parseInt(e.target.value) || 0)}
-                  className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white"
-                  placeholder="0"
-                />
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Transport Cards */}
         <div className="p-6">
@@ -297,6 +242,10 @@ const TransportList = ({ userId, filters, refreshKey }) => {
                           <span className="text-green-400">{formatSilver(opportunity.netProfit)}</span>
                           <span className="text-gray-500">|</span>
                           <span className="text-purple-400">{opportunity.margin.toFixed(1)}%</span>
+                          <span className="text-gray-500">|</span>
+                          <span className="text-blue-400">Qtd: {opportunity.quantity || 1}</span>
+                          <span className="text-gray-500">|</span>
+                          <span className="text-gray-400">Investimento: {formatSilver(opportunity.lowestPrice * (opportunity.quantity || 1))}</span>
                         </div>
                       </div>
 
@@ -334,18 +283,6 @@ const TransportList = ({ userId, filters, refreshKey }) => {
             </div>
           )}
         </div>
-
-        {/* Footer */}
-        <div className="bg-slate-800/30 px-6 py-4 border-t border-slate-800">
-          <div className="flex items-center justify-between text-sm text-gray-500">
-            <span>
-              Atualizado a cada 1 minuto
-            </span>
-            <span>
-              {opportunityCount} oportunidades carregadas
-            </span>
-          </div>
-        </div>
       </div>
 
       {/* My Transports */}
@@ -381,6 +318,9 @@ const TransportList = ({ userId, filters, refreshKey }) => {
                       </p>
                       <p className="text-xs text-gray-500">
                         Lucro: {formatSilver(transport.profit)} | Quantidade: {transport.quantity}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        Investimento: {formatSilver(transport.buy_price * transport.quantity)} | Lucro Total: {formatSilver(transport.profit * transport.quantity)}
                       </p>
                     </div>
                   </div>
