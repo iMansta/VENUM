@@ -12,11 +12,16 @@ const priceCache = new Map();
 // Request statistics
 let requestCount = 0;
 let rateLimitErrorCount = 0;
+let cacheHits = 0;
+let cacheMisses = 0;
 
 // Concurrency limiter (max 3 simultaneous requests)
 const MAX_CONCURRENT_REQUESTS = 3;
 let activeRequests = 0;
 const requestQueue = [];
+
+// Single-flight cache for in-flight requests
+const inFlightRequests = new Map();
 
 /**
  * Get cached price data if available and not expired
@@ -24,9 +29,12 @@ const requestQueue = [];
 const getCachedPrice = (itemName) => {
   const cached = priceCache.get(itemName);
   if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
-    console.log(`Cache hit for ${itemName}`);
+    cacheHits++;
+    console.log(`[CACHE HIT] ${itemName} (hits: ${cacheHits}, misses: ${cacheMisses})`);
     return cached.data;
   }
+  cacheMisses++;
+  console.log(`[CACHE MISS] ${itemName} (hits: ${cacheHits}, misses: ${cacheMisses})`);
   return null;
 };
 
@@ -212,21 +220,45 @@ export const fetchItemPrice = async (itemName, locations = 1) => {
  */
 export const fetchMultipleItemPrices = async (items, locations = 1) => {
   try {
-    console.log(`Fetching prices for ${items.length} items (max ${MAX_CONCURRENT_REQUESTS} concurrent)`);
+    console.log(`[FETCH] Fetching prices for ${items.length} items (max ${MAX_CONCURRENT_REQUESTS} concurrent)`);
     const startTime = Date.now();
 
-    // Use queue system instead of Promise.all to respect concurrency limit
-    const results = await Promise.all(
-      items.map(item => fetchItemPrice(item.itemId, locations))
-    );
+    // Split items into smaller batches to reduce burst requests
+    const BATCH_SIZE = 20; // Process 20 items at a time
+    const batches = [];
+    for (let i = 0; i < items.length; i += BATCH_SIZE) {
+      batches.push(items.slice(i, i + BATCH_SIZE));
+    }
+
+    console.log(`[FETCH] Split into ${batches.length} batches of ${BATCH_SIZE} items each`);
+
+    const allResults = [];
+    for (let i = 0; i < batches.length; i++) {
+      console.log(`[FETCH] Processing batch ${i + 1}/${batches.length}`);
+      
+      // Use queue system instead of Promise.all to respect concurrency limit
+      const batchResults = await Promise.all(
+        batches[i].map(item => fetchItemPrice(item.itemId, locations))
+      );
+
+      allResults.push(...batchResults);
+
+      // Add delay between batches to reduce burst
+      if (i < batches.length - 1) {
+        const delay = 500 + Math.random() * 300; // 500-800ms delay
+        console.log(`[FETCH] Waiting ${delay}ms before next batch`);
+        await sleep(delay);
+      }
+    }
 
     const duration = Date.now() - startTime;
-    console.log(`Fetched ${results.filter(r => r !== null).length}/${items.length} prices in ${duration}ms`);
-    console.log(`Request stats: ${requestCount} total requests, ${rateLimitErrorCount} rate limit errors`);
+    const validResults = allResults.filter(result => result !== null);
+    console.log(`[FETCH] Fetched ${validResults.length}/${items.length} prices in ${duration}ms`);
+    console.log(`[FETCH] Request stats: ${requestCount} total requests, ${rateLimitErrorCount} rate limit errors, cache hits: ${cacheHits}, misses: ${cacheMisses}`);
 
-    return results.filter(result => result !== null);
+    return validResults;
   } catch (error) {
-    console.error('Error fetching multiple item prices:', error);
+    console.error('[FETCH] Error fetching multiple item prices:', error);
     return [];
   }
 };
@@ -271,47 +303,63 @@ export const calculateArbitrage = (priceData, targetCity = 'Caerleon') => {
  * @returns {Promise<Array>} Array of top arbitrage opportunities
  */
 export const fetchTopOpportunities = async (items, limit = 10) => {
-  try {
-    console.log(`Fetching top opportunities for ${items.length} items`);
-    const priceData = await fetchMultipleItemPrices(items);
-    console.log(`Received price data for ${priceData.length} items`);
-    
-    if (priceData.length === 0) {
-      console.warn('No price data received from API, using mock data');
-      return MOCK_OPPORTUNITIES.slice(0, limit);
-    }
-    
-    // Map price data with item metadata
-    const opportunities = priceData
-      .map((data, index) => {
-        const itemMetadata = items[index] || { enchantment: 0, quantity: 1 };
-        const arbitrage = calculateArbitrage(data);
-        if (arbitrage) {
-          return {
-            ...arbitrage,
-            enchantment: itemMetadata.enchantment,
-            quantity: itemMetadata.quantity,
-          };
-        }
-        return null;
-      })
-      .filter(opp => opp !== null && opp.netProfit > 0)
-      .sort((a, b) => b.netProfit - a.netProfit)
-      .slice(0, limit);
-
-    console.log(`Calculated ${opportunities.length} profitable opportunities`);
-    
-    if (opportunities.length === 0) {
-      console.warn('No profitable opportunities found, using mock data');
-      return MOCK_OPPORTUNITIES.slice(0, limit);
-    }
-    
-    return opportunities;
-  } catch (error) {
-    console.error('Error fetching top opportunities:', error);
-    console.warn('API failed, using mock data');
-    return MOCK_OPPORTUNITIES.slice(0, limit);
+  // Single-flight: if the same request is already in flight, return the same promise
+  const itemsKey = items.map(i => i.itemId).join(',');
+  const requestKey = `fetchTopOpportunities-${itemsKey}-${limit}`;
+  
+  if (inFlightRequests.has(requestKey)) {
+    console.log(`[SINGLE-FLIGHT] Reusing in-flight request for ${items.length} items`);
+    return inFlightRequests.get(requestKey);
   }
+
+  const requestPromise = (async () => {
+    try {
+      console.log(`[FETCH] Fetching top opportunities for ${items.length} items`);
+      const priceData = await fetchMultipleItemPrices(items);
+      console.log(`[FETCH] Received price data for ${priceData.length} items`);
+      
+      if (priceData.length === 0) {
+        console.warn('[FETCH] No price data received from API, using mock data');
+        return MOCK_OPPORTUNITIES.slice(0, limit);
+      }
+      
+      // Map price data with item metadata
+      const opportunities = priceData
+        .map((data, index) => {
+          const itemMetadata = items[index] || { enchantment: 0, quantity: 1 };
+          const arbitrage = calculateArbitrage(data);
+          if (arbitrage) {
+            return {
+              ...arbitrage,
+              enchantment: itemMetadata.enchantment,
+              quantity: itemMetadata.quantity,
+            };
+          }
+          return null;
+        })
+        .filter(opp => opp !== null && opp.netProfit > 0)
+        .sort((a, b) => b.netProfit - a.netProfit)
+        .slice(0, limit);
+
+      console.log(`[FETCH] Calculated ${opportunities.length} profitable opportunities`);
+      
+      if (opportunities.length === 0) {
+        console.warn('[FETCH] No profitable opportunities found, using mock data');
+        return MOCK_OPPORTUNITIES.slice(0, limit);
+      }
+      
+      return opportunities;
+    } catch (error) {
+      console.error('[FETCH] Error fetching top opportunities:', error);
+      console.warn('[FETCH] API failed, using mock data');
+      return MOCK_OPPORTUNITIES.slice(0, limit);
+    } finally {
+      inFlightRequests.delete(requestKey);
+    }
+  })();
+
+  inFlightRequests.set(requestKey, requestPromise);
+  return requestPromise;
 };
 
 // Common items to check for arbitrage with enchantment and quantity

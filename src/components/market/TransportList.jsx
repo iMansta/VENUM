@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Trash2, Plus, Package, TrendingUp, X, Lock, Unlock, CheckCircle, Clock } from 'lucide-react';
 import { fetchTopOpportunities, COMMON_ITEMS } from '@/lib/albion/api';
 import { supabase } from '@/lib/supabase/client';
@@ -11,25 +11,17 @@ const TransportList = ({ userId, filters, refreshKey }) => {
   const [loading, setLoading] = useState(true);
   const [reservingId, setReservingId] = useState(null);
   const [completingId, setCompletingId] = useState(null);
-  const [opportunityCount, setOpportunityCount] = useState(100);
+  const [opportunityCount, setOpportunityCount] = useState(50);
+  const [totalInvestment, setTotalInvestment] = useState(0);
+  const [totalReturn, setTotalReturn] = useState(0);
 
-  useEffect(() => {
-    loadOpportunities();
-    loadMyTransports();
-
-    // Auto-refresh every minute
-    const interval = setInterval(() => {
-      loadOpportunities();
-    }, 60000);
-
-    return () => clearInterval(interval);
-  }, [refreshKey, filters, opportunityCount]);
-
-  const loadOpportunities = async () => {
+  const loadOpportunities = useCallback(async () => {
     setLoading(true);
     try {
       const count = filters?.quantity || opportunityCount;
+      console.log('Loading opportunities with count:', count, 'filters:', filters);
       const data = await fetchTopOpportunities(COMMON_ITEMS, count);
+      console.log('Fetched opportunities:', data.length);
 
       // Apply filters from props if provided
       let filtered = data;
@@ -58,15 +50,22 @@ const TransportList = ({ userId, filters, refreshKey }) => {
         }
       }
 
+      console.log('Filtered opportunities:', filtered.length);
       setOpportunities(filtered);
+
+      // Calculate total investment and return
+      const investment = filtered.reduce((sum, opp) => sum + (opp.lowestPrice || 0), 0);
+      const returnAmount = filtered.reduce((sum, opp) => sum + (opp.bmPrice || 0), 0);
+      setTotalInvestment(investment);
+      setTotalReturn(returnAmount);
     } catch (error) {
       console.error('Error loading opportunities:', error);
     } finally {
       setLoading(false);
     }
-  };
+  }, [filters, opportunityCount]);
 
-  const loadMyTransports = async () => {
+  const loadMyTransports = useCallback(async () => {
     if (!userId) return;
     
     try {
@@ -82,7 +81,19 @@ const TransportList = ({ userId, filters, refreshKey }) => {
     } catch (error) {
       console.error('Error loading my transports:', error);
     }
-  };
+  }, [userId]);
+
+  useEffect(() => {
+    loadOpportunities();
+    loadMyTransports();
+
+    // Auto-refresh every minute
+    const interval = setInterval(() => {
+      loadOpportunities();
+    }, 60000);
+
+    return () => clearInterval(interval);
+  }, [refreshKey, loadOpportunities, loadMyTransports]);
 
   const handleReserve = async (opportunity) => {
     if (!userId) {
@@ -199,75 +210,106 @@ const TransportList = ({ userId, filters, refreshKey }) => {
               </p>
             </div>
           ) : (
-            <div className="space-y-2">
-              {opportunities && opportunities.length > 0 ? (
-                opportunities.map((opportunity, index) => (
-                  <div
-                    key={`${opportunity.itemId}-${index}`}
-                    className="bg-slate-800/50 rounded-lg p-3 border border-slate-700 hover:border-amber-500/50 transition-all"
-                  >
-                    <div className="flex items-center gap-3">
-                      {/* Item Icon */}
-                      <ItemIcon itemId={opportunity.itemId} size={32} />
-                      
-                      {/* Item Info */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <h3 className="font-semibold text-white text-sm truncate">{getItemName(opportunity.itemId)}</h3>
-                          {opportunity.enchantment !== undefined && (
-                            <span className="text-xs text-purple-400">.{opportunity.enchantment}</span>
-                          )}
-                          {opportunity.quantity !== undefined && (
-                            <span className="text-xs text-blue-400">x{opportunity.quantity}</span>
-                          )}
+            <>
+              <div className="space-y-2">
+                {opportunities && opportunities.length > 0 ? (
+                  opportunities.map((opportunity, index) => (
+                    <div
+                      key={`${opportunity.itemId}-${index}`}
+                      className="bg-slate-800/50 rounded-lg p-3 border border-slate-700 hover:border-amber-500/50 transition-all"
+                    >
+                      <div className="flex items-center gap-3">
+                        {/* Item Icon */}
+                        <ItemIcon itemId={opportunity.itemId} size={32} />
+                        
+                        {/* Item Info */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <h3 className="font-semibold text-white text-sm truncate">{getItemName(opportunity.itemId)}</h3>
+                            {opportunity.enchantment !== undefined && (
+                              <span className="text-xs text-purple-400">.{opportunity.enchantment}</span>
+                            )}
+                            {opportunity.quantity !== undefined && (
+                              <span className="text-xs text-blue-400">x{opportunity.quantity}</span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 text-xs mt-1">
+                            <span className="text-blue-400">{opportunity.lowestCity}</span>
+                            <span className="text-gray-500">→</span>
+                            <span className="text-amber-400">Caerleon</span>
+                            <span className="text-gray-500">|</span>
+                            <span className="text-green-400">{formatSilver(opportunity.netProfit)}</span>
+                            <span className="text-gray-500">|</span>
+                            <span className="text-purple-400">{opportunity.margin.toFixed(1)}%</span>
+                            <span className="text-gray-500">|</span>
+                            <span className="text-blue-400">Qtd: {opportunity.quantity || 1}</span>
+                            <span className="text-gray-500">|</span>
+                            <span className="text-gray-400">Investimento: {formatSilver(opportunity.lowestPrice * (opportunity.quantity || 1))}</span>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-2 text-xs mt-1">
-                          <span className="text-blue-400">{opportunity.lowestCity}</span>
-                          <span className="text-gray-500">→</span>
-                          <span className="text-amber-400">Caerleon</span>
-                          <span className="text-gray-500">|</span>
-                          <span className="text-green-400">{formatSilver(opportunity.netProfit)}</span>
-                          <span className="text-gray-500">|</span>
-                          <span className="text-purple-400">{opportunity.margin.toFixed(1)}%</span>
-                          <span className="text-gray-500">|</span>
-                          <span className="text-blue-400">Qtd: {opportunity.quantity || 1}</span>
-                          <span className="text-gray-500">|</span>
-                          <span className="text-gray-400">Investimento: {formatSilver(opportunity.lowestPrice * (opportunity.quantity || 1))}</span>
-                        </div>
-                      </div>
 
-                      {/* Reserve Button */}
-                      <button
-                        onClick={() => handleReserve(opportunity)}
-                        disabled={reservingId === opportunity.itemId}
-                        className="bg-amber-500 hover:bg-amber-600 disabled:bg-slate-700 disabled:text-gray-500 text-slate-950 font-semibold py-1.5 px-3 rounded-lg flex items-center gap-1 transition-colors text-sm"
-                      >
-                        {reservingId === opportunity.itemId ? (
-                          <>
-                            <div className="w-3 h-3 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
-                          </>
-                        ) : (
-                          <>
-                            <Lock className="w-3 h-3" />
-                            Reservar
-                          </>
-                        )}
-                      </button>
+                        {/* Reserve Button */}
+                        <button
+                          onClick={() => handleReserve(opportunity)}
+                          disabled={reservingId === opportunity.itemId}
+                          className="bg-amber-500 hover:bg-amber-600 disabled:bg-slate-700 disabled:text-gray-500 text-slate-950 font-semibold py-1.5 px-3 rounded-lg flex items-center gap-1 transition-colors text-sm"
+                        >
+                          {reservingId === opportunity.itemId ? (
+                            <>
+                              <div className="w-3 h-3 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
+                            </>
+                          ) : (
+                            <>
+                              <Lock className="w-3 h-3" />
+                              Reservar
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-center py-12">
+                    <Package className="w-16 h-16 text-gray-600 mx-auto mb-4" />
+                    <h3 className="text-xl font-semibold text-gray-400 mb-2">
+                      Nenhuma Oportunidade
+                    </h3>
+                    <p className="text-gray-500">
+                      Ajuste os filtros ou aguarde novas oportunidades.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Total Investment and Return Bar */}
+              {opportunities.length > 0 && (
+                <div className="mt-4 bg-slate-800/50 rounded-lg p-4 border border-slate-700">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div>
+                        <div className="text-xs text-gray-400 mb-1">Investimento Total</div>
+                        <div className="text-lg font-bold text-blue-400">{formatSilver(totalInvestment)}</div>
+                      </div>
+                      <div className="text-gray-500">→</div>
+                      <div>
+                        <div className="text-xs text-gray-400 mb-1">Retorno Total</div>
+                        <div className="text-lg font-bold text-green-400">{formatSilver(totalReturn)}</div>
+                      </div>
+                      <div>
+                        <div className="text-xs text-gray-400 mb-1">Lucro Total</div>
+                        <div className="text-lg font-bold text-amber-400">{formatSilver(totalReturn - totalInvestment)}</div>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-xs text-gray-400 mb-1">Margem Média</div>
+                      <div className="text-lg font-bold text-purple-400">
+                        {totalInvestment > 0 ? ((totalReturn - totalInvestment) / totalInvestment * 100).toFixed(1) : 0}%
+                      </div>
                     </div>
                   </div>
-                ))
-              ) : (
-                <div className="text-center py-12">
-                  <Package className="w-16 h-16 text-gray-600 mx-auto mb-4" />
-                  <h3 className="text-xl font-semibold text-gray-400 mb-2">
-                    Nenhuma Oportunidade
-                  </h3>
-                  <p className="text-gray-500">
-                    Ajuste os filtros ou aguarde novas oportunidades.
-                  </p>
                 </div>
               )}
-            </div>
+            </>
           )}
         </div>
       </div>
