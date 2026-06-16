@@ -19,7 +19,23 @@ const generateEmailFromUsernameForSignup = (username) => {
 // Sign up with username and password
 export const signUp = async (username, password, guildCode = null) => {
   try {
-    const u = String(username ?? '').trim().toLowerCase();
+    // Sanitize username (remove invisible Unicode chars)
+    const normalizeUsername = (value) => {
+      return String(value ?? '')
+        .normalize('NFKC') // normaliza unicode
+        .replace(/[\u200B-\u200D\uFEFF]/g, '') // remove zero-width chars
+        .replace(/\u00A0/g, ' ') // NBSP -> espaço
+        .trim()
+        .toLowerCase();
+    };
+
+    const u = normalizeUsername(username);
+
+    // Debug logs for character codes
+    console.log('u =', JSON.stringify(u));
+    console.log('u length =', u.length);
+    console.log('u codepoints =', [...u].map(ch => ch.charCodeAt(0)));
+
     if (!u) throw new Error('Username inválido.');
     if (u.length < 3) throw new Error('Username deve ter pelo menos 3 caracteres.');
     if (!/^[a-z0-9_]+$/.test(u)) {
@@ -37,11 +53,16 @@ export const signUp = async (username, password, guildCode = null) => {
     }
 
     // Generate email from username for Supabase Auth (NEW users)
-    const email = generateEmailFromUsernameForSignup(u);
+    const email = `${u}@example.com`;
+
+    // Debug logs for email
+    console.log('email =', JSON.stringify(email));
+    console.log('email length =', email.length);
+    console.log('email codepoints =', [...email].map(ch => ch.charCodeAt(0)));
 
     // Basic email validation BEFORE calling supabase.auth.signUp
-    if (!/@.+\..+/.test(email)) {
-      throw new Error('Email gerado inválido. Verifique o domínio configurado.');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      throw new Error('Email gerado inválido.');
     }
 
     // Sign up the user
