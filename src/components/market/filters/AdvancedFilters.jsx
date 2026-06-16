@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Filter, X } from 'lucide-react';
 import CityFilter from './CityFilter';
 import TierFilter from './TierFilter';
@@ -11,9 +11,10 @@ import PremiumFilter from './PremiumFilter';
 /**
  * AdvancedFilters component - Container for all market filters
  * @param {Function} onFilterChange - Callback when any filter changes
+ * @param {Function} onApplyFilters - Callback when apply filters button is clicked
  */
 
-const AdvancedFilters = ({ onFilterChange }) => {
+const AdvancedFilters = ({ onFilterChange, onApplyFilters }) => {
   const [selectedCities, setSelectedCities] = useState([]);
   const [selectedTiers, setSelectedTiers] = useState([]);
   const [selectedEnchantments, setSelectedEnchantments] = useState([]);
@@ -22,8 +23,7 @@ const AdvancedFilters = ({ onFilterChange }) => {
   const [quantity, setQuantity] = useState(100);
   const [premium, setPremium] = useState('all');
 
-  // Trigger filter change when any filter state changes
-  useEffect(() => {
+  const handleApplyFilters = () => {
     onFilterChange({
       cities: selectedCities,
       tiers: selectedTiers,
@@ -33,7 +33,10 @@ const AdvancedFilters = ({ onFilterChange }) => {
       quantity,
       premium,
     });
-  }, [selectedCities, selectedTiers, selectedEnchantments, selectedQualities, minProfit, quantity, premium, onFilterChange]);
+    if (onApplyFilters) {
+      onApplyFilters();
+    }
+  };
 
   const handleClearAll = () => {
     setSelectedCities([]);
@@ -112,6 +115,16 @@ const AdvancedFilters = ({ onFilterChange }) => {
             onPremiumChange={setPremium}
           />
         </div>
+      </div>
+
+      {/* Apply Filters Button */}
+      <div className="bg-slate-800/30 px-6 py-4 border-t border-slate-800 flex justify-end">
+        <button
+          onClick={handleApplyFilters}
+          className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold px-6 py-2 rounded-lg transition-colors"
+        >
+          Aplicar Filtros
+        </button>
       </div>
 
       {/* Active Filters Summary */}

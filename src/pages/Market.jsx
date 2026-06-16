@@ -74,15 +74,7 @@ const Market = ({ userId }) => {
       {/* Filters */}
       {showFilters && (
         <div className="bg-slate-900 rounded-lg border border-slate-800 p-6">
-          <AdvancedFilters onFilterChange={handleFilterChange} />
-          <div className="mt-4 flex justify-end">
-            <button
-              onClick={handleApplyFilters}
-              className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold px-6 py-2 rounded-lg transition-colors"
-            >
-              Aplicar Filtros
-            </button>
-          </div>
+          <AdvancedFilters onFilterChange={handleFilterChange} onApplyFilters={handleApplyFilters} />
         </div>
       )}
 

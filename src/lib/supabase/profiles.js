@@ -50,7 +50,6 @@ export const getGuildMembers = async () => {
     const { data, error } = await supabase
       .from('profiles')
       .select('*')
-      .eq('is_active', true)
       .order('joined_at', { ascending: false });
 
     if (error) throw error;

@@ -5,6 +5,117 @@
 
 const ALBION_API_BASE = 'https://www.albion-online-data.com/api/v2/stats/prices';
 
+// Cache with TTL (5 minutes)
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const priceCache = new Map();
+
+// Request statistics
+let requestCount = 0;
+let rateLimitErrorCount = 0;
+
+// Concurrency limiter (max 3 simultaneous requests)
+const MAX_CONCURRENT_REQUESTS = 3;
+let activeRequests = 0;
+const requestQueue = [];
+
+/**
+ * Get cached price data if available and not expired
+ */
+const getCachedPrice = (itemName) => {
+  const cached = priceCache.get(itemName);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+    console.log(`Cache hit for ${itemName}`);
+    return cached.data;
+  }
+  return null;
+};
+
+/**
+ * Set cached price data
+ */
+const setCachedPrice = (itemName, data) => {
+  priceCache.set(itemName, {
+    data,
+    timestamp: Date.now(),
+  });
+};
+
+/**
+ * Sleep function for retry delay
+ */
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+/**
+ * Fetch with retry and exponential backoff
+ */
+const fetchWithRetry = async (url, retries = 3, initialDelay = 1000) => {
+  for (let attempt = 0; attempt < retries; attempt++) {
+    try {
+      requestCount++;
+      const response = await fetch(url);
+
+      if (response.status === 429) {
+        rateLimitErrorCount++;
+        const retryAfter = response.headers.get('Retry-After');
+        const delay = retryAfter ? parseInt(retryAfter) * 1000 : initialDelay * Math.pow(2, attempt);
+
+        console.warn(`Rate limited (429), retry ${attempt + 1}/${retries} after ${delay}ms`);
+
+        if (attempt < retries - 1) {
+          await sleep(delay);
+          continue;
+        }
+      }
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch: ${response.status} ${response.statusText}`);
+      }
+
+      return response;
+    } catch (error) {
+      if (attempt === retries - 1) {
+        throw error;
+      }
+
+      const delay = initialDelay * Math.pow(2, attempt);
+      console.warn(`Fetch error, retry ${attempt + 1}/${retries} after ${delay}ms:`, error.message);
+      await sleep(delay);
+    }
+  }
+};
+
+/**
+ * Process request queue with concurrency limit
+ */
+const processQueue = async () => {
+  if (activeRequests >= MAX_CONCURRENT_REQUESTS || requestQueue.length === 0) {
+    return;
+  }
+
+  activeRequests++;
+  const { resolve, reject, fn } = requestQueue.shift();
+
+  try {
+    const result = await fn();
+    resolve(result);
+  } catch (error) {
+    reject(error);
+  } finally {
+    activeRequests--;
+    processQueue(); // Process next request in queue
+  }
+};
+
+/**
+ * Queue a request with concurrency limit
+ */
+const queueRequest = (fn) => {
+  return new Promise((resolve, reject) => {
+    requestQueue.push({ resolve, reject, fn });
+    processQueue();
+  });
+};
+
 /**
  * Mock data for when API fails or is unavailable
  */
@@ -63,15 +174,30 @@ const MOCK_OPPORTUNITIES = [
  * @returns {Promise<Object>} Price data for the item
  */
 export const fetchItemPrice = async (itemName, locations = 1) => {
+  // Check cache first
+  const cached = getCachedPrice(itemName);
+  if (cached) {
+    return cached;
+  }
+
   try {
     console.log(`Fetching price for ${itemName} from Albion API`);
-    const response = await fetch(`${ALBION_API_BASE}/${itemName}?locations=${locations}`);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch price for ${itemName}: ${response.status} ${response.statusText}`);
-    }
+
+    // Queue the request to respect concurrency limit
+    const response = await queueRequest(async () => {
+      return await fetchWithRetry(`${ALBION_API_BASE}/${itemName}?locations=${locations}`);
+    });
+
     const data = await response.json();
-    console.log(`Price data for ${itemName}:`, data);
-    return data[0] || null;
+    const priceData = data[0] || null;
+
+    // Cache the result
+    if (priceData) {
+      setCachedPrice(itemName, priceData);
+    }
+
+    console.log(`Price data for ${itemName}:`, priceData);
+    return priceData;
   } catch (error) {
     console.error(`Error fetching price for ${itemName}:`, error);
     return null;
@@ -86,8 +212,18 @@ export const fetchItemPrice = async (itemName, locations = 1) => {
  */
 export const fetchMultipleItemPrices = async (items, locations = 1) => {
   try {
-    const promises = items.map(item => fetchItemPrice(item.itemId, locations));
-    const results = await Promise.all(promises);
+    console.log(`Fetching prices for ${items.length} items (max ${MAX_CONCURRENT_REQUESTS} concurrent)`);
+    const startTime = Date.now();
+
+    // Use queue system instead of Promise.all to respect concurrency limit
+    const results = await Promise.all(
+      items.map(item => fetchItemPrice(item.itemId, locations))
+    );
+
+    const duration = Date.now() - startTime;
+    console.log(`Fetched ${results.filter(r => r !== null).length}/${items.length} prices in ${duration}ms`);
+    console.log(`Request stats: ${requestCount} total requests, ${rateLimitErrorCount} rate limit errors`);
+
     return results.filter(result => result !== null);
   } catch (error) {
     console.error('Error fetching multiple item prices:', error);
@@ -179,32 +315,131 @@ export const fetchTopOpportunities = async (items, limit = 10) => {
 };
 
 // Common items to check for arbitrage with enchantment and quantity
+// Only equipable items that can be sold in Black Market
 export const COMMON_ITEMS = [
   { itemId: 'T4_BAG', enchantment: 0, quantity: 1 },
   { itemId: 'T5_BAG', enchantment: 0, quantity: 1 },
   { itemId: 'T6_BAG', enchantment: 0, quantity: 1 },
-  { itemId: 'T4_PLANKS', enchantment: 0, quantity: 100 },
-  { itemId: 'T5_PLANKS', enchantment: 0, quantity: 100 },
-  { itemId: 'T6_PLANKS', enchantment: 0, quantity: 100 },
-  { itemId: 'T4_METALBAR', enchantment: 0, quantity: 100 },
-  { itemId: 'T5_METALBAR', enchantment: 0, quantity: 100 },
-  { itemId: 'T6_METALBAR', enchantment: 0, quantity: 100 },
-  { itemId: 'T4_LEATHER', enchantment: 0, quantity: 100 },
-  { itemId: 'T5_LEATHER', enchantment: 0, quantity: 100 },
-  { itemId: 'T6_LEATHER', enchantment: 0, quantity: 100 },
-  { itemId: 'T4_CLOTH', enchantment: 0, quantity: 100 },
-  { itemId: 'T5_CLOTH', enchantment: 0, quantity: 100 },
-  { itemId: 'T6_CLOTH', enchantment: 0, quantity: 100 },
-  { itemId: 'T4_ORE', enchantment: 0, quantity: 100 },
-  { itemId: 'T5_ORE', enchantment: 0, quantity: 100 },
-  { itemId: 'T6_ORE', enchantment: 0, quantity: 100 },
-  { itemId: 'T4_LOG', enchantment: 0, quantity: 100 },
-  { itemId: 'T5_LOG', enchantment: 0, quantity: 100 },
-  { itemId: 'T6_LOG', enchantment: 0, quantity: 100 },
-  { itemId: 'T4_HIDE', enchantment: 0, quantity: 100 },
-  { itemId: 'T5_HIDE', enchantment: 0, quantity: 100 },
-  { itemId: 'T6_HIDE', enchantment: 0, quantity: 100 },
-  { itemId: 'T4_FIBER', enchantment: 0, quantity: 100 },
-  { itemId: 'T5_FIBER', enchantment: 0, quantity: 100 },
-  { itemId: 'T6_FIBER', enchantment: 0, quantity: 100 },
+  { itemId: 'T7_BAG', enchantment: 0, quantity: 1 },
+  { itemId: 'T8_BAG', enchantment: 0, quantity: 1 },
+  { itemId: 'T4_HEAD_PLATE', enchantment: 0, quantity: 1 },
+  { itemId: 'T5_HEAD_PLATE', enchantment: 0, quantity: 1 },
+  { itemId: 'T6_HEAD_PLATE', enchantment: 0, quantity: 1 },
+  { itemId: 'T7_HEAD_PLATE', enchantment: 0, quantity: 1 },
+  { itemId: 'T8_HEAD_PLATE', enchantment: 0, quantity: 1 },
+  { itemId: 'T4_HEAD_CLOTH', enchantment: 0, quantity: 1 },
+  { itemId: 'T5_HEAD_CLOTH', enchantment: 0, quantity: 1 },
+  { itemId: 'T6_HEAD_CLOTH', enchantment: 0, quantity: 1 },
+  { itemId: 'T7_HEAD_CLOTH', enchantment: 0, quantity: 1 },
+  { itemId: 'T8_HEAD_CLOTH', enchantment: 0, quantity: 1 },
+  { itemId: 'T4_HEAD_LEATHER', enchantment: 0, quantity: 1 },
+  { itemId: 'T5_HEAD_LEATHER', enchantment: 0, quantity: 1 },
+  { itemId: 'T6_HEAD_LEATHER', enchantment: 0, quantity: 1 },
+  { itemId: 'T7_HEAD_LEATHER', enchantment: 0, quantity: 1 },
+  { itemId: 'T8_HEAD_LEATHER', enchantment: 0, quantity: 1 },
+  { itemId: 'T4_ARMOR_PLATE', enchantment: 0, quantity: 1 },
+  { itemId: 'T5_ARMOR_PLATE', enchantment: 0, quantity: 1 },
+  { itemId: 'T6_ARMOR_PLATE', enchantment: 0, quantity: 1 },
+  { itemId: 'T7_ARMOR_PLATE', enchantment: 0, quantity: 1 },
+  { itemId: 'T8_ARMOR_PLATE', enchantment: 0, quantity: 1 },
+  { itemId: 'T4_ARMOR_CLOTH', enchantment: 0, quantity: 1 },
+  { itemId: 'T5_ARMOR_CLOTH', enchantment: 0, quantity: 1 },
+  { itemId: 'T6_ARMOR_CLOTH', enchantment: 0, quantity: 1 },
+  { itemId: 'T7_ARMOR_CLOTH', enchantment: 0, quantity: 1 },
+  { itemId: 'T8_ARMOR_CLOTH', enchantment: 0, quantity: 1 },
+  { itemId: 'T4_ARMOR_LEATHER', enchantment: 0, quantity: 1 },
+  { itemId: 'T5_ARMOR_LEATHER', enchantment: 0, quantity: 1 },
+  { itemId: 'T6_ARMOR_LEATHER', enchantment: 0, quantity: 1 },
+  { itemId: 'T7_ARMOR_LEATHER', enchantment: 0, quantity: 1 },
+  { itemId: 'T8_ARMOR_LEATHER', enchantment: 0, quantity: 1 },
+  { itemId: 'T4_SHOES_PLATE', enchantment: 0, quantity: 1 },
+  { itemId: 'T5_SHOES_PLATE', enchantment: 0, quantity: 1 },
+  { itemId: 'T6_SHOES_PLATE', enchantment: 0, quantity: 1 },
+  { itemId: 'T7_SHOES_PLATE', enchantment: 0, quantity: 1 },
+  { itemId: 'T8_SHOES_PLATE', enchantment: 0, quantity: 1 },
+  { itemId: 'T4_SHOES_CLOTH', enchantment: 0, quantity: 1 },
+  { itemId: 'T5_SHOES_CLOTH', enchantment: 0, quantity: 1 },
+  { itemId: 'T6_SHOES_CLOTH', enchantment: 0, quantity: 1 },
+  { itemId: 'T7_SHOES_CLOTH', enchantment: 0, quantity: 1 },
+  { itemId: 'T8_SHOES_CLOTH', enchantment: 0, quantity: 1 },
+  { itemId: 'T4_SHOES_LEATHER', enchantment: 0, quantity: 1 },
+  { itemId: 'T5_SHOES_LEATHER', enchantment: 0, quantity: 1 },
+  { itemId: 'T6_SHOES_LEATHER', enchantment: 0, quantity: 1 },
+  { itemId: 'T7_SHOES_LEATHER', enchantment: 0, quantity: 1 },
+  { itemId: 'T8_SHOES_LEATHER', enchantment: 0, quantity: 1 },
+  { itemId: 'T4_MAIN_AXE', enchantment: 0, quantity: 1 },
+  { itemId: 'T5_MAIN_AXE', enchantment: 0, quantity: 1 },
+  { itemId: 'T6_MAIN_AXE', enchantment: 0, quantity: 1 },
+  { itemId: 'T7_MAIN_AXE', enchantment: 0, quantity: 1 },
+  { itemId: 'T8_MAIN_AXE', enchantment: 0, quantity: 1 },
+  { itemId: 'T4_MAIN_SWORD', enchantment: 0, quantity: 1 },
+  { itemId: 'T5_MAIN_SWORD', enchantment: 0, quantity: 1 },
+  { itemId: 'T6_MAIN_SWORD', enchantment: 0, quantity: 1 },
+  { itemId: 'T7_MAIN_SWORD', enchantment: 0, quantity: 1 },
+  { itemId: 'T8_MAIN_SWORD', enchantment: 0, quantity: 1 },
+  { itemId: 'T4_MAIN_MACE', enchantment: 0, quantity: 1 },
+  { itemId: 'T5_MAIN_MACE', enchantment: 0, quantity: 1 },
+  { itemId: 'T6_MAIN_MACE', enchantment: 0, quantity: 1 },
+  { itemId: 'T7_MAIN_MACE', enchantment: 0, quantity: 1 },
+  { itemId: 'T8_MAIN_MACE', enchantment: 0, quantity: 1 },
+  { itemId: 'T4_MAIN_DAGGER', enchantment: 0, quantity: 1 },
+  { itemId: 'T5_MAIN_DAGGER', enchantment: 0, quantity: 1 },
+  { itemId: 'T6_MAIN_DAGGER', enchantment: 0, quantity: 1 },
+  { itemId: 'T7_MAIN_DAGGER', enchantment: 0, quantity: 1 },
+  { itemId: 'T8_MAIN_DAGGER', enchantment: 0, quantity: 1 },
+  { itemId: 'T4_MAIN_QUARTERSTAFF', enchantment: 0, quantity: 1 },
+  { itemId: 'T5_MAIN_QUARTERSTAFF', enchantment: 0, quantity: 1 },
+  { itemId: 'T6_MAIN_QUARTERSTAFF', enchantment: 0, quantity: 1 },
+  { itemId: 'T7_MAIN_QUARTERSTAFF', enchantment: 0, quantity: 1 },
+  { itemId: 'T8_MAIN_QUARTERSTAFF', enchantment: 0, quantity: 1 },
+  { itemId: 'T4_OFF_AXE', enchantment: 0, quantity: 1 },
+  { itemId: 'T5_OFF_AXE', enchantment: 0, quantity: 1 },
+  { itemId: 'T6_OFF_AXE', enchantment: 0, quantity: 1 },
+  { itemId: 'T7_OFF_AXE', enchantment: 0, quantity: 1 },
+  { itemId: 'T8_OFF_AXE', enchantment: 0, quantity: 1 },
+  { itemId: 'T4_OFF_DAGGER', enchantment: 0, quantity: 1 },
+  { itemId: 'T5_OFF_DAGGER', enchantment: 0, quantity: 1 },
+  { itemId: 'T6_OFF_DAGGER', enchantment: 0, quantity: 1 },
+  { itemId: 'T7_OFF_DAGGER', enchantment: 0, quantity: 1 },
+  { itemId: 'T8_OFF_DAGGER', enchantment: 0, quantity: 1 },
+  { itemId: 'T4_OFF_HOLY', enchantment: 0, quantity: 1 },
+  { itemId: 'T5_OFF_HOLY', enchantment: 0, quantity: 1 },
+  { itemId: 'T6_OFF_HOLY', enchantment: 0, quantity: 1 },
+  { itemId: 'T7_OFF_HOLY', enchantment: 0, quantity: 1 },
+  { itemId: 'T8_OFF_HOLY', enchantment: 0, quantity: 1 },
+  { itemId: 'T4_OFF_NATURE', enchantment: 0, quantity: 1 },
+  { itemId: 'T5_OFF_NATURE', enchantment: 0, quantity: 1 },
+  { itemId: 'T6_OFF_NATURE', enchantment: 0, quantity: 1 },
+  { itemId: 'T7_OFF_NATURE', enchantment: 0, quantity: 1 },
+  { itemId: 'T8_OFF_NATURE', enchantment: 0, quantity: 1 },
+  { itemId: 'T4_OFF_ARCANESTAFF', enchantment: 0, quantity: 1 },
+  { itemId: 'T5_OFF_ARCANESTAFF', enchantment: 0, quantity: 1 },
+  { itemId: 'T6_OFF_ARCANESTAFF', enchantment: 0, quantity: 1 },
+  { itemId: 'T7_OFF_ARCANESTAFF', enchantment: 0, quantity: 1 },
+  { itemId: 'T8_OFF_ARCANESTAFF', enchantment: 0, quantity: 1 },
+  { itemId: 'T4_OFF_DEMONICSTAFF', enchantment: 0, quantity: 1 },
+  { itemId: 'T5_OFF_DEMONICSTAFF', enchantment: 0, quantity: 1 },
+  { itemId: 'T6_OFF_DEMONICSTAFF', enchantment: 0, quantity: 1 },
+  { itemId: 'T7_OFF_DEMONICSTAFF', enchantment: 0, quantity: 1 },
+  { itemId: 'T8_OFF_DEMONICSTAFF', enchantment: 0, quantity: 1 },
+  { itemId: 'T4_OFF_CROSSBOW', enchantment: 0, quantity: 1 },
+  { itemId: 'T5_OFF_CROSSBOW', enchantment: 0, quantity: 1 },
+  { itemId: 'T6_OFF_CROSSBOW', enchantment: 0, quantity: 1 },
+  { itemId: 'T7_OFF_CROSSBOW', enchantment: 0, quantity: 1 },
+  { itemId: 'T8_OFF_CROSSBOW', enchantment: 0, quantity: 1 },
+  { itemId: 'T4_OFF_TORCH', enchantment: 0, quantity: 1 },
+  { itemId: 'T5_OFF_TORCH', enchantment: 0, quantity: 1 },
+  { itemId: 'T6_OFF_TORCH', enchantment: 0, quantity: 1 },
+  { itemId: 'T7_OFF_TORCH', enchantment: 0, quantity: 1 },
+  { itemId: 'T8_OFF_TORCH', enchantment: 0, quantity: 1 },
+  { itemId: 'T4_SHIELD', enchantment: 0, quantity: 1 },
+  { itemId: 'T5_SHIELD', enchantment: 0, quantity: 1 },
+  { itemId: 'T6_SHIELD', enchantment: 0, quantity: 1 },
+  { itemId: 'T7_SHIELD', enchantment: 0, quantity: 1 },
+  { itemId: 'T8_SHIELD', enchantment: 0, quantity: 1 },
+  { itemId: 'T4_CAPE', enchantment: 0, quantity: 1 },
+  { itemId: 'T5_CAPE', enchantment: 0, quantity: 1 },
+  { itemId: 'T6_CAPE', enchantment: 0, quantity: 1 },
+  { itemId: 'T7_CAPE', enchantment: 0, quantity: 1 },
+  { itemId: 'T8_CAPE', enchantment: 0, quantity: 1 },
 ];

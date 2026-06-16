@@ -21,10 +21,10 @@ const RankingDisplay = ({ userId }) => {
     setLoading(true);
 
     try {
-      // Load rankings
+      // Load rankings (show all members, not just top 10)
       const [weeklyResult, monthlyResult, positionResult] = await Promise.all([
-        getWeeklyRanking(10),
-        getMonthlyRanking(10),
+        getWeeklyRanking(1000), // Show all members
+        getMonthlyRanking(1000), // Show all members
         userId ? getUserRankingPosition(userId) : Promise.resolve({ success: false }),
       ]);
 
@@ -153,57 +153,51 @@ const RankingDisplay = ({ userId }) => {
             </p>
           </div>
         ) : (
-          <div className="space-y-3">
-            {currentRanking.map((user) => (
+          <div className="space-y-2">
+            {currentRanking.map((user, index) => (
               <div
                 key={user.profile_id}
-                className={`flex items-center gap-4 p-4 rounded-lg border transition-all ${
+                className={`flex items-center gap-4 p-3 rounded-lg border transition-all ${
                   user.profile_id === userId
                     ? 'bg-red-500/20 border-red-500/50'
-                    : getRankColor(user.rank)
+                    : 'bg-slate-800/50 border-slate-700 hover:border-amber-500/50'
                 }`}
               >
-                {/* Rank */}
-                <div className="flex items-center justify-center w-12 h-12">
-                  {getRankIcon(user.rank)}
+                {/* Rank Number */}
+                <div className="flex items-center justify-center w-8 h-8 bg-slate-700 rounded-full text-white font-bold text-sm">
+                  {user.rank}
                 </div>
 
                 {/* User Info */}
-                <div className="flex-1">
-                  <div className="flex items-center gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
                     {user.avatar_url ? (
                       <img
                         src={user.avatar_url}
                         alt={user.username || 'Avatar'}
-                        className="w-10 h-10 rounded-full object-cover"
+                        className="w-8 h-8 rounded-full object-cover"
                       />
                     ) : (
-                      <div className="w-10 h-10 bg-slate-700 rounded-full flex items-center justify-center text-white font-bold">
+                      <div className="w-8 h-8 bg-slate-700 rounded-full flex items-center justify-center text-white font-bold text-xs">
                         {user.username?.charAt(0).toUpperCase()}
                       </div>
                     )}
-                    <div>
-                      <h4 className="font-semibold text-white">{user.username}</h4>
-                      {user.full_name && (
-                        <p className="text-sm text-gray-400">{user.full_name}</p>
-                      )}
-                    </div>
+                    <h4 className="font-semibold text-white text-sm truncate">{user.username}</h4>
+                    {user.full_name && (
+                      <span className="text-xs text-gray-400 truncate">{user.full_name}</span>
+                    )}
                   </div>
                 </div>
 
                 {/* Stats */}
-                <div className="flex items-center gap-6">
-                  <div className="text-center">
-                    <div className="text-xs text-gray-400 mb-1">Pontos</div>
-                    <div className="text-lg font-bold text-red-400">
-                      {formatNumber(user.points_earned)}
-                    </div>
+                <div className="flex items-center gap-4 text-xs">
+                  <div className="text-right">
+                    <div className="text-gray-400">Pontos</div>
+                    <div className="font-bold text-red-400">{formatNumber(user.points_earned)}</div>
                   </div>
-                  <div className="text-center">
-                    <div className="text-xs text-gray-400 mb-1">Missões</div>
-                    <div className="text-lg font-bold text-white">
-                      {user.missions_completed}
-                    </div>
+                  <div className="text-right">
+                    <div className="text-gray-400">Missões</div>
+                    <div className="font-bold text-white">{user.missions_completed}</div>
                   </div>
                 </div>
               </div>

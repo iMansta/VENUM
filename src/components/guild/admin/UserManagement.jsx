@@ -144,7 +144,7 @@ const UserManagement = ({ userId, userRole }) => {
         </div>
       </div>
 
-      {/* User Cards */}
+      {/* User List */}
       {loading ? (
         <div className="text-center py-12">
           <div className="w-12 h-12 border-4 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
@@ -161,91 +161,77 @@ const UserManagement = ({ userId, userRole }) => {
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {sortedMembers.map((member) => (
+        <div className="space-y-2">
+          {sortedMembers.map((member, index) => (
             <div
               key={member.id}
-              className="bg-slate-800/50 rounded-lg p-4 border border-slate-700 hover:border-amber-500/50 transition-all"
+              className="bg-slate-800/50 rounded-lg p-3 border border-slate-700 hover:border-amber-500/50 transition-all"
             >
-              {/* User Header */}
-              <div className="flex items-start gap-3 mb-4">
+              <div className="flex items-center gap-4">
+                {/* Avatar */}
                 {member.avatar_url ? (
                   <img
                     src={member.avatar_url}
                     alt={member.username || 'Avatar'}
-                    className="w-12 h-12 rounded-full object-cover"
+                    className="w-10 h-10 rounded-full object-cover"
                   />
                 ) : (
-                  <div className="w-12 h-12 bg-slate-700 rounded-full flex items-center justify-center text-white font-bold text-lg">
+                  <div className="w-10 h-10 bg-slate-700 rounded-full flex items-center justify-center text-white font-bold">
                     {member.username?.charAt(0).toUpperCase()}
                   </div>
                 )}
-                <div className="flex-1">
-                  <h4 className="font-semibold text-white">{member.username}</h4>
-                  {member.full_name && (
-                    <p className="text-sm text-gray-400">{member.full_name}</p>
-                  )}
-                  <span className={`inline-block mt-1 px-2 py-0.5 rounded text-xs font-medium border ${getRoleColor(member.role)}`}>
-                    {getRoleName(member.role)}
-                  </span>
-                </div>
-              </div>
 
-              {/* Stats */}
-              <div className="grid grid-cols-2 gap-2 mb-4">
-                <div className="bg-slate-900/50 rounded p-2 text-center">
-                  <div className="flex items-center justify-center gap-1 text-amber-400 mb-1">
-                    <Award className="w-3 h-3" />
-                    <span className="text-xs text-gray-400">Pontos</span>
+                {/* User Info */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <h4 className="font-semibold text-white text-sm truncate">{member.username}</h4>
+                    {member.full_name && (
+                      <span className="text-xs text-gray-400 truncate">{member.full_name}</span>
+                    )}
+                    <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium border ${getRoleColor(member.role)}`}>
+                      {getRoleName(member.role)}
+                    </span>
+                    <span className={`px-2 py-0.5 rounded text-xs font-medium ${member.is_active ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+                      {member.is_active ? 'Ativo' : 'Inativo'}
+                    </span>
                   </div>
-                  <p className="font-bold text-white text-sm">{formatNumber(member.total_points)}</p>
                 </div>
-                <div className="bg-slate-900/50 rounded p-2 text-center">
-                  <div className="flex items-center justify-center gap-1 text-gray-400 mb-1">
-                    <Clock className="w-3 h-3" />
-                    <span className="text-xs text-gray-400">Entrou</span>
+
+                {/* Stats */}
+                <div className="flex items-center gap-4 text-xs">
+                  <div className="text-right">
+                    <div className="text-gray-400">Pontos</div>
+                    <div className="font-bold text-amber-400">{formatNumber(member.total_points)}</div>
                   </div>
-                  <p className="font-bold text-white text-xs">{formatDate(member.joined_at).split(' ')[0]}</p>
+                  <div className="text-right">
+                    <div className="text-gray-400">Entrou</div>
+                    <div className="font-bold text-white">{formatDate(member.joined_at).split(' ')[0]}</div>
+                  </div>
                 </div>
-              </div>
 
-              {/* Status */}
-              <div className="mb-4">
-                <span className={`px-2 py-1 rounded text-xs font-medium ${member.is_active ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
-                  {member.is_active ? 'Ativo' : 'Inativo'}
-                </span>
-              </div>
-
-              {/* Actions */}
-              <div className="space-y-2">
-                {/* Role Management */}
+                {/* Actions */}
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-gray-400">Cargo:</span>
                   <select
                     value={member.role}
                     onChange={(e) => handleRoleChange(member.id, e.target.value)}
                     disabled={member.id === userId}
-                    className={`flex-1 px-2 py-1 rounded text-xs font-medium border ${getRoleColor(member.role)} ${member.id === userId ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                    className={`px-2 py-1 rounded text-xs font-medium border ${getRoleColor(member.role)} ${member.id === userId ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
                   >
                     <option value="member">Membro</option>
                     <option value="officer">Oficial</option>
                     <option value="admin">Admin</option>
                   </select>
-                </div>
-
-                {/* Action Buttons */}
-                <div className="flex gap-2">
                   {member.is_active && member.id !== userId && (
                     <button
                       onClick={() => handleDeactivate(member.id)}
-                      className="flex-1 bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 font-medium py-1.5 px-3 rounded transition-colors text-xs"
+                      className="bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 font-medium py-1 px-3 rounded transition-colors text-xs"
                     >
                       Desativar
                     </button>
                   )}
                   <button
                     onClick={() => window.open(`/profile/${member.id}`, '_blank')}
-                    className="flex-1 bg-slate-700 hover:bg-slate-600 text-white font-medium py-1.5 px-3 rounded transition-colors text-xs"
+                    className="bg-slate-700 hover:bg-slate-600 text-white font-medium py-1 px-3 rounded transition-colors text-xs"
                   >
                     Ver Perfil
                   </button>

@@ -11,6 +11,7 @@ const TransportList = ({ userId, filters, refreshKey }) => {
   const [loading, setLoading] = useState(true);
   const [reservingId, setReservingId] = useState(null);
   const [completingId, setCompletingId] = useState(null);
+  const [opportunityCount, setOpportunityCount] = useState(100);
 
   useEffect(() => {
     loadOpportunities();
@@ -22,13 +23,13 @@ const TransportList = ({ userId, filters, refreshKey }) => {
     }, 60000);
 
     return () => clearInterval(interval);
-  }, [refreshKey, filters]);
+  }, [refreshKey, filters, opportunityCount]);
 
   const loadOpportunities = async () => {
     setLoading(true);
     try {
-      const opportunityCount = filters?.quantity || 100;
-      const data = await fetchTopOpportunities(COMMON_ITEMS, opportunityCount);
+      const count = filters?.quantity || opportunityCount;
+      const data = await fetchTopOpportunities(COMMON_ITEMS, count);
 
       // Apply filters from props if provided
       let filtered = data;
@@ -127,25 +128,6 @@ const TransportList = ({ userId, filters, refreshKey }) => {
 
     setCompletingId(transportId);
     try {
-      const { data: transport, error: fetchError } = await supabase
-        .from('transports')
-        .select('*')
-        .eq('id', transportId)
-        .single();
-
-      if (fetchError) throw fetchError;
-
-      // Award points for completing transport
-      const pointsToAward = Math.round(transport.profit / 1000); // 1 point per 1000 silver profit
-      
-      await supabase.rpc('award_points', {
-        p_profile_id: userId,
-        p_amount: pointsToAward,
-        p_reason: `Transporte concluído: ${transport.item_name} de ${transport.from_city} para ${transport.to_city}`,
-        p_reference_id: transportId,
-        p_reference_type: 'transport',
-      });
-
       // Update transport status
       const { error: updateError } = await supabase
         .from('transports')
@@ -153,10 +135,10 @@ const TransportList = ({ userId, filters, refreshKey }) => {
         .eq('id', transportId);
 
       if (updateError) throw updateError;
-      
+
       // Reload transports
       loadMyTransports();
-      alert(`Transporte concluído! Você ganhou ${pointsToAward} pontos.`);
+      alert('Transporte concluído!');
     } catch (error) {
       console.error('Error completing transport:', error);
       alert('Falha ao concluir transporte. Tente novamente.');
@@ -170,7 +152,6 @@ const TransportList = ({ userId, filters, refreshKey }) => {
   };
 
   const cities = [...new Set(opportunities.map(opp => opp.lowestCity))];
-  const opportunityCount = filters?.quantity || 100;
 
   return (
     <div className="space-y-6">
@@ -187,9 +168,15 @@ const TransportList = ({ userId, filters, refreshKey }) => {
               </span>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-400">
-                {opportunityCount} oportunidades carregadas
-              </span>
+              <select
+                value={opportunityCount}
+                onChange={(e) => setOpportunityCount(parseInt(e.target.value))}
+                className="bg-slate-700 border border-slate-600 rounded px-3 py-1 text-white text-sm"
+              >
+                <option value={10}>10 oportunidades</option>
+                <option value={50}>50 oportunidades</option>
+                <option value={100}>100 oportunidades</option>
+              </select>
             </div>
           </div>
         </div>
