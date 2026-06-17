@@ -3,8 +3,8 @@ import { getSaturationLevel, calculateSaturationAdjustedPrice, getSaturationWarn
 
 const ALBION_API_BASE = 'https://www.albion-online-data.com/api/v2/stats/prices';
 
-// Cache with TTL (5 minutes)
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+// Cache with TTL (10 minutes - increased to reduce API calls)
+const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
 const priceCache = new Map();
 
 // Request statistics
@@ -13,8 +13,8 @@ let rateLimitErrorCount = 0;
 let cacheHits = 0;
 let cacheMisses = 0;
 
-// Concurrency limiter (max 3 simultaneous requests)
-const MAX_CONCURRENT_REQUESTS = 3;
+// Concurrency limiter (max 2 simultaneous requests - reduced to avoid rate limiting)
+const MAX_CONCURRENT_REQUESTS = 2;
 let activeRequests = 0;
 const requestQueue = [];
 
@@ -246,7 +246,7 @@ export const fetchMultipleItemPrices = async (items, locations = 1) => {
     const startTime = Date.now();
 
     // Split items into smaller batches to reduce burst requests
-    const BATCH_SIZE = 20; // Process 20 items at a time
+    const BATCH_SIZE = 15; // Reduced from 20 to 15 to reduce burst
     const batches = [];
     for (let i = 0; i < items.length; i += BATCH_SIZE) {
       batches.push(items.slice(i, i + BATCH_SIZE));
@@ -265,9 +265,9 @@ export const fetchMultipleItemPrices = async (items, locations = 1) => {
 
       allResults.push(...batchResults);
 
-      // Add delay between batches to reduce burst
+      // Add delay between batches to reduce burst (increased from 500-800ms to 1000-1500ms)
       if (i < batches.length - 1) {
-        const delay = 500 + Math.random() * 300; // 500-800ms delay
+        const delay = 1000 + Math.random() * 500; // 1000-1500ms delay
         console.log(`[FETCH] Waiting ${delay}ms before next batch`);
         await sleep(delay);
       }
