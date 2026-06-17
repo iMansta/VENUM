@@ -3,6 +3,7 @@ import { TrendingUp, Search, Filter, ArrowUpDown, RefreshCw } from 'lucide-react
 import TopOpportunities from '@/components/market/TopOpportunities';
 import AdvancedFilters from '@/components/market/filters/AdvancedFilters';
 import TransportList from '@/components/market/TransportList';
+import { useMarketOpportunities } from '@/hooks/useMarketOpportunities';
 
 /**
  * Market page - Market intelligence and arbitrage opportunities
@@ -13,6 +14,9 @@ const Market = ({ userId }) => {
   const [loading, setLoading] = useState(true);
   const [transportFilters, setTransportFilters] = useState(null);
   const [refreshKey, setRefreshKey] = useState(0);
+
+  // Single source of truth for market opportunities
+  const { opportunities, loading: opportunitiesLoading, refresh: refreshOpportunities } = useMarketOpportunities(50, refreshKey);
 
   useEffect(() => {
     // Simulate loading or check if data is ready
@@ -30,7 +34,8 @@ const Market = ({ userId }) => {
   };
 
   const handleRefresh = () => {
-    // Refresh both Top Opportunities and Transport List
+    // Refresh opportunities
+    refreshOpportunities();
     setRefreshKey(prev => prev + 1);
   };
 
@@ -88,7 +93,7 @@ const Market = ({ userId }) => {
           <p className="text-gray-400 text-sm mt-1">Melhores oportunidades de arbitragem (sem filtro)</p>
         </div>
         <div className="p-6">
-          <TopOpportunities refreshKey={refreshKey} />
+          <TopOpportunities arbitrageData={opportunities} limit={10} />
         </div>
       </div>
 
@@ -102,7 +107,13 @@ const Market = ({ userId }) => {
           <p className="text-gray-400 text-sm mt-1">Oportunidades de transporte (com filtro)</p>
         </div>
         <div className="p-6">
-          <TransportList userId={userId} filters={transportFilters} refreshKey={refreshKey} />
+          <TransportList 
+            userId={userId} 
+            filters={transportFilters} 
+            refreshKey={refreshKey}
+            opportunities={opportunities}
+            loading={opportunitiesLoading}
+          />
         </div>
       </div>
     </div>

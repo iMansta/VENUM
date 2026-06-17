@@ -1,21 +1,33 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Trash2, Plus, Package, TrendingUp, X, Lock, Unlock, CheckCircle, Clock } from 'lucide-react';
+import { Trash2, Plus, Package, TrendingUp, X, Lock, Unlock, CheckCircle, Clock, Shield, Timer, AlertTriangle } from 'lucide-react';
 import { fetchTopOpportunities, COMMON_ITEMS } from '@/lib/albion/api';
 import { supabase } from '@/lib/supabase/client';
 import ItemIcon from './ItemIcon';
 import { getItemName } from '@/lib/i18n/itemNames';
+import SecurityChecklist from './SecurityChecklist';
 
-const TransportList = ({ userId, filters, refreshKey }) => {
+const TransportList = ({ userId, filters, refreshKey, opportunities: propOpportunities, loading: propLoading }) => {
   const [opportunities, setOpportunities] = useState([]);
   const [myTransports, setMyTransports] = useState([]);
   const [loading, setLoading] = useState(true);
   const [reservingId, setReservingId] = useState(null);
   const [completingId, setCompletingId] = useState(null);
   const [opportunityCount, setOpportunityCount] = useState(50);
-  const [totalInvestment, setTotalInvestment] = useState(0);
-  const [totalReturn, setTotalReturn] = useState(0);
+  const [showSecurityChecklist, setShowSecurityChecklist] = useState(false);
+  const [selectedOpportunity, setSelectedOpportunity] = useState(null);
+
+  // Use opportunities from props if provided, otherwise use local state
+  useEffect(() => {
+    if (propOpportunities !== undefined) {
+      setOpportunities(propOpportunities);
+      setLoading(propLoading);
+    }
+  }, [propOpportunities, propLoading]);
 
   const loadOpportunities = useCallback(async () => {
+    // Only load if opportunities are not provided via props
+    if (propOpportunities !== undefined) return;
+    
     setLoading(true);
     try {
       const count = filters?.quantity || opportunityCount;
@@ -48,22 +60,28 @@ const TransportList = ({ userId, filters, refreshKey }) => {
           // Filter by premium status (this would need to be implemented in the API)
           // For now, we'll skip this as it requires backend changes
         }
+        if (filters.maxInvestment && filters.maxInvestment !== Infinity) {
+          filtered = filtered.filter(opp => opp.lowestPrice <= filters.maxInvestment);
+        }
+        if (filters.riskLevel && filters.riskLevel !== 'all') {
+          filtered = filtered.filter(opp => {
+            if (!opp.risk) return false;
+            if (filters.riskLevel === 'low') return opp.risk.value <= 0.1;
+            if (filters.riskLevel === 'medium') return opp.risk.value <= 0.2;
+            if (filters.riskLevel === 'high') return opp.risk.value <= 0.4;
+            return true;
+          });
+        }
       }
 
       console.log('Filtered opportunities:', filtered.length);
       setOpportunities(filtered);
-
-      // Calculate total investment and return
-      const investment = filtered.reduce((sum, opp) => sum + (opp.lowestPrice || 0), 0);
-      const returnAmount = filtered.reduce((sum, opp) => sum + (opp.bmPrice || 0), 0);
-      setTotalInvestment(investment);
-      setTotalReturn(returnAmount);
     } catch (error) {
       console.error('Error loading opportunities:', error);
     } finally {
       setLoading(false);
     }
-  }, [filters, opportunityCount]);
+  }, [filters, opportunityCount, propOpportunities]);
 
   const loadMyTransports = useCallback(async () => {
     if (!userId) return;
@@ -84,16 +102,17 @@ const TransportList = ({ userId, filters, refreshKey }) => {
   }, [userId]);
 
   useEffect(() => {
-    loadOpportunities();
     loadMyTransports();
 
-    // Auto-refresh every minute
-    const interval = setInterval(() => {
+    // Only auto-refresh if opportunities are not provided via props
+    if (propOpportunities === undefined) {
       loadOpportunities();
-    }, 60000);
-
-    return () => clearInterval(interval);
-  }, [refreshKey, loadOpportunities, loadMyTransports]);
+      const interval = setInterval(() => {
+        loadOpportunities();
+      }, 60000);
+      return () => clearInterval(interval);
+    }
+  }, [refreshKey, loadOpportunities, loadMyTransports, propOpportunities]);
 
   const handleReserve = async (opportunity) => {
     if (!userId) {
@@ -101,36 +120,82 @@ const TransportList = ({ userId, filters, refreshKey }) => {
       return;
     }
 
-    setReservingId(opportunity.itemId);
+    // Show security checklist before reservation
+    setSelectedOpportunity(opportunity);
+    setShowSecurityChecklist(true);
+  };
+
+  const handleConfirmReservation = async (checklistData) => {
+    setShowSecurityChecklist(false);
+    setReservingId(selectedOpportunity.itemId);
+    
+    // Optimistic update: remove from opportunities and add to myTransports immediately
+    const newOpportunities = opportunities.filter(opp => opp.itemId !== selectedOpportunity.itemId);
+    const newTransport = {
+      id: `temp-${Date.now()}`,
+      item_id: selectedOpportunity.itemId,
+      item_name: getItemName(selectedOpportunity.itemId),
+      from_city: selectedOpportunity.lowestCity,
+      to_city: 'Caerleon',
+      buy_price: selectedOpportunity.lowestPrice,
+      sell_price: selectedOpportunity.bmPrice,
+      profit: selectedOpportunity.netProfit,
+      expected_profit: selectedOpportunity.expectedProfit,
+      quantity: selectedOpportunity.quantity || 1,
+      status: 'reserved',
+      reserved_by: userId,
+      reserved_at: new Date().toISOString(),
+      expires_at: new Date(Date.now() + 20 * 60 * 1000).toISOString(),
+      checklist_data: checklistData,
+    };
+    
+    setOpportunities(newOpportunities);
+    setMyTransports(prev => [newTransport, ...prev]);
+    
     try {
-      const { data, error } = await supabase
-        .from('transports')
-        .insert({
-          item_id: opportunity.itemId,
-          item_name: getItemName(opportunity.itemId),
-          from_city: opportunity.lowestCity,
-          to_city: 'Caerleon',
-          buy_price: opportunity.lowestPrice,
-          sell_price: opportunity.bmPrice,
-          profit: opportunity.netProfit,
-          quantity: opportunity.quantity || 1,
-          status: 'reserved',
-          reserved_by: userId,
-          reserved_at: new Date().toISOString(),
-          created_by: userId,
-        })
-        .select()
-        .single();
+      // Call the backend function with transaction
+      const { data, error } = await supabase.rpc('reserve_transport', {
+        p_item_id: selectedOpportunity.itemId,
+        p_item_name: getItemName(selectedOpportunity.itemId),
+        p_from_city: selectedOpportunity.lowestCity,
+        p_to_city: 'Caerleon',
+        p_buy_price: selectedOpportunity.lowestPrice,
+        p_sell_price: selectedOpportunity.bmPrice,
+        p_profit: selectedOpportunity.netProfit,
+        p_expected_profit: selectedOpportunity.expectedProfit,
+        p_quantity: selectedOpportunity.quantity || 1,
+        p_reserved_by: userId,
+        p_expires_at: new Date(Date.now() + 20 * 60 * 1000).toISOString(),
+        p_checklist_data: checklistData,
+      });
 
-      if (error) throw error;
+      if (error) {
+        throw error;
+      }
 
-      // Reload my transports
+      if (!data.success) {
+        alert(data.message || 'Esta rota acabou de ser assumida por outro jogador');
+        // Revert optimistic update
+        setOpportunities(opportunities);
+        setMyTransports(prev => prev.filter(t => t.id !== newTransport.id));
+        return;
+      }
+
+      // Update saturation
+      const { updateSaturation } = await import('@/lib/albion/saturation');
+      updateSaturation(selectedOpportunity.itemId, 10); // Add 10% saturation
+
+      // Reload my transports to get the real data from server
       loadMyTransports();
     } catch (error) {
       console.error('Error reserving transport:', error);
       alert('Falha ao reservar transporte. Tente novamente.');
+      // Revert optimistic update
+      setOpportunities(opportunities);
+      setMyTransports(prev => prev.filter(t => t.id !== newTransport.id));
     } finally {
       setReservingId(null);
+      setSelectedOpportunity(null);
     }
   };
 
@@ -242,9 +307,24 @@ const TransportList = ({ userId, filters, refreshKey }) => {
                             <span className="text-gray-500">|</span>
                             <span className="text-purple-400">{opportunity.margin.toFixed(1)}%</span>
                             <span className="text-gray-500">|</span>
-                            <span className="text-blue-400">Qtd: {opportunity.quantity || 1}</span>
+                            {/* Risk indicator */}
+                            <span className={`text-xs font-medium ${
+                              opportunity.risk?.color === 'green' ? 'text-green-400' :
+                              opportunity.risk?.color === 'yellow' ? 'text-yellow-400' :
+                              'text-red-400'
+                            }`}>
+                              <Shield className="w-3 h-3 inline mr-1" />
+                              {opportunity.risk?.label}
+                            </span>
                             <span className="text-gray-500">|</span>
-                            <span className="text-gray-400">Investimento: {formatSilver(opportunity.lowestPrice * (opportunity.quantity || 1))}</span>
+                            <span className="text-blue-400">
+                              <Timer className="w-3 h-3 inline mr-1" />
+                              {opportunity.travelTime}min
+                            </span>
+                            <span className="text-gray-500">|</span>
+                            <span className="text-amber-400">
+                              {formatSilver(opportunity.efficiency)}/min
+                            </span>
                           </div>
                         </div>
 
@@ -280,35 +360,6 @@ const TransportList = ({ userId, filters, refreshKey }) => {
                   </div>
                 )}
               </div>
-
-              {/* Total Investment and Return Bar */}
-              {opportunities.length > 0 && (
-                <div className="mt-4 bg-slate-800/50 rounded-lg p-4 border border-slate-700">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <div>
-                        <div className="text-xs text-gray-400 mb-1">Investimento Total</div>
-                        <div className="text-lg font-bold text-blue-400">{formatSilver(totalInvestment)}</div>
-                      </div>
-                      <div className="text-gray-500">→</div>
-                      <div>
-                        <div className="text-xs text-gray-400 mb-1">Retorno Total</div>
-                        <div className="text-lg font-bold text-green-400">{formatSilver(totalReturn)}</div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-gray-400 mb-1">Lucro Total</div>
-                        <div className="text-lg font-bold text-amber-400">{formatSilver(totalReturn - totalInvestment)}</div>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-xs text-gray-400 mb-1">Margem Média</div>
-                      <div className="text-lg font-bold text-purple-400">
-                        {totalInvestment > 0 ? ((totalReturn - totalInvestment) / totalInvestment * 100).toFixed(1) : 0}%
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
             </>
           )}
         </div>
@@ -374,7 +425,62 @@ const TransportList = ({ userId, filters, refreshKey }) => {
               ))}
             </div>
           </div>
+
+          {/* Total Investment and Return Bar - My Transports */}
+          {myTransports.length > 0 && (
+            <div className="mt-4 bg-[#021526] rounded-lg p-4 border border-[#88A0BF]">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div>
+                    <div className="text-xs text-gray-400 mb-1">Investimento Total</div>
+                    <div className="text-lg font-bold text-blue-400">{formatSilver(myTransports.reduce((sum, t) => sum + (t.buy_price * t.quantity), 0))}</div>
+                  </div>
+                  <div className="text-gray-500">→</div>
+                  <div>
+                    <div className="text-xs text-gray-400 mb-1">Retorno Total</div>
+                    <div className="text-lg font-bold text-green-400">{formatSilver(myTransports.reduce((sum, t) => sum + (t.sell_price * t.quantity), 0))}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-gray-400 mb-1">Lucro Total</div>
+                    <div className="text-lg font-bold text-amber-400">{formatSilver(myTransports.reduce((sum, t) => sum + (t.profit * t.quantity), 0))}</div>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-xs text-gray-400 mb-1">Margem Média</div>
+                  <div className="text-lg font-bold text-purple-400">
+                    {myTransports.length > 0 ? (
+                      ((myTransports.reduce((sum, t) => sum + (t.profit * t.quantity), 0) / myTransports.reduce((sum, t) => sum + (t.buy_price * t.quantity), 0)) * 100).toFixed(1)
+                    ) : 0}%
+                  </div>
+                </div>
+              </div>
+              {/* Item Icons */}
+              <div className="flex items-center gap-2 mt-3 pt-3 border-t border-[#88A0BF]/30">
+                <span className="text-xs text-gray-400">Itens:</span>
+                <div className="flex items-center gap-1">
+                  {myTransports.slice(0, 10).map((transport, index) => (
+                    <ItemIcon key={`${transport.item_id}-${index}`} itemId={transport.item_id} size={24} />
+                  ))}
+                  {myTransports.length > 10 && (
+                    <span className="text-xs text-gray-400">+{myTransports.length - 10}</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
+      )}
+
+      {/* Security Checklist Modal */}
+      {showSecurityChecklist && selectedOpportunity && (
+        <SecurityChecklist
+          opportunity={selectedOpportunity}
+          onConfirm={handleConfirmReservation}
+          onCancel={() => {
+            setShowSecurityChecklist(false);
+            setSelectedOpportunity(null);
+          }}
+        />
       )}
     </div>
   );

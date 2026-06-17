@@ -77,12 +77,15 @@ CREATE TABLE IF NOT EXISTS public.transports (
   buy_price NUMERIC DEFAULT 0,
   sell_price NUMERIC DEFAULT 0,
   profit NUMERIC DEFAULT 0,
+  expected_profit NUMERIC DEFAULT 0,
   quantity INTEGER DEFAULT 1,
   status TEXT DEFAULT 'available' CHECK (status IN ('available', 'reserved', 'completed', 'cancelled')),
   reserved_by UUID REFERENCES auth.users(id),
   reserved_at TIMESTAMPTZ,
+  expires_at TIMESTAMPTZ,
   created_by UUID REFERENCES auth.users(id),
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  checklist_data JSONB
 );
 
 -- Enable RLS on transports
@@ -357,6 +360,83 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
+-- Reserve Transport Function with Transaction
+CREATE OR REPLACE FUNCTION public.reserve_transport(
+  p_item_id TEXT,
+  p_item_name TEXT,
+  p_from_city TEXT,
+  p_to_city TEXT,
+  p_buy_price NUMERIC,
+  p_sell_price NUMERIC,
+  p_profit NUMERIC,
+  p_expected_profit NUMERIC,
+  p_quantity INTEGER,
+  p_reserved_by UUID,
+  p_expires_at TIMESTAMPTZ,
+  p_checklist_data JSONB
+)
+RETURNS JSON AS $$
+DECLARE
+  v_transport_id UUID;
+BEGIN
+  -- Check if item is already reserved (concurrency check)
+  IF EXISTS (
+    SELECT 1 FROM public.transports
+    WHERE item_id = p_item_id
+    AND from_city = p_from_city
+    AND to_city = p_to_city
+    AND status = 'reserved'
+    AND expires_at > NOW()
+  ) THEN
+    RETURN json_build_object('success', false, 'message', 'Esta rota já está reservada por outro jogador');
+  END IF;
+
+  -- Insert new transport with reserved status
+  INSERT INTO public.transports (
+    item_id,
+    item_name,
+    from_city,
+    to_city,
+    buy_price,
+    sell_price,
+    profit,
+    expected_profit,
+    quantity,
+    status,
+    reserved_by,
+    reserved_at,
+    expires_at,
+    created_by,
+    checklist_data
+  )
+  VALUES (
+    p_item_id,
+    p_item_name,
+    p_from_city,
+    p_to_city,
+    p_buy_price,
+    p_sell_price,
+    p_profit,
+    p_expected_profit,
+    p_quantity,
+    'reserved',
+    p_reserved_by,
+    NOW(),
+    p_expires_at,
+    p_reserved_by,
+    p_checklist_data
+  )
+  RETURNING id INTO v_transport_id;
+
+  RETURN json_build_object('success', true, 'transport_id', v_transport_id, 'message', 'Rota reservada com sucesso');
+EXCEPTION
+  WHEN unique_violation THEN
+    RETURN json_build_object('success', false, 'message', 'Esta rota acabou de ser assumida por outro jogador');
+  WHEN OTHERS THEN
+    RETURN json_build_object('success', false, 'message', SQLERRM);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
 -- Points Ledger Table
 CREATE TABLE IF NOT EXISTS public.points_ledger (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -571,6 +651,39 @@ BEGIN
   ) THEN
     ALTER TABLE public.transports ADD COLUMN created_at TIMESTAMPTZ DEFAULT NOW();
     RAISE NOTICE 'Added created_at column to transports table';
+  END IF;
+
+  -- Check if expected_profit column exists, if not add it
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'transports' 
+    AND column_name = 'expected_profit'
+    AND table_schema = 'public'
+  ) THEN
+    ALTER TABLE public.transports ADD COLUMN expected_profit NUMERIC DEFAULT 0;
+    RAISE NOTICE 'Added expected_profit column to transports table';
+  END IF;
+
+  -- Check if expires_at column exists, if not add it
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'transports' 
+    AND column_name = 'expires_at'
+    AND table_schema = 'public'
+  ) THEN
+    ALTER TABLE public.transports ADD COLUMN expires_at TIMESTAMPTZ;
+    RAISE NOTICE 'Added expires_at column to transports table';
+  END IF;
+
+  -- Check if checklist_data column exists, if not add it
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'transports' 
+    AND column_name = 'checklist_data'
+    AND table_schema = 'public'
+  ) THEN
+    ALTER TABLE public.transports ADD COLUMN checklist_data JSONB;
+    RAISE NOTICE 'Added checklist_data column to transports table';
   END IF;
 
   RAISE NOTICE 'Transports table migration completed successfully';

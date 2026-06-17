@@ -7,6 +7,8 @@ import QualityFilter from './QualityFilter';
 import ProfitFilter from './ProfitFilter';
 import QuantityFilter from './QuantityFilter';
 import PremiumFilter from './PremiumFilter';
+import InvestmentFilter from './InvestmentFilter';
+import RiskFilter from './RiskFilter';
 
 /**
  * AdvancedFilters component - Container for all market filters
@@ -22,6 +24,8 @@ const AdvancedFilters = ({ onFilterChange, onApplyFilters }) => {
   const [minProfit, setMinProfit] = useState(0);
   const [quantity, setQuantity] = useState(100);
   const [premium, setPremium] = useState('all');
+  const [maxInvestment, setMaxInvestment] = useState(Infinity);
+  const [riskLevel, setRiskLevel] = useState('all');
 
   const handleApplyFilters = () => {
     onFilterChange({
@@ -32,6 +36,8 @@ const AdvancedFilters = ({ onFilterChange, onApplyFilters }) => {
       minProfit,
       quantity,
       premium,
+      maxInvestment,
+      riskLevel,
     });
     if (onApplyFilters) {
       onApplyFilters();
@@ -46,6 +52,8 @@ const AdvancedFilters = ({ onFilterChange, onApplyFilters }) => {
     setMinProfit(0);
     setQuantity(100);
     setPremium('all');
+    setMaxInvestment(Infinity);
+    setRiskLevel('all');
   };
 
   const hasActiveFilters =
@@ -55,7 +63,9 @@ const AdvancedFilters = ({ onFilterChange, onApplyFilters }) => {
     selectedQualities.length > 0 ||
     minProfit > 0 ||
     quantity !== 100 ||
-    premium !== 'all';
+    premium !== 'all' ||
+    maxInvestment !== Infinity ||
+    riskLevel !== 'all';
 
   return (
     <div className="bg-slate-900 rounded-lg border border-slate-800 overflow-hidden">
@@ -113,6 +123,14 @@ const AdvancedFilters = ({ onFilterChange, onApplyFilters }) => {
           <PremiumFilter
             premium={premium}
             onPremiumChange={setPremium}
+          />
+          <InvestmentFilter
+            maxInvestment={maxInvestment}
+            onMaxInvestmentChange={setMaxInvestment}
+          />
+          <RiskFilter
+            riskLevel={riskLevel}
+            onRiskLevelChange={setRiskLevel}
           />
         </div>
       </div>

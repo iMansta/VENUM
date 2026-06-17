@@ -1,7 +1,5 @@
-/**
- * Albion Online Data API Service
- * Fetches market data from the official Albion Online Data Project
- */
+import { getRouteRisk, calculateExpectedProfit, getTravelTime, calculateEfficiency, calculateRiskAdjustedEfficiency } from './riskMap';
+import { getSaturationLevel, calculateSaturationAdjustedPrice, getSaturationWarning } from './saturation';
 
 const ALBION_API_BASE = 'https://www.albion-online-data.com/api/v2/stats/prices';
 
@@ -22,6 +20,20 @@ const requestQueue = [];
 
 // Single-flight cache for in-flight requests
 const inFlightRequests = new Map();
+
+// Global cooldown for rate limiting
+let globalBlockUntil = 0;
+
+/**
+ * Generate canonical key for cache and single-flight
+ * Ensures consistent keys regardless of parameter order
+ */
+const generateCanonicalKey = (items, limit) => {
+  // Sort items by itemId to ensure consistent key
+  const sortedItems = [...items].sort((a, b) => a.itemId.localeCompare(b.itemId));
+  const itemsKey = sortedItems.map(i => i.itemId).join(',');
+  return `fetchTopOpportunities-${itemsKey}-${limit}`;
+};
 
 /**
  * Get cached price data if available and not expired
@@ -57,6 +69,13 @@ const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
  * Fetch with retry and exponential backoff
  */
 const fetchWithRetry = async (url, retries = 3, initialDelay = 1000) => {
+  // Check global cooldown
+  if (Date.now() < globalBlockUntil) {
+    const waitTime = globalBlockUntil - Date.now();
+    console.warn(`[GLOBAL COOLDOWN] Rate limited. Waiting ${waitTime}ms`);
+    await sleep(waitTime);
+  }
+
   for (let attempt = 0; attempt < retries; attempt++) {
     try {
       requestCount++;
@@ -67,7 +86,10 @@ const fetchWithRetry = async (url, retries = 3, initialDelay = 1000) => {
         const retryAfter = response.headers.get('Retry-After');
         const delay = retryAfter ? parseInt(retryAfter) * 1000 : initialDelay * Math.pow(2, attempt);
 
-        console.warn(`Rate limited (429), retry ${attempt + 1}/${retries} after ${delay}ms`);
+        console.warn(`[429] Rate limited, retry ${attempt + 1}/${retries} after ${delay}ms`);
+
+        // Set global cooldown to prevent storm of requests
+        globalBlockUntil = Date.now() + delay;
 
         if (attempt < retries - 1) {
           await sleep(delay);
@@ -86,7 +108,7 @@ const fetchWithRetry = async (url, retries = 3, initialDelay = 1000) => {
       }
 
       const delay = initialDelay * Math.pow(2, attempt);
-      console.warn(`Fetch error, retry ${attempt + 1}/${retries} after ${delay}ms:`, error.message);
+      console.warn(`[ERROR] Fetch error, retry ${attempt + 1}/${retries} after ${delay}ms:`, error.message);
       await sleep(delay);
     }
   }
@@ -285,6 +307,18 @@ export const calculateArbitrage = (priceData, targetCity = 'Caerleon') => {
   const netProfit = bmPrice - lowestCity.price;
   const margin = lowestCity.price > 0 ? ((netProfit / lowestCity.price) * 100) : 0;
 
+  // Calculate risk and efficiency
+  const risk = getRouteRisk(lowestCity.city, targetCity);
+  const travelTime = getTravelTime(lowestCity.city, targetCity);
+  const expectedProfit = calculateExpectedProfit(netProfit, risk.value);
+  const efficiency = calculateEfficiency(netProfit, travelTime);
+  const riskAdjustedEfficiency = calculateRiskAdjustedEfficiency(netProfit, travelTime, risk.value);
+
+  // Calculate saturation-adjusted price
+  const saturationLevel = getSaturationLevel(priceData.item_id);
+  const saturationAdjustedPrice = calculateSaturationAdjustedPrice(priceData.item_id, bmPrice);
+  const saturationAdjustedProfit = saturationAdjustedPrice - lowestCity.price;
+
   return {
     itemId: priceData.item_id,
     itemName: priceData.item_id,
@@ -293,6 +327,14 @@ export const calculateArbitrage = (priceData, targetCity = 'Caerleon') => {
     bmPrice: bmPrice,
     netProfit: netProfit,
     margin: margin,
+    risk: risk,
+    travelTime: travelTime,
+    expectedProfit: expectedProfit,
+    efficiency: efficiency,
+    riskAdjustedEfficiency: riskAdjustedEfficiency,
+    saturation: saturationLevel,
+    saturationAdjustedProfit: saturationAdjustedProfit,
+    saturationWarning: getSaturationWarning(priceData.item_id),
   };
 };
 
@@ -304,8 +346,7 @@ export const calculateArbitrage = (priceData, targetCity = 'Caerleon') => {
  */
 export const fetchTopOpportunities = async (items, limit = 10) => {
   // Single-flight: if the same request is already in flight, return the same promise
-  const itemsKey = items.map(i => i.itemId).join(',');
-  const requestKey = `fetchTopOpportunities-${itemsKey}-${limit}`;
+  const requestKey = generateCanonicalKey(items, limit);
   
   if (inFlightRequests.has(requestKey)) {
     console.log(`[SINGLE-FLIGHT] Reusing in-flight request for ${items.length} items`);
@@ -314,7 +355,7 @@ export const fetchTopOpportunities = async (items, limit = 10) => {
 
   const requestPromise = (async () => {
     try {
-      console.log(`[FETCH] Fetching top opportunities for ${items.length} items`);
+      console.log(`[FETCH] Fetching top opportunities for ${items.length} items (key: ${requestKey.substring(0, 50)}...)`);
       const priceData = await fetchMultipleItemPrices(items);
       console.log(`[FETCH] Received price data for ${priceData.length} items`);
       
