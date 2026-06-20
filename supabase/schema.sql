@@ -174,13 +174,13 @@ RETURNS TABLE (
   full_name TEXT,
   points_earned BIGINT,
   missions_completed INTEGER,
-  rank INTEGER
+  rank BIGINT
 ) AS $$
 BEGIN
   RETURN QUERY
   WITH weekly_points AS (
     SELECT 
-      p.id as profile_id,
+      p.id,
       p.username,
       p.full_name,
       COALESCE(SUM(CASE WHEN pl.amount > 0 THEN pl.amount ELSE 0 END), 0) as points_earned,
@@ -193,7 +193,7 @@ BEGIN
     GROUP BY p.id, p.username, p.full_name
   )
   SELECT 
-    profile_id,
+    id as profile_id,
     username,
     full_name,
     points_earned,
@@ -212,13 +212,13 @@ RETURNS TABLE (
   full_name TEXT,
   points_earned BIGINT,
   missions_completed INTEGER,
-  rank INTEGER
+  rank BIGINT
 ) AS $$
 BEGIN
   RETURN QUERY
   WITH monthly_points AS (
     SELECT 
-      p.id as profile_id,
+      p.id,
       p.username,
       p.full_name,
       COALESCE(SUM(CASE WHEN pl.amount > 0 THEN pl.amount ELSE 0 END), 0) as points_earned,
@@ -231,7 +231,7 @@ BEGIN
     GROUP BY p.id, p.username, p.full_name
   )
   SELECT 
-    profile_id,
+    id as profile_id,
     username,
     full_name,
     points_earned,
@@ -245,9 +245,9 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 CREATE OR REPLACE FUNCTION get_user_ranking_position(p_profile_id UUID)
 RETURNS TABLE (
-  weekly_rank INTEGER,
+  weekly_rank BIGINT,
   weekly_points BIGINT,
-  monthly_rank INTEGER,
+  monthly_rank BIGINT,
   monthly_points BIGINT
 ) AS $$
 BEGIN
