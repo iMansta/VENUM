@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Trash2, Plus, Package, TrendingUp, X, Lock, Unlock, CheckCircle, Clock, Shield, Timer, AlertTriangle } from 'lucide-react';
 import { fetchTopOpportunities, COMMON_ITEMS } from '@/lib/albion/api';
 import { supabase } from '@/lib/supabase/client';
+import { reserveTransportOpportunity } from '@/lib/supabase/transports';
 import ItemIcon from './ItemIcon';
 import { getItemName } from '@/lib/i18n/itemNames';
 import SecurityChecklist from './SecurityChecklist';
@@ -126,15 +127,23 @@ const TransportList = ({ userId, filters, refreshKey, opportunities: propOpportu
   };
 
   const handleConfirmReservation = async (checklistData) => {
+    if (!selectedOpportunity) {
+      console.error('Cannot reserve transport: no opportunity selected');
+      alert('Falha ao reservar transporte. Nenhuma oportunidade selecionada.');
+      return;
+    }
+
     setShowSecurityChecklist(false);
     setReservingId(selectedOpportunity.itemId);
+    const expiresAt = new Date(Date.now() + 20 * 60 * 1000).toISOString();
     
     // Optimistic update: remove from opportunities and add to myTransports immediately
     const newOpportunities = opportunities.filter(opp => opp.itemId !== selectedOpportunity.itemId);
+    const itemName = getItemName(selectedOpportunity.itemId);
     const newTransport = {
       id: `temp-${Date.now()}`,
       item_id: selectedOpportunity.itemId,
-      item_name: getItemName(selectedOpportunity.itemId),
+      item_name: itemName,
       from_city: selectedOpportunity.lowestCity,
       to_city: 'Caerleon',
       buy_price: selectedOpportunity.lowestPrice,
@@ -145,7 +154,7 @@ const TransportList = ({ userId, filters, refreshKey, opportunities: propOpportu
       status: 'reserved',
       reserved_by: userId,
       reserved_at: new Date().toISOString(),
-      expires_at: new Date(Date.now() + 20 * 60 * 1000).toISOString(),
+      expires_at: expiresAt,
       checklist_data: checklistData,
     };
     
@@ -153,28 +162,16 @@ const TransportList = ({ userId, filters, refreshKey, opportunities: propOpportu
     setMyTransports(prev => [newTransport, ...prev]);
     
     try {
-      // Call the backend function with transaction
-      const { data, error } = await supabase.rpc('reserve_transport', {
-        p_item_id: selectedOpportunity.itemId,
-        p_item_name: getItemName(selectedOpportunity.itemId),
-        p_from_city: selectedOpportunity.lowestCity,
-        p_to_city: 'Caerleon',
-        p_buy_price: selectedOpportunity.lowestPrice,
-        p_sell_price: selectedOpportunity.bmPrice,
-        p_profit: selectedOpportunity.netProfit,
-        p_expected_profit: selectedOpportunity.expectedProfit,
-        p_quantity: selectedOpportunity.quantity || 1,
-        p_reserved_by: userId,
-        p_expires_at: new Date(Date.now() + 20 * 60 * 1000).toISOString(),
-        p_checklist_data: checklistData,
+      const reservation = await reserveTransportOpportunity({
+        opportunity: selectedOpportunity,
+        userId,
+        itemName,
+        expiresAt,
+        checklistData,
       });
 
-      if (error) {
-        throw error;
-      }
-
-      if (!data.success) {
-        alert(data.message || 'Esta rota acabou de ser assumida por outro jogador');
+      if (!reservation.success) {
+        alert(reservation.message || 'Falha ao reservar transporte. Tente novamente.');
         // Revert optimistic update
         setOpportunities(opportunities);
         setMyTransports(prev => prev.filter(t => t.id !== newTransport.id));

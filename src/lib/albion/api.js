@@ -68,7 +68,7 @@ const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 /**
  * Validate if an item is equipment (can be sold in Black Market)
- * Black Market only accepts: Weapons, Armor, Bags, Capes, Mounts
+ * Black Market only accepts: Weapons, Armor, Bags, Shoes, Head, Capes
  * Excludes: Resources (Wood, Planks, Ore, MetalBars, Fiber, Cloth, Hide, Leather, Rock, StoneBlocks)
  * @param {string} itemId - Item ID to validate
  * @returns {boolean} True if item is valid equipment
@@ -86,15 +86,15 @@ const isValidEquipment = (itemId) => {
   // Check if item contains any excluded pattern
   for (const pattern of excludedPatterns) {
     if (upperItemId.includes(pattern)) {
-      console.log(`[FILTER] Excluded resource item: ${itemId} (contains ${pattern})`);
+      console.log(`[FILTER] Excluded item: ${itemId} (contains ${pattern})`);
       return false;
     }
   }
   
-  // Valid equipment patterns
+  // Valid equipment patterns accepted by the Black Market
   const validPatterns = [
     'BAG', 'HEAD_', 'ARMOR_', 'SHOES_', 'MAIN_', 
-    'OFF_', 'SHIELD', 'CAPE', 'MOUNT_'
+    'OFF_', 'SHIELD', 'CAPE'
   ];
   
   // Check if item matches any valid pattern
@@ -188,58 +188,6 @@ const queueRequest = (fn) => {
     processQueue();
   });
 };
-
-/**
- * Mock data for when API fails or is unavailable
- * Only equipment items (Weapons, Armor, Bags, Capes, Mounts)
- */
-const MOCK_OPPORTUNITIES = [
-  {
-    itemId: 'T6_BAG',
-    itemName: 'T6_BAG',
-    lowestCity: 'Martlock',
-    lowestPrice: 45000,
-    bmPrice: 75000,
-    netProfit: 30000,
-    margin: 66.7,
-  },
-  {
-    itemId: 'T5_BAG',
-    itemName: 'T5_BAG',
-    lowestCity: 'Lymhurst',
-    lowestPrice: 15000,
-    bmPrice: 32000,
-    netProfit: 17000,
-    margin: 113.3,
-  },
-  {
-    itemId: 'T6_HEAD_PLATE',
-    itemName: 'T6_HEAD_PLATE',
-    lowestCity: 'Thetford',
-    lowestPrice: 25000,
-    bmPrice: 45000,
-    netProfit: 20000,
-    margin: 80.0,
-  },
-  {
-    itemId: 'T5_MAIN_SWORD',
-    itemName: 'T5_MAIN_SWORD',
-    lowestCity: 'Fort Sterling',
-    lowestPrice: 18000,
-    bmPrice: 38000,
-    netProfit: 20000,
-    margin: 111.1,
-  },
-  {
-    itemId: 'T6_MOUNT_HORSE',
-    itemName: 'T6_MOUNT_HORSE',
-    lowestCity: 'Martlock',
-    lowestPrice: 50000,
-    bmPrice: 85000,
-    netProfit: 35000,
-    margin: 70.0,
-  },
-];
 
 /**
  * Fetch price data for a specific item
@@ -480,8 +428,8 @@ export const fetchTopOpportunities = async (items, limit = 10, hasPremium = fals
       console.log(`[FETCH] Received price data for ${priceData.length} items`);
       
       if (priceData.length === 0) {
-        console.warn('[FETCH] No price data received from API, using mock data');
-        return MOCK_OPPORTUNITIES.slice(0, limit);
+        console.warn('[FETCH] No price data received from API');
+        return [];
       }
       
       // Map price data with item metadata
@@ -504,16 +452,10 @@ export const fetchTopOpportunities = async (items, limit = 10, hasPremium = fals
 
       console.log(`[FETCH] Calculated ${opportunities.length} profitable opportunities`);
       
-      if (opportunities.length === 0) {
-        console.warn('[FETCH] No profitable opportunities found, using mock data');
-        return MOCK_OPPORTUNITIES.slice(0, limit);
-      }
-      
       return opportunities;
     } catch (error) {
       console.error('[FETCH] Error fetching top opportunities:', error);
-      console.warn('[FETCH] API failed, using mock data');
-      return MOCK_OPPORTUNITIES.slice(0, limit);
+      return [];
     } finally {
       inFlightRequests.delete(requestKey);
     }
@@ -524,7 +466,7 @@ export const fetchTopOpportunities = async (items, limit = 10, hasPremium = fals
 };
 
 // Common items to check for arbitrage with enchantment and quantity
-// Only equipable items that can be sold in Black Market (Weapons, Armor, Bags, Capes, Mounts)
+// Only equipable items that can be sold in Black Market (Weapons, Armor, Bags, Shoes, Head, Capes)
 // Excluded: Resources (Wood, Planks, Ore, MetalBars, Fiber, Cloth, Hide, Leather, Rock, StoneBlocks)
 export const COMMON_ITEMS = [
   { itemId: 'T4_BAG', enchantment: 0, quantity: 1 },
@@ -652,25 +594,4 @@ export const COMMON_ITEMS = [
   { itemId: 'T6_CAPE', enchantment: 0, quantity: 1 },
   { itemId: 'T7_CAPE', enchantment: 0, quantity: 1 },
   { itemId: 'T8_CAPE', enchantment: 0, quantity: 1 },
-  // Mounts
-  { itemId: 'T4_MOUNT_HORSE', enchantment: 0, quantity: 1 },
-  { itemId: 'T5_MOUNT_HORSE', enchantment: 0, quantity: 1 },
-  { itemId: 'T6_MOUNT_HORSE', enchantment: 0, quantity: 1 },
-  { itemId: 'T7_MOUNT_HORSE', enchantment: 0, quantity: 1 },
-  { itemId: 'T8_MOUNT_HORSE', enchantment: 0, quantity: 1 },
-  { itemId: 'T4_MOUNT_ARMOREDHORSE', enchantment: 0, quantity: 1 },
-  { itemId: 'T5_MOUNT_ARMOREDHORSE', enchantment: 0, quantity: 1 },
-  { itemId: 'T6_MOUNT_ARMOREDHORSE', enchantment: 0, quantity: 1 },
-  { itemId: 'T7_MOUNT_ARMOREDHORSE', enchantment: 0, quantity: 1 },
-  { itemId: 'T8_MOUNT_ARMOREDHORSE', enchantment: 0, quantity: 1 },
-  { itemId: 'T4_MOUNT_DIREWOLF', enchantment: 0, quantity: 1 },
-  { itemId: 'T5_MOUNT_DIREWOLF', enchantment: 0, quantity: 1 },
-  { itemId: 'T6_MOUNT_DIREWOLF', enchantment: 0, quantity: 1 },
-  { itemId: 'T7_MOUNT_DIREWOLF', enchantment: 0, quantity: 1 },
-  { itemId: 'T8_MOUNT_DIREWOLF', enchantment: 0, quantity: 1 },
-  { itemId: 'T4_MOUNT_MAMMOTH', enchantment: 0, quantity: 1 },
-  { itemId: 'T5_MOUNT_MAMMOTH', enchantment: 0, quantity: 1 },
-  { itemId: 'T6_MOUNT_MAMMOTH', enchantment: 0, quantity: 1 },
-  { itemId: 'T7_MOUNT_MAMMOTH', enchantment: 0, quantity: 1 },
-  { itemId: 'T8_MOUNT_MAMMOTH', enchantment: 0, quantity: 1 },
 ];

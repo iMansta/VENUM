@@ -14,7 +14,6 @@ const TopOpportunities = ({ arbitrageData = null, limit = 10, refreshKey = 0 }) 
   const [opportunities, setOpportunities] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [usingMock, setUsingMock] = useState(false);
 
   useEffect(() => {
     if (arbitrageData) {
@@ -28,13 +27,10 @@ const TopOpportunities = ({ arbitrageData = null, limit = 10, refreshKey = 0 }) 
   const loadOpportunities = async () => {
     setLoading(true);
     setError(null);
-    setUsingMock(false);
     
     try {
       const data = await fetchTopOpportunities(COMMON_ITEMS, limit, false); // false = no premium by default
       setOpportunities(data);
-      // Check if using mock data (mock data has specific structure)
-      setUsingMock(data.length > 0 && data[0].lowestCity !== undefined);
     } catch (err) {
       setError('Failed to load opportunities');
       console.error('Error loading opportunities:', err);
@@ -100,11 +96,6 @@ const TopOpportunities = ({ arbitrageData = null, limit = 10, refreshKey = 0 }) 
             <span className="bg-amber-500/20 text-amber-400 px-3 py-1 rounded-full text-sm font-medium">
               Maior Lucro Absoluto
             </span>
-            {usingMock && (
-              <span className="bg-blue-500/20 text-blue-400 px-3 py-1 rounded-full text-xs font-medium">
-                Dados de Exemplo (API Indisponível)
-              </span>
-            )}
           </div>
           <button
             onClick={loadOpportunities}
