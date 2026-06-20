@@ -174,36 +174,41 @@ RETURNS TABLE (
   full_name TEXT,
   points_earned BIGINT,
   missions_completed INTEGER,
-  rank BIGINT
-) AS $$
+  rank INTEGER
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
 BEGIN
   RETURN QUERY
-  WITH weekly_points AS (
-    SELECT 
-      p.id,
+  WITH weekly AS (
+    SELECT
+      p.id AS profile_id,
       p.username,
       p.full_name,
-      COALESCE(SUM(CASE WHEN pl.amount > 0 THEN pl.amount ELSE 0 END), 0) as points_earned,
-      COUNT(DISTINCT mp.id) as missions_completed
-    FROM profiles p
-    LEFT JOIN points_ledger pl ON p.id = pl.profile_id 
+      COALESCE(SUM(CASE WHEN pl.amount > 0 THEN pl.amount ELSE 0 END), 0)::BIGINT AS points_earned,
+      COALESCE(COUNT(DISTINCT mp.id), 0)::INTEGER AS missions_completed
+    FROM public.profiles p
+    LEFT JOIN public.points_ledger pl
+      ON pl.profile_id = p.id
       AND pl.created_at >= NOW() - INTERVAL '7 days'
-    LEFT JOIN mission_participants mp ON p.id = mp.profile_id
-      AND mp.joined_at >= NOW() - INTERVAL '7 days'
+    LEFT JOIN public.mission_participants mp
+      ON mp.profile_id = p.id
+    WHERE p.is_active = true
     GROUP BY p.id, p.username, p.full_name
   )
-  SELECT 
-    id as profile_id,
-    username,
-    full_name,
-    points_earned,
-    missions_completed,
-    RANK() OVER (ORDER BY points_earned DESC) as rank
-  FROM weekly_points
-  ORDER BY points_earned DESC
+  SELECT
+    w.profile_id,
+    w.username,
+    w.full_name,
+    w.points_earned,
+    w.missions_completed,
+    RANK() OVER (ORDER BY w.points_earned DESC)::INTEGER AS rank
+  FROM weekly w
+  ORDER BY w.points_earned DESC
   LIMIT p_limit;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
 
 CREATE OR REPLACE FUNCTION get_monthly_ranking(p_limit INTEGER DEFAULT 10)
 RETURNS TABLE (
@@ -212,36 +217,41 @@ RETURNS TABLE (
   full_name TEXT,
   points_earned BIGINT,
   missions_completed INTEGER,
-  rank BIGINT
-) AS $$
+  rank INTEGER
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
 BEGIN
   RETURN QUERY
-  WITH monthly_points AS (
-    SELECT 
-      p.id,
+  WITH monthly AS (
+    SELECT
+      p.id AS profile_id,
       p.username,
       p.full_name,
-      COALESCE(SUM(CASE WHEN pl.amount > 0 THEN pl.amount ELSE 0 END), 0) as points_earned,
-      COUNT(DISTINCT mp.id) as missions_completed
-    FROM profiles p
-    LEFT JOIN points_ledger pl ON p.id = pl.profile_id 
+      COALESCE(SUM(CASE WHEN pl.amount > 0 THEN pl.amount ELSE 0 END), 0)::BIGINT AS points_earned,
+      COALESCE(COUNT(DISTINCT mp.id), 0)::INTEGER AS missions_completed
+    FROM public.profiles p
+    LEFT JOIN public.points_ledger pl
+      ON pl.profile_id = p.id
       AND pl.created_at >= NOW() - INTERVAL '30 days'
-    LEFT JOIN mission_participants mp ON p.id = mp.profile_id
-      AND mp.joined_at >= NOW() - INTERVAL '30 days'
+    LEFT JOIN public.mission_participants mp
+      ON mp.profile_id = p.id
+    WHERE p.is_active = true
     GROUP BY p.id, p.username, p.full_name
   )
-  SELECT 
-    id as profile_id,
-    username,
-    full_name,
-    points_earned,
-    missions_completed,
-    RANK() OVER (ORDER BY points_earned DESC) as rank
-  FROM monthly_points
-  ORDER BY points_earned DESC
+  SELECT
+    m.profile_id,
+    m.username,
+    m.full_name,
+    m.points_earned,
+    m.missions_completed,
+    RANK() OVER (ORDER BY m.points_earned DESC)::INTEGER AS rank
+  FROM monthly m
+  ORDER BY m.points_earned DESC
   LIMIT p_limit;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
 
 CREATE OR REPLACE FUNCTION get_user_ranking_position(p_profile_id UUID)
 RETURNS TABLE (
@@ -461,6 +471,62 @@ CREATE POLICY "Admins and officers can view all ledger" ON public.points_ledger 
   )
 );
 CREATE POLICY "System can insert ledger entries" ON public.points_ledger FOR INSERT WITH CHECK (true);
+CREATE POLICY "Admin/Officer can insert points"
+ON public.points_ledger
+FOR INSERT
+TO authenticated
+WITH CHECK (
+  EXISTS (
+    SELECT 1
+    FROM public.profiles p
+    WHERE p.id = auth.uid()
+      AND p.role = ANY (ARRAY['admin'::text, 'officer'::text])
+  )
+);
+CREATE POLICY "Admin/Officer can update points"
+ON public.points_ledger
+FOR UPDATE
+TO authenticated
+USING (
+  EXISTS (
+    SELECT 1
+    FROM public.profiles p
+    WHERE p.id = auth.uid()
+      AND p.role = ANY (ARRAY['admin'::text, 'officer'::text])
+  )
+)
+WITH CHECK (
+  EXISTS (
+    SELECT 1
+    FROM public.profiles p
+    WHERE p.id = auth.uid()
+      AND p.role = ANY (ARRAY['admin'::text, 'officer'::text])
+  )
+);
+
+GRANT INSERT ON public.points_ledger TO authenticated;
+
+-- Trigger para preencher transaction_type automaticamente (earned/spent)
+CREATE OR REPLACE FUNCTION public.points_ledger_set_transaction_type()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF NEW.transaction_type IS NULL THEN
+    NEW.transaction_type := CASE WHEN NEW.amount >= 0 THEN 'earned' ELSE 'spent' END;
+  END IF;
+
+  NEW.transaction_type := lower(NEW.transaction_type);
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_points_ledger_set_transaction_type ON public.points_ledger;
+
+CREATE TRIGGER trg_points_ledger_set_transaction_type
+BEFORE INSERT ON public.points_ledger
+FOR EACH ROW
+EXECUTE FUNCTION public.points_ledger_set_transaction_type();
 
 -- Migration Script to ensure missions table has all required columns
 -- Run this in Supabase SQL Editor if you encounter schema cache errors

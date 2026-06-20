@@ -74,11 +74,11 @@ export const adjustPoints = async (profileId, amount, reason, createdBy) => {
 
     const newTotal = (currentProfile?.total_points || 0) + amount;
 
-    // Insert into ledger with transaction_type 'adjusted'
+    // Insert into ledger without transaction_type (trigger will set it automatically)
     const { error: insertError } = await supabase.from('points_ledger').insert({
       profile_id: profileId,
       amount: amount,
-      transaction_type: 'adjusted',
+      transaction_type: null, // Let trigger set it based on amount sign
       reason: reason,
       reference_id: createdBy,
       reference_type: 'manual_adjustment',
