@@ -612,6 +612,10 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- Grant execute on clear_expired_market_cache
 GRANT EXECUTE ON FUNCTION public.clear_expired_market_cache TO authenticated;
 
+-- Clear existing cache to ensure only equipment items are cached
+-- This removes any resource items that may have been cached previously
+TRUNCATE TABLE public.market_prices_cache;
+
 -- Migration Script to ensure missions table has all required columns
 -- Run this in Supabase SQL Editor if you encounter schema cache errors
 

@@ -67,6 +67,48 @@ const setCachedPrice = (itemName, data) => {
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 /**
+ * Validate if an item is equipment (can be sold in Black Market)
+ * Black Market only accepts: Weapons, Armor, Bags, Capes, Mounts
+ * Excludes: Resources (Wood, Planks, Ore, MetalBars, Fiber, Cloth, Hide, Leather, Rock, StoneBlocks)
+ * @param {string} itemId - Item ID to validate
+ * @returns {boolean} True if item is valid equipment
+ */
+const isValidEquipment = (itemId) => {
+  if (!itemId) return false;
+  
+  const excludedPatterns = [
+    'PLANK', 'WOOD', 'ORE', 'METALBAR', 'FIBER', 
+    'CLOTH', 'HIDE', 'LEATHER', 'ROCK', 'STONE'
+  ];
+  
+  const upperItemId = itemId.toUpperCase();
+  
+  // Check if item contains any excluded pattern
+  for (const pattern of excludedPatterns) {
+    if (upperItemId.includes(pattern)) {
+      console.log(`[FILTER] Excluded resource item: ${itemId} (contains ${pattern})`);
+      return false;
+    }
+  }
+  
+  // Valid equipment patterns
+  const validPatterns = [
+    'BAG', 'HEAD_', 'ARMOR_', 'SHOES_', 'MAIN_', 
+    'OFF_', 'SHIELD', 'CAPE', 'MOUNT_'
+  ];
+  
+  // Check if item matches any valid pattern
+  for (const pattern of validPatterns) {
+    if (upperItemId.includes(pattern)) {
+      return true;
+    }
+  }
+  
+  console.log(`[FILTER] Excluded unknown item: ${itemId}`);
+  return false;
+};
+
+/**
  * Fetch with retry and exponential backoff
  */
 const fetchWithRetry = async (url, retries = 3, initialDelay = 1000) => {
@@ -149,6 +191,7 @@ const queueRequest = (fn) => {
 
 /**
  * Mock data for when API fails or is unavailable
+ * Only equipment items (Weapons, Armor, Bags, Capes, Mounts)
  */
 const MOCK_OPPORTUNITIES = [
   {
@@ -161,24 +204,6 @@ const MOCK_OPPORTUNITIES = [
     margin: 66.7,
   },
   {
-    itemId: 'T6_PLANKS',
-    itemName: 'T6_PLANKS',
-    lowestCity: 'Thetford',
-    lowestPrice: 12000,
-    bmPrice: 28000,
-    netProfit: 16000,
-    margin: 133.3,
-  },
-  {
-    itemId: 'T6_METALBAR',
-    itemName: 'T6_METALBAR',
-    lowestCity: 'Fort Sterling',
-    lowestPrice: 8000,
-    bmPrice: 22000,
-    netProfit: 14000,
-    margin: 175.0,
-  },
-  {
     itemId: 'T5_BAG',
     itemName: 'T5_BAG',
     lowestCity: 'Lymhurst',
@@ -188,13 +213,31 @@ const MOCK_OPPORTUNITIES = [
     margin: 113.3,
   },
   {
-    itemId: 'T5_PLANKS',
-    itemName: 'T5_PLANKS',
+    itemId: 'T6_HEAD_PLATE',
+    itemName: 'T6_HEAD_PLATE',
+    lowestCity: 'Thetford',
+    lowestPrice: 25000,
+    bmPrice: 45000,
+    netProfit: 20000,
+    margin: 80.0,
+  },
+  {
+    itemId: 'T5_MAIN_SWORD',
+    itemName: 'T5_MAIN_SWORD',
+    lowestCity: 'Fort Sterling',
+    lowestPrice: 18000,
+    bmPrice: 38000,
+    netProfit: 20000,
+    margin: 111.1,
+  },
+  {
+    itemId: 'T6_MOUNT_HORSE',
+    itemName: 'T6_MOUNT_HORSE',
     lowestCity: 'Martlock',
-    lowestPrice: 4000,
-    bmPrice: 12000,
-    netProfit: 8000,
-    margin: 200.0,
+    lowestPrice: 50000,
+    bmPrice: 85000,
+    netProfit: 35000,
+    margin: 70.0,
   },
 ];
 
@@ -246,15 +289,24 @@ export const fetchMultipleItemPrices = async (items, hasPremium = false) => {
     console.log(`[FETCH] Fetching prices for ${items.length} items (max ${MAX_CONCURRENT_REQUESTS} concurrent)`);
     const startTime = Date.now();
 
+    // Filter out resource items before processing
+    const validItems = items.filter(item => isValidEquipment(item.itemId));
+    console.log(`[FILTER] Filtered ${items.length - validItems.length} resource items, ${validItems.length} equipment items remain`);
+
+    if (validItems.length === 0) {
+      console.warn('[FILTER] No valid equipment items to fetch');
+      return [];
+    }
+
     // First, check Supabase cache for all items
-    const itemIds = items.map(item => item.itemId);
+    const itemIds = validItems.map(item => item.itemId);
     const cachedPrices = await getCachedMarketPrices(itemIds);
 
     // Separate items into cached and uncached
     const cachedItems = [];
     const uncachedItems = [];
 
-    items.forEach((item) => {
+    validItems.forEach((item) => {
       const cached = cachedPrices[item.itemId];
       if (cached && isCacheValid(cached.expiresAt)) {
         cachedItems.push({
@@ -293,11 +345,13 @@ export const fetchMultipleItemPrices = async (items, hasPremium = false) => {
 
         const data = await response.json();
         
-        // Cache the fetched data in Supabase
+        // Cache the fetched data in Supabase and filter out resource items
         for (const priceData of data) {
-          if (priceData) {
+          if (priceData && isValidEquipment(priceData.item_id)) {
             await setCachedMarketPrice(priceData.item_id, priceData);
             fetchedResults.push(priceData);
+          } else if (priceData) {
+            console.log(`[FILTER] Excluded resource item from API response: ${priceData.item_id}`);
           }
         }
       } catch (error) {
@@ -319,7 +373,7 @@ export const fetchMultipleItemPrices = async (items, hasPremium = false) => {
     ];
 
     const duration = Date.now() - startTime;
-    console.log(`[FETCH] Fetched ${allResults.length}/${items.length} prices in ${duration}ms`);
+    console.log(`[FETCH] Fetched ${allResults.length}/${validItems.length} prices in ${duration}ms`);
     console.log(`[FETCH] Request stats: ${requestCount} total requests, ${rateLimitErrorCount} rate limit errors, cache hits: ${cacheHits}, misses: ${cacheMisses}`);
 
     return allResults;
@@ -338,6 +392,12 @@ export const fetchMultipleItemPrices = async (items, hasPremium = false) => {
  */
 export const calculateArbitrage = (priceData, targetCity = 'Black Market', hasPremium = false) => {
   if (!priceData) return null;
+
+  // Validate that the item is equipment (can be sold in Black Market)
+  if (!isValidEquipment(priceData.item_id)) {
+    console.log(`[FILTER] Skipping calculation for resource item: ${priceData.item_id}`);
+    return null;
+  }
 
   const bmPrice = priceData.data?.['Black Market']?.sell_price_min || 0;
   const lowestCity = Object.entries(priceData.data || {})
