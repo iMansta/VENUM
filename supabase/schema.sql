@@ -189,7 +189,7 @@ BEGIN
     LEFT JOIN points_ledger pl ON p.id = pl.profile_id 
       AND pl.created_at >= NOW() - INTERVAL '7 days'
     LEFT JOIN mission_participants mp ON p.id = mp.profile_id
-    WHERE p.is_active = true
+      AND mp.joined_at >= NOW() - INTERVAL '7 days'
     GROUP BY p.id, p.username, p.full_name
   )
   SELECT 
@@ -227,7 +227,7 @@ BEGIN
     LEFT JOIN points_ledger pl ON p.id = pl.profile_id 
       AND pl.created_at >= NOW() - INTERVAL '30 days'
     LEFT JOIN mission_participants mp ON p.id = mp.profile_id
-    WHERE p.is_active = true
+      AND mp.joined_at >= NOW() - INTERVAL '30 days'
     GROUP BY p.id, p.username, p.full_name
   )
   SELECT 
