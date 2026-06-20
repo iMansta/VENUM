@@ -531,7 +531,7 @@ EXECUTE FUNCTION public.points_ledger_set_transaction_type();
 -- Market Prices Cache Table
 CREATE TABLE IF NOT EXISTS public.market_prices_cache (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  item_id TEXT NOT NULL,
+  item_id TEXT NOT NULL UNIQUE,
   price_data JSONB NOT NULL,
   cached_at TIMESTAMPTZ DEFAULT NOW(),
   expires_at TIMESTAMPTZ DEFAULT NOW() + INTERVAL '15 minutes'
@@ -541,8 +541,13 @@ CREATE TABLE IF NOT EXISTS public.market_prices_cache (
 ALTER TABLE public.market_prices_cache ENABLE ROW LEVEL SECURITY;
 
 -- RLS Policies for Market Prices Cache
+DROP POLICY IF EXISTS "Anyone can view market prices cache" ON public.market_prices_cache;
 CREATE POLICY "Anyone can view market prices cache" ON public.market_prices_cache FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "System can insert market prices cache" ON public.market_prices_cache;
 CREATE POLICY "System can insert market prices cache" ON public.market_prices_cache FOR INSERT WITH CHECK (true);
+
+DROP POLICY IF EXISTS "System can update market prices cache" ON public.market_prices_cache;
 CREATE POLICY "System can update market prices cache" ON public.market_prices_cache FOR UPDATE WITH CHECK (true);
 
 -- Index for faster lookups
@@ -570,6 +575,9 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
+-- Grant execute on get_cached_market_prices
+GRANT EXECUTE ON FUNCTION public.get_cached_market_prices TO authenticated;
+
 -- Function to set cached market prices
 CREATE OR REPLACE FUNCTION public.set_cached_market_prices(p_item_id TEXT, p_price_data JSONB)
 RETURNS VOID AS $$
@@ -584,6 +592,9 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
+-- Grant execute on set_cached_market_prices
+GRANT EXECUTE ON FUNCTION public.set_cached_market_prices TO authenticated;
+
 -- Function to clear expired cache entries
 CREATE OR REPLACE FUNCTION public.clear_expired_market_cache()
 RETURNS INTEGER AS $$
@@ -597,6 +608,9 @@ BEGIN
   RETURN deleted_count;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Grant execute on clear_expired_market_cache
+GRANT EXECUTE ON FUNCTION public.clear_expired_market_cache TO authenticated;
 
 -- Migration Script to ensure missions table has all required columns
 -- Run this in Supabase SQL Editor if you encounter schema cache errors
