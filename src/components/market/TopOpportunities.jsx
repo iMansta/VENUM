@@ -31,7 +31,7 @@ const TopOpportunities = ({ arbitrageData = null, limit = 10, refreshKey = 0 }) 
     setUsingMock(false);
     
     try {
-      const data = await fetchTopOpportunities(COMMON_ITEMS, limit);
+      const data = await fetchTopOpportunities(COMMON_ITEMS, limit, false); // false = no premium by default
       setOpportunities(data);
       // Check if using mock data (mock data has specific structure)
       setUsingMock(data.length > 0 && data[0].lowestCity !== undefined);
@@ -156,7 +156,7 @@ const TopOpportunities = ({ arbitrageData = null, limit = 10, refreshKey = 0 }) 
               <div className="flex items-center gap-2 mb-3 text-sm justify-center">
                 <span className="text-blue-400 font-medium text-xs">{opportunity.lowestCity}</span>
                 <ArrowUpRight className="w-3 h-3 text-gray-500" />
-                <span className="text-amber-400 font-medium text-xs">Caerleon</span>
+                <span className="text-amber-400 font-medium text-xs">Black Market</span>
               </div>
 
               {/* Price Details */}

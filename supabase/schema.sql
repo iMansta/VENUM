@@ -528,6 +528,76 @@ BEFORE INSERT ON public.points_ledger
 FOR EACH ROW
 EXECUTE FUNCTION public.points_ledger_set_transaction_type();
 
+-- Market Prices Cache Table
+CREATE TABLE IF NOT EXISTS public.market_prices_cache (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  item_id TEXT NOT NULL,
+  price_data JSONB NOT NULL,
+  cached_at TIMESTAMPTZ DEFAULT NOW(),
+  expires_at TIMESTAMPTZ DEFAULT NOW() + INTERVAL '15 minutes'
+);
+
+-- Enable RLS on market_prices_cache
+ALTER TABLE public.market_prices_cache ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies for Market Prices Cache
+CREATE POLICY "Anyone can view market prices cache" ON public.market_prices_cache FOR SELECT USING (true);
+CREATE POLICY "System can insert market prices cache" ON public.market_prices_cache FOR INSERT WITH CHECK (true);
+CREATE POLICY "System can update market prices cache" ON public.market_prices_cache FOR UPDATE WITH CHECK (true);
+
+-- Index for faster lookups
+CREATE INDEX IF NOT EXISTS idx_market_prices_cache_item_id ON public.market_prices_cache(item_id);
+CREATE INDEX IF NOT EXISTS idx_market_prices_cache_expires_at ON public.market_prices_cache(expires_at);
+
+-- Function to get cached market prices
+CREATE OR REPLACE FUNCTION public.get_cached_market_prices(p_item_ids TEXT[])
+RETURNS TABLE (
+  item_id TEXT,
+  price_data JSONB,
+  cached_at TIMESTAMPTZ,
+  expires_at TIMESTAMPTZ
+) AS $$
+BEGIN
+  RETURN QUERY
+  SELECT 
+    mpc.item_id,
+    mpc.price_data,
+    mpc.cached_at,
+    mpc.expires_at
+  FROM public.market_prices_cache mpc
+  WHERE mpc.item_id = ANY(p_item_ids)
+    AND mpc.expires_at > NOW();
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Function to set cached market prices
+CREATE OR REPLACE FUNCTION public.set_cached_market_prices(p_item_id TEXT, p_price_data JSONB)
+RETURNS VOID AS $$
+BEGIN
+  INSERT INTO public.market_prices_cache (item_id, price_data, cached_at, expires_at)
+  VALUES (p_item_id, p_price_data, NOW(), NOW() + INTERVAL '15 minutes')
+  ON CONFLICT (item_id) DO UPDATE
+  SET 
+    price_data = EXCLUDED.price_data,
+    cached_at = NOW(),
+    expires_at = NOW() + INTERVAL '15 minutes';
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Function to clear expired cache entries
+CREATE OR REPLACE FUNCTION public.clear_expired_market_cache()
+RETURNS INTEGER AS $$
+DECLARE
+  deleted_count INTEGER;
+BEGIN
+  DELETE FROM public.market_prices_cache
+  WHERE expires_at <= NOW();
+  
+  GET DIAGNOSTICS deleted_count = ROW_COUNT;
+  RETURN deleted_count;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
 -- Migration Script to ensure missions table has all required columns
 -- Run this in Supabase SQL Editor if you encounter schema cache errors
 

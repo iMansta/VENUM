@@ -1,5 +1,6 @@
 import { getRouteRisk, calculateExpectedProfit, getTravelTime, calculateEfficiency, calculateRiskAdjustedEfficiency } from './riskMap';
 import { getSaturationLevel, calculateSaturationAdjustedPrice, getSaturationWarning } from './saturation';
+import { getCachedMarketPrices, setCachedMarketPrice, isCacheValid } from '@/lib/supabase/marketCache';
 
 const ALBION_API_BASE = 'https://www.albion-online-data.com/api/v2/stats/prices';
 
@@ -200,7 +201,7 @@ const MOCK_OPPORTUNITIES = [
 /**
  * Fetch price data for a specific item
  * @param {string} itemName - The item name (e.g., 'T4_BAG', 'T5_PLANKS')
- * @param {number} locations - Number of locations to fetch (default: 1 for Caerleon)
+ * @param {number} locations - Number of locations to fetch (default: 1 for Black Market)
  * @returns {Promise<Object>} Price data for the item
  */
 export const fetchItemPrice = async (itemName, locations = 1) => {
@@ -215,7 +216,7 @@ export const fetchItemPrice = async (itemName, locations = 1) => {
 
     // Queue the request to respect concurrency limit
     const response = await queueRequest(async () => {
-      return await fetchWithRetry(`${ALBION_API_BASE}/${itemName}?locations=${locations}`);
+      return await fetchWithRetry(`${ALBION_API_BASE}/${itemName}?locations=Black%20Market`);
     });
 
     const data = await response.json();
@@ -235,37 +236,75 @@ export const fetchItemPrice = async (itemName, locations = 1) => {
 };
 
 /**
- * Fetch price data for multiple items
+ * Fetch price data for multiple items with Supabase cache
  * @param {Array<Object>} items - Array of item objects with itemId, enchantment, quantity
- * @param {number} locations - Number of locations to fetch
+ * @param {boolean} hasPremium - Whether user has premium (affects transaction fee)
  * @returns {Promise<Array>} Array of price data for all items
  */
-export const fetchMultipleItemPrices = async (items, locations = 1) => {
+export const fetchMultipleItemPrices = async (items, hasPremium = false) => {
   try {
     console.log(`[FETCH] Fetching prices for ${items.length} items (max ${MAX_CONCURRENT_REQUESTS} concurrent)`);
     const startTime = Date.now();
 
-    // Split items into smaller batches to reduce burst requests
-    const BATCH_SIZE = 15; // Reduced from 20 to 15 to reduce burst
+    // First, check Supabase cache for all items
+    const itemIds = items.map(item => item.itemId);
+    const cachedPrices = await getCachedMarketPrices(itemIds);
+
+    // Separate items into cached and uncached
+    const cachedItems = [];
+    const uncachedItems = [];
+
+    items.forEach((item) => {
+      const cached = cachedPrices[item.itemId];
+      if (cached && isCacheValid(cached.expiresAt)) {
+        cachedItems.push({
+          item,
+          priceData: cached.priceData,
+        });
+        console.log(`[CACHE HIT] ${item.itemId} from Supabase`);
+      } else {
+        uncachedItems.push(item);
+        console.log(`[CACHE MISS] ${item.itemId} - will fetch from API`);
+      }
+    });
+
+    console.log(`[CACHE] ${cachedItems.length} items from cache, ${uncachedItems.length} items to fetch`);
+
+    // Fetch uncached items from API in batches
+    const BATCH_SIZE = 100; // Increased to 100 for API batch requests
     const batches = [];
-    for (let i = 0; i < items.length; i += BATCH_SIZE) {
-      batches.push(items.slice(i, i + BATCH_SIZE));
+    for (let i = 0; i < uncachedItems.length; i += BATCH_SIZE) {
+      batches.push(uncachedItems.slice(i, i + BATCH_SIZE));
     }
 
-    console.log(`[FETCH] Split into ${batches.length} batches of ${BATCH_SIZE} items each`);
+    console.log(`[FETCH] Split ${uncachedItems.length} uncached items into ${batches.length} batches of ${BATCH_SIZE} items each`);
 
-    const allResults = [];
+    const fetchedResults = [];
     for (let i = 0; i < batches.length; i++) {
       console.log(`[FETCH] Processing batch ${i + 1}/${batches.length}`);
       
-      // Use queue system instead of Promise.all to respect concurrency limit
-      const batchResults = await Promise.all(
-        batches[i].map(item => fetchItemPrice(item.itemId, locations))
-      );
+      // Build comma-separated item IDs for batch API request
+      const itemIdsBatch = batches[i].map(item => item.itemId).join(',');
+      
+      try {
+        const response = await queueRequest(async () => {
+          return await fetchWithRetry(`${ALBION_API_BASE}/${itemIdsBatch}?locations=Black%20Market`);
+        });
 
-      allResults.push(...batchResults);
+        const data = await response.json();
+        
+        // Cache the fetched data in Supabase
+        for (const priceData of data) {
+          if (priceData) {
+            await setCachedMarketPrice(priceData.item_id, priceData);
+            fetchedResults.push(priceData);
+          }
+        }
+      } catch (error) {
+        console.error(`[FETCH] Error fetching batch ${i + 1}:`, error);
+      }
 
-      // Add delay between batches to reduce burst (increased from 500-800ms to 1000-1500ms)
+      // Add delay between batches to reduce burst
       if (i < batches.length - 1) {
         const delay = 1000 + Math.random() * 500; // 1000-1500ms delay
         console.log(`[FETCH] Waiting ${delay}ms before next batch`);
@@ -273,12 +312,17 @@ export const fetchMultipleItemPrices = async (items, locations = 1) => {
       }
     }
 
+    // Combine cached and fetched results
+    const allResults = [
+      ...cachedItems.map(c => c.priceData),
+      ...fetchedResults,
+    ];
+
     const duration = Date.now() - startTime;
-    const validResults = allResults.filter(result => result !== null);
-    console.log(`[FETCH] Fetched ${validResults.length}/${items.length} prices in ${duration}ms`);
+    console.log(`[FETCH] Fetched ${allResults.length}/${items.length} prices in ${duration}ms`);
     console.log(`[FETCH] Request stats: ${requestCount} total requests, ${rateLimitErrorCount} rate limit errors, cache hits: ${cacheHits}, misses: ${cacheMisses}`);
 
-    return validResults;
+    return allResults;
   } catch (error) {
     console.error('[FETCH] Error fetching multiple item prices:', error);
     return [];
@@ -288,15 +332,16 @@ export const fetchMultipleItemPrices = async (items, locations = 1) => {
 /**
  * Calculate arbitrage opportunity for an item
  * @param {Object} priceData - Price data from Albion API
- * @param {string} targetCity - Target city (default: 'Caerleon')
+ * @param {string} targetCity - Target city (default: 'Black Market')
+ * @param {boolean} hasPremium - Whether user has premium (affects transaction fee)
  * @returns {Object|null} Arbitrage opportunity data
  */
-export const calculateArbitrage = (priceData, targetCity = 'Caerleon') => {
+export const calculateArbitrage = (priceData, targetCity = 'Black Market', hasPremium = false) => {
   if (!priceData) return null;
 
-  const bmPrice = priceData.data?.['Caerleon']?.sell_price_min || 0;
+  const bmPrice = priceData.data?.['Black Market']?.sell_price_min || 0;
   const lowestCity = Object.entries(priceData.data || {})
-    .filter(([city]) => city !== 'Caerleon')
+    .filter(([city]) => city !== 'Black Market')
     .reduce((lowest, [city, data]) => {
       const buyPrice = data.buy_price_min || Infinity;
       return buyPrice < lowest.price ? { city, price: buyPrice } : lowest;
@@ -304,7 +349,16 @@ export const calculateArbitrage = (priceData, targetCity = 'Caerleon') => {
 
   if (lowestCity.price === Infinity) return null;
 
-  const netProfit = bmPrice - lowestCity.price;
+  // Black Market fees
+  // Setup fee: 2.5% of sell price (fixed)
+  // Transaction fee: 3.5% without premium, 2.5% with premium
+  const setupFee = bmPrice * 0.025;
+  const transactionFeeRate = hasPremium ? 0.025 : 0.035;
+  const transactionFee = bmPrice * transactionFeeRate;
+  const totalFees = setupFee + transactionFee;
+
+  const grossProfit = bmPrice - lowestCity.price;
+  const netProfit = grossProfit - totalFees;
   const margin = lowestCity.price > 0 ? ((netProfit / lowestCity.price) * 100) : 0;
 
   // Calculate risk and efficiency
@@ -317,7 +371,7 @@ export const calculateArbitrage = (priceData, targetCity = 'Caerleon') => {
   // Calculate saturation-adjusted price
   const saturationLevel = getSaturationLevel(priceData.item_id);
   const saturationAdjustedPrice = calculateSaturationAdjustedPrice(priceData.item_id, bmPrice);
-  const saturationAdjustedProfit = saturationAdjustedPrice - lowestCity.price;
+  const saturationAdjustedProfit = saturationAdjustedPrice - lowestCity.price - totalFees;
 
   return {
     itemId: priceData.item_id,
@@ -325,6 +379,10 @@ export const calculateArbitrage = (priceData, targetCity = 'Caerleon') => {
     lowestCity: lowestCity.city,
     lowestPrice: lowestCity.price,
     bmPrice: bmPrice,
+    grossProfit: grossProfit,
+    setupFee: setupFee,
+    transactionFee: transactionFee,
+    totalFees: totalFees,
     netProfit: netProfit,
     margin: margin,
     risk: risk,
@@ -335,6 +393,7 @@ export const calculateArbitrage = (priceData, targetCity = 'Caerleon') => {
     saturation: saturationLevel,
     saturationAdjustedProfit: saturationAdjustedProfit,
     saturationWarning: getSaturationWarning(priceData.item_id),
+    hasPremium: hasPremium,
   };
 };
 
@@ -342,9 +401,10 @@ export const calculateArbitrage = (priceData, targetCity = 'Caerleon') => {
  * Fetch top arbitrage opportunities for a list of items
  * @param {Array<Object>} items - Array of item objects with itemId, enchantment, quantity
  * @param {number} limit - Number of top opportunities to return
+ * @param {boolean} hasPremium - Whether user has premium (affects transaction fee)
  * @returns {Promise<Array>} Array of top arbitrage opportunities
  */
-export const fetchTopOpportunities = async (items, limit = 10) => {
+export const fetchTopOpportunities = async (items, limit = 10, hasPremium = false) => {
   // Single-flight: if the same request is already in flight, return the same promise
   const requestKey = generateCanonicalKey(items, limit);
   
@@ -356,7 +416,7 @@ export const fetchTopOpportunities = async (items, limit = 10) => {
   const requestPromise = (async () => {
     try {
       console.log(`[FETCH] Fetching top opportunities for ${items.length} items (key: ${requestKey.substring(0, 50)}...)`);
-      const priceData = await fetchMultipleItemPrices(items);
+      const priceData = await fetchMultipleItemPrices(items, hasPremium);
       console.log(`[FETCH] Received price data for ${priceData.length} items`);
       
       if (priceData.length === 0) {
@@ -368,7 +428,7 @@ export const fetchTopOpportunities = async (items, limit = 10) => {
       const opportunities = priceData
         .map((data, index) => {
           const itemMetadata = items[index] || { enchantment: 0, quantity: 1 };
-          const arbitrage = calculateArbitrage(data);
+          const arbitrage = calculateArbitrage(data, 'Black Market', hasPremium);
           if (arbitrage) {
             return {
               ...arbitrage,
@@ -404,7 +464,8 @@ export const fetchTopOpportunities = async (items, limit = 10) => {
 };
 
 // Common items to check for arbitrage with enchantment and quantity
-// Only equipable items that can be sold in Black Market
+// Only equipable items that can be sold in Black Market (Weapons, Armor, Bags, Capes, Mounts)
+// Excluded: Resources (Wood, Planks, Ore, MetalBars, Fiber, Cloth, Hide, Leather, Rock, StoneBlocks)
 export const COMMON_ITEMS = [
   { itemId: 'T4_BAG', enchantment: 0, quantity: 1 },
   { itemId: 'T5_BAG', enchantment: 0, quantity: 1 },
@@ -531,4 +592,25 @@ export const COMMON_ITEMS = [
   { itemId: 'T6_CAPE', enchantment: 0, quantity: 1 },
   { itemId: 'T7_CAPE', enchantment: 0, quantity: 1 },
   { itemId: 'T8_CAPE', enchantment: 0, quantity: 1 },
+  // Mounts
+  { itemId: 'T4_MOUNT_HORSE', enchantment: 0, quantity: 1 },
+  { itemId: 'T5_MOUNT_HORSE', enchantment: 0, quantity: 1 },
+  { itemId: 'T6_MOUNT_HORSE', enchantment: 0, quantity: 1 },
+  { itemId: 'T7_MOUNT_HORSE', enchantment: 0, quantity: 1 },
+  { itemId: 'T8_MOUNT_HORSE', enchantment: 0, quantity: 1 },
+  { itemId: 'T4_MOUNT_ARMOREDHORSE', enchantment: 0, quantity: 1 },
+  { itemId: 'T5_MOUNT_ARMOREDHORSE', enchantment: 0, quantity: 1 },
+  { itemId: 'T6_MOUNT_ARMOREDHORSE', enchantment: 0, quantity: 1 },
+  { itemId: 'T7_MOUNT_ARMOREDHORSE', enchantment: 0, quantity: 1 },
+  { itemId: 'T8_MOUNT_ARMOREDHORSE', enchantment: 0, quantity: 1 },
+  { itemId: 'T4_MOUNT_DIREWOLF', enchantment: 0, quantity: 1 },
+  { itemId: 'T5_MOUNT_DIREWOLF', enchantment: 0, quantity: 1 },
+  { itemId: 'T6_MOUNT_DIREWOLF', enchantment: 0, quantity: 1 },
+  { itemId: 'T7_MOUNT_DIREWOLF', enchantment: 0, quantity: 1 },
+  { itemId: 'T8_MOUNT_DIREWOLF', enchantment: 0, quantity: 1 },
+  { itemId: 'T4_MOUNT_MAMMOTH', enchantment: 0, quantity: 1 },
+  { itemId: 'T5_MOUNT_MAMMOTH', enchantment: 0, quantity: 1 },
+  { itemId: 'T6_MOUNT_MAMMOTH', enchantment: 0, quantity: 1 },
+  { itemId: 'T7_MOUNT_MAMMOTH', enchantment: 0, quantity: 1 },
+  { itemId: 'T8_MOUNT_MAMMOTH', enchantment: 0, quantity: 1 },
 ];
