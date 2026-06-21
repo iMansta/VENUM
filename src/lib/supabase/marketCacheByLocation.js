@@ -10,9 +10,48 @@ import { supabase } from './client';
  *
  * Coexists with `marketCache.js` (the old JSONB-blob cache). Old
  * callers keep working; the arbitrage pipeline uses this module.
+ *
+ * Resilience contract:
+ *   - Missing RPCs (PGRST202 / 404) are handled gracefully. They are
+ *     reported ONCE per RPC per session via a `console.warn`, then
+ *     silenced so we don't spam the console on every request.
+ *   - All other errors are logged but never thrown to the caller.
+ *     The arbitrage pipeline must keep running with or without cache.
  */
 
 const CACHE_TTL = 15 * 60 * 1000; // 15 minutes
+
+// Track which RPCs are missing so we only warn once per session per RPC.
+const missingRpcWarned = new Set();
+
+const isMissingRpcError = (error) => {
+  if (!error) return false;
+  const code = error.code;
+  const status = error.status;
+  const msg = String(error.message || '');
+  return (
+    code === 'PGRST202' ||
+    status === 404 ||
+    /Could not find the function public\./i.test(msg)
+  );
+};
+
+const noteMissingRpc = (rpcName, error) => {
+  if (missingRpcWarned.has(rpcName)) return;
+  missingRpcWarned.add(rpcName);
+  console.warn(
+    `[SUPABASE CACHE BY LOCATION] RPC '${rpcName}' is missing in Supabase. ` +
+      `The arbitrage pipeline will keep working from the Albion API directly. ` +
+      `Apply 'supabase/schema_market_refactor.sql' in the Supabase SQL editor to enable caching. ` +
+      `(Underlying error: ${error?.message || error})`
+  );
+};
+
+/**
+ * Reset the in-memory "missing RPC" tracker. Useful for tests or after
+ * the user confirms they've applied the migration.
+ */
+export const resetMissingRpcWarnings = () => missingRpcWarned.clear();
 
 /**
  * Get cached prices grouped by item_id, each containing the list of
@@ -28,7 +67,13 @@ export const getCachedMarketPricesByLocation = async (itemIds) => {
       { p_item_ids: itemIds }
     );
 
-    if (error) throw error;
+    if (error) {
+      if (isMissingRpcError(error)) {
+        noteMissingRpc('get_cached_market_prices_by_location', error);
+        return {};
+      }
+      throw error;
+    }
 
     const grouped = {};
     (data || []).forEach((row) => {
@@ -41,9 +86,11 @@ export const getCachedMarketPricesByLocation = async (itemIds) => {
       });
     });
 
-    console.log(
-      `[SUPABASE CACHE BY LOCATION] Retrieved ${data?.length || 0} rows for ${itemIds.length} items`
-    );
+    if (data && data.length > 0) {
+      console.log(
+        `[SUPABASE CACHE BY LOCATION] Retrieved ${data.length} rows for ${itemIds.length} items`
+      );
+    }
     return grouped;
   } catch (error) {
     console.error('[SUPABASE CACHE BY LOCATION] Error fetching cached prices:', error);
@@ -67,7 +114,13 @@ export const setCachedMarketPriceByLocation = async (itemId, location, priceData
       p_price_data: priceData,
     });
 
-    if (error) throw error;
+    if (error) {
+      if (isMissingRpcError(error)) {
+        noteMissingRpc('set_cached_market_price_by_location', error);
+        return false;
+      }
+      throw error;
+    }
     return true;
   } catch (error) {
     console.error(
@@ -86,8 +139,16 @@ export const setCachedMarketPriceByLocation = async (itemId, location, priceData
  * @param {Array<{itemId: string, location: string, priceData: object}>} entries
  */
 export const setCachedMarketPricesByLocation = async (entries) => {
+  if (!entries || entries.length === 0) return;
+  let successCount = 0;
   for (const entry of entries) {
-    await setCachedMarketPriceByLocation(entry.itemId, entry.location, entry.priceData);
+    const ok = await setCachedMarketPriceByLocation(entry.itemId, entry.location, entry.priceData);
+    if (ok) successCount++;
+  }
+  if (successCount > 0 && !missingRpcWarned.has('set_cached_market_price_by_location')) {
+    console.log(
+      `[SUPABASE CACHE BY LOCATION] Persisted ${successCount}/${entries.length} (item, location) rows`
+    );
   }
 };
 
@@ -99,7 +160,13 @@ export const setCachedMarketPricesByLocation = async (entries) => {
 export const clearExpiredMarketCacheByLocation = async () => {
   try {
     const { data, error } = await supabase.rpc('clear_expired_market_cache_by_location');
-    if (error) throw error;
+    if (error) {
+      if (isMissingRpcError(error)) {
+        noteMissingRpc('clear_expired_market_cache_by_location', error);
+        return 0;
+      }
+      throw error;
+    }
     console.log(`[SUPABASE CACHE BY LOCATION] Cleared ${data} expired rows`);
     return data;
   } catch (error) {
