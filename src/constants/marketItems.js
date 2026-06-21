@@ -5,14 +5,13 @@
  * Recursos (PLANK, ORE, FIBER, etc.) são explicitamente excluídos porque
  * o BM não os aceita.
  *
- * Cada item é gerado para os tiers T4-T8 e encantamentos 0-3, o que dá
- * uma cobertura muito maior do que a lista estática anterior (125 itens).
+ * Cada item é gerado para os tiers T4-T8 e encantamentos 0-3.
  *
- * O Albion Data Project aceita um número grande de IDs por requisição
- * (até ~200-300 antes de começar a truncar), mas com caching por
- * (item, location) em market_prices_cache_by_location isso deixa de ser
- * problema porque itens raros nunca chegam a ser pedidos de novo dentro
- * do TTL de 15 min.
+ * Padrão oficial da API do Albion Data Project para IDs:
+ *   - Encantamento 0 (base):   T4_BAG              (sem sufixo)
+ *   - Encantamento 1..3:       T4_HEAD_PLATE@1     (sufixo @N)
+ *
+ * NUNCA usar ".0" ou ".N" — isso causa 404 silenciosos na API.
  */
 
 const TIERS = [4, 5, 6, 7, 8];
@@ -43,7 +42,6 @@ const EQUIPMENT_FAMILIES = [
 ];
 
 // Padrões que JAMAIS devem chegar no fetch (recursos, não vão ao BM).
-// Mantido por segurança caso alguém adicione um id manualmente depois.
 const EXCLUDED_PATTERNS = [
   'PLANK', 'WOOD', 'ORE', 'METALBAR', 'FIBER',
   'ROCK', 'STONE', 'HIDE', 'LEATHER_RAW', 'CLOTH_RAW',
@@ -55,14 +53,24 @@ const isExcluded = (itemId) => {
   return EXCLUDED_PATTERNS.some((p) => upper.includes(p));
 };
 
+/**
+ * Formata o ID de item no padrão oficial da API:
+ *   - enc 0 → 'T4_BAG'
+ *   - enc N → 'T4_HEAD_PLATE@N'
+ */
+const formatItemId = (tier, family, enc) => {
+  const base = `T${tier}_${family}`;
+  return enc > 0 ? `${base}@${enc}` : base;
+};
+
 const buildItems = () => {
   const items = [];
   for (const tier of TIERS) {
     for (const family of EQUIPMENT_FAMILIES) {
-      // Apenas uma variedade de encantamento 0 para BAG (não há bag encantada).
+      // BAG não tem encantamento (não há bag encantada no jogo).
       const enchants = family === 'BAG' ? [0] : ENCHANTMENTS;
       for (const enc of enchants) {
-        const itemId = `T${tier}_${family}.${enc}`;
+        const itemId = formatItemId(tier, family, enc);
         if (isExcluded(itemId)) continue;
         items.push({ itemId, enchantment: enc, quantity: 1 });
       }
@@ -84,3 +92,6 @@ export const MARKET_ITEMS = Object.freeze(buildItems());
 export const COMMON_ITEMS = MARKET_ITEMS;
 
 export const MARKET_ITEM_COUNT = MARKET_ITEMS.length;
+
+/** Helper exportado para construir IDs no mesmo padrão. */
+export const buildItemId = formatItemId;
