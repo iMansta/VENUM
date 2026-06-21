@@ -8,7 +8,49 @@ import {
 } from '@/lib/supabase/marketCacheByLocation';
 import { getMarketSettings } from '@/lib/supabase/marketSettings';
 
-const ALBION_API_BASE = 'https://www.albion-online-data.com/api/v2/stats/prices';
+// Use the West datacenter endpoint. The legacy `www` host still works
+// but `west` has been the canonical host for the community data project
+// since 2024 and gives lower latency for South American / European users.
+const ALBION_API_BASE = 'https://west.albion-online-data.com/api/v2/stats/prices';
+
+/**
+ * Sanitize a single price row coming from the Albion API.
+ *
+ * Returns either:
+ *   - { ok: true,  data: { buy_price_min, buy_price_max, sell_price_min, sell_price_max, _hasData: true  } }
+ *   - { ok: false, reason: 'all-zero' | 'malformed', _hasData: false }
+ *
+ * Items where EVERY field is 0 are flagged as "Sem dados recentes" — the
+ * community data project simply has no recent sale/buy order for that
+ * (item, location) pair. The caller should skip caching those.
+ */
+const sanitizePriceData = (row) => {
+  if (!row || typeof row !== 'object' || !row.item_id) {
+    return { ok: false, reason: 'malformed' };
+  }
+
+  const buyMin  = Number(row.buy_price_min  ?? 0);
+  const buyMax  = Number(row.buy_price_max  ?? 0);
+  const sellMin = Number(row.sell_price_min ?? 0);
+  const sellMax = Number(row.sell_price_max ?? 0);
+
+  const allZero = buyMin === 0 && buyMax === 0 && sellMin === 0 && sellMax === 0;
+
+  if (allZero) {
+    return { ok: false, reason: 'all-zero', location: row.location || row.city };
+  }
+
+  return {
+    ok: true,
+    data: {
+      buy_price_min:  buyMin,
+      buy_price_max:  buyMax,
+      sell_price_min: sellMin,
+      sell_price_max: sellMax,
+      _hasData: true,
+    },
+  };
+};
 
 // Locations we care about for arbitrage. The Black Market is where we sell,
 // the others are where we might buy cheaper.
@@ -386,6 +428,7 @@ export const fetchMultipleItemPrices = async (items, hasPremium = false, options
           // Split each row into per-location cache entries AND keep the
           // normalized shape that calculateArbitrage expects.
           const upserts = [];
+          let allZeroCount = 0;
           for (const row of data) {
             if (!row || !isValidEquipment(row.item_id)) {
               if (row) console.log(`[FILTER] Excluded resource item from API response: ${row.item_id}`);
@@ -397,21 +440,33 @@ export const fetchMultipleItemPrices = async (items, hasPremium = false, options
               continue;
             }
 
-            const priceData = {
-              buy_price_min: row.buy_price_min ?? 0,
-              buy_price_max: row.buy_price_max ?? 0,
-              sell_price_min: row.sell_price_min ?? 0,
-              sell_price_max: row.sell_price_max ?? 0,
-            };
+            // Sanitize: if the API returns all-zero for a (item, location)
+            // pair the community has no recent sale/buy order, so we
+            // don't cache it AND we don't include it in the calculation.
+            const sanitized = sanitizePriceData(row);
+            if (!sanitized.ok) {
+              allZeroCount++;
+              // eslint-disable-next-line no-console
+              console.warn(
+                `[ALBION][NO_DATA] ${row.item_id} @ ${loc} (${sanitized.reason}) - Sem dados recentes.`
+              );
+              continue;
+            }
 
             if (!fetchedByItem.has(row.item_id)) fetchedByItem.set(row.item_id, new Map());
-            fetchedByItem.get(row.item_id).set(loc, priceData);
+            fetchedByItem.get(row.item_id).set(loc, sanitized.data);
 
             upserts.push({
               itemId: row.item_id,
               location: loc,
-              priceData: priceData,
+              priceData: sanitized.data,
             });
+          }
+
+          if (allZeroCount > 0) {
+            console.warn(
+              `[ALBION][NO_DATA] ${allZeroCount} (item, location) pair(s) descartados por falta de dados recentes.`
+            );
           }
 
           // Persist to Supabase (one row per location)
