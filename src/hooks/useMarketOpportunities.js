@@ -23,13 +23,25 @@ export const useMarketOpportunities = (limit = 50, refreshKey = 0) => {
     setError(null);
     setIncludeAllTiers(shouldIncludeAllTiers);
     setProgress({ loaded: 0, total: 0, phase: 'cache' });
-    
+
     try {
       const data = await fetchTopOpportunities(COMMON_ITEMS, limit, false, {
         includeAllTiers: shouldIncludeAllTiers,
         onProgress: setProgress,
         forceRefresh,
       });
+
+      // TODO[diag]: remove after verifying "0 profitable opportunities" issue
+      // eslint-disable-next-line no-console
+      console.log(
+        '[DIAG][useMarketOpportunities] raw count=', Array.isArray(data) ? data.length : 0,
+        'bmCount=',
+        Array.isArray(data) ? data.filter(o => (o?.sellCity || 'Black Market') === 'Black Market').length : 0,
+        'withNetProfit=',
+        Array.isArray(data) ? data.filter(o => Number.isFinite(o?.netProfit) && o.netProfit > 0).length : 0,
+        'sample=', Array.isArray(data) ? data[0] : null
+      );
+
       setOpportunities(data);
     } catch (err) {
       setError('Failed to load opportunities');

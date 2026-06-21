@@ -7,13 +7,29 @@ import ItemIcon from './ItemIcon';
 import { getItemName } from '@/lib/i18n/itemNames';
 import SecurityChecklist from './SecurityChecklist';
 
+// TODO[diag]: remove after verifying "0 profitable opportunities" issue
+const DIAG_LOG = true;
+
+/**
+ * TransportList component - Renders the list of transport opportunities.
+ *
+ * Subscribes to the new normalized data source via the `opportunities`
+ * prop, which is produced by `useMarketOpportunities` →
+ * `fetchTopOpportunities` → `calculateArbitrage`.
+ *
+ * Renders only items whose target city is the Black Market (defensive
+ * filter, the backend already enforces this).
+ *
+ * Number formatting is defensive against `undefined` to avoid breaking
+ * the row when intermediate fields are missing during initial load.
+ */
 const TransportList = ({ userId, filters, refreshKey, opportunities: propOpportunities, loading: propLoading, loadingProgress = null }) => {
   const [opportunities, setOpportunities] = useState([]);
   const [myTransports, setMyTransports] = useState([]);
   const [loading, setLoading] = useState(true);
   const [reservingId, setReservingId] = useState(null);
   const [completingId, setCompletingId] = useState(null);
-  const [opportunityCount, setOpportunityCount] = useState(50);
+  const [opportunityCount] = useState(50);
   const [showSecurityChecklist, setShowSecurityChecklist] = useState(false);
   const [selectedOpportunity, setSelectedOpportunity] = useState(null);
 
@@ -25,21 +41,23 @@ const TransportList = ({ userId, filters, refreshKey, opportunities: propOpportu
     }
   }, [propOpportunities, propLoading]);
 
+  // Local fetch fallback (only when propOpportunities is undefined). Kept
+  // for backward-compat with any caller that still mounts this component
+  // standalone. Safe to delete once the Market page is the only caller.
   const loadOpportunities = useCallback(async () => {
-    // Only load if opportunities are not provided via props
     if (propOpportunities !== undefined) return;
-    
+
     setLoading(true);
     try {
-      const count = filters?.quantity || opportunityCount;
-      console.log('Loading opportunities with count:', count, 'filters:', filters);
+      const count = opportunityCount;
+      console.log('[DIAG][TransportList] local load count=', count, 'filters=', filters);
       const data = await fetchTopOpportunities(COMMON_ITEMS, count, false, {
         includeAllTiers: false,
         forceRefresh: true,
       });
-      console.log('Fetched opportunities:', data.length);
 
-      // Apply filters from props if provided
+      // Apply user-supplied filters (only fields still exposed by
+      // AdvancedFilters after the Part 1 cleanup).
       let filtered = data;
       if (filters) {
         if (filters.cities && filters.cities.length > 0) {
@@ -58,27 +76,11 @@ const TransportList = ({ userId, filters, refreshKey, opportunities: propOpportu
           });
         }
         if (filters.minProfit > 0) {
-          filtered = filtered.filter(opp => opp.netProfit >= filters.minProfit);
-        }
-        if (filters.premium && filters.premium !== 'all') {
-          // Filter by premium status (this would need to be implemented in the API)
-          // For now, we'll skip this as it requires backend changes
-        }
-        if (filters.maxInvestment && filters.maxInvestment !== Infinity) {
-          filtered = filtered.filter(opp => opp.lowestPrice <= filters.maxInvestment);
-        }
-        if (filters.riskLevel && filters.riskLevel !== 'all') {
-          filtered = filtered.filter(opp => {
-            if (!opp.risk) return false;
-            if (filters.riskLevel === 'low') return opp.risk.value <= 0.1;
-            if (filters.riskLevel === 'medium') return opp.risk.value <= 0.2;
-            if (filters.riskLevel === 'high') return opp.risk.value <= 0.4;
-            return true;
-          });
+          filtered = filtered.filter(opp => (opp.netProfit || 0) >= filters.minProfit);
         }
       }
 
-      console.log('Filtered opportunities:', filtered.length);
+      console.log('[DIAG][TransportList] local load filtered=', filtered.length);
       setOpportunities(filtered);
     } catch (error) {
       console.error('Error loading opportunities:', error);
@@ -301,14 +303,14 @@ const TransportList = ({ userId, filters, refreshKey, opportunities: propOpportu
                               <span className="text-xs text-blue-400">x{opportunity.quantity}</span>
                             )}
                           </div>
-                          <div className="flex items-center gap-2 text-xs mt-1">
+                          <div className="flex items-center gap-2 text-xs mt-1 flex-wrap">
                             <span className="text-blue-400">{opportunity.lowestCity}</span>
                             <span className="text-gray-500">→</span>
-                            <span className="text-amber-400">Caerleon</span>
+                            <span className="text-amber-400">{opportunity.sellCity || 'Black Market'}</span>
                             <span className="text-gray-500">|</span>
                             <span className="text-green-400">{formatSilver(opportunity.netProfit)}</span>
                             <span className="text-gray-500">|</span>
-                            <span className="text-purple-400">{opportunity.margin.toFixed(1)}%</span>
+                            <span className="text-purple-400">{(Number(opportunity.margin) || 0).toFixed(1)}%</span>
                             <span className="text-gray-500">|</span>
                             {/* Risk indicator */}
                             <span className={`text-xs font-medium ${
@@ -317,12 +319,12 @@ const TransportList = ({ userId, filters, refreshKey, opportunities: propOpportu
                               'text-red-400'
                             }`}>
                               <Shield className="w-3 h-3 inline mr-1" />
-                              {opportunity.risk?.label}
+                              {opportunity.risk?.label || '—'}
                             </span>
                             <span className="text-gray-500">|</span>
                             <span className="text-blue-400">
                               <Timer className="w-3 h-3 inline mr-1" />
-                              {opportunity.travelTime}min
+                              {opportunity.travelTime ?? 0}min
                             </span>
                             <span className="text-gray-500">|</span>
                             <span className="text-amber-400">

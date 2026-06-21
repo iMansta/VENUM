@@ -4,8 +4,18 @@ import ItemIcon from './ItemIcon';
 import { getItemName } from '@/lib/i18n/itemNames';
 import { fetchTopOpportunities, COMMON_ITEMS } from '@/lib/albion/api';
 
+// TODO[diag]: remove after verifying "0 profitable opportunities" issue
+const DIAG_LOG = true;
+
 /**
- * TopOpportunities component - Displays top 10 best profit opportunities
+ * TopOpportunities component - Displays top 10 best profit opportunities.
+ *
+ * Part 3 of the refactor: this component MUST only render opportunities
+ * whose target (sell) city is the Black Market. The backend already
+ * enforces this in `fetchTopOpportunities` (`targetCity = BLACK_MARKET`),
+ * but we filter again here as a defensive measure and to keep the
+ * component self-contained.
+ *
  * @param {Array} arbitrageData - Array of arbitrage opportunities (optional, will fetch if not provided)
  * @param {number} limit - Number of cards to display (default: 10)
  */
@@ -27,7 +37,7 @@ const TopOpportunities = ({ arbitrageData = null, limit = 10, refreshKey = 0, lo
   const loadOpportunities = async () => {
     setLoading(true);
     setError(null);
-    
+
     try {
       const data = await fetchTopOpportunities(COMMON_ITEMS, limit, false); // false = no premium by default
       setOpportunities(data);
@@ -51,8 +61,27 @@ const TopOpportunities = ({ arbitrageData = null, limit = 10, refreshKey = 0, lo
   // Sort by net profit and get top opportunities
   const topOpportunities = useMemo(() => {
     if (!opportunities || opportunities.length === 0) return [];
-    return [...opportunities]
-      .sort((a, b) => b.netProfit - a.netProfit)
+
+    // Defensive: only Black-Market sell-side opportunities
+    const bmOnly = opportunities.filter((opp) => {
+      if (!opp) return false;
+      // sellCity is the new canonical field; older payloads used bmPrice
+      // together with a hardcoded "Black Market" string in the UI.
+      const sellCity = opp.sellCity ?? (opp.bmPrice ? 'Black Market' : null);
+      return sellCity === 'Black Market' && Number.isFinite(opp.netProfit);
+    });
+
+    if (DIAG_LOG) {
+      // eslint-disable-next-line no-console
+      console.log(
+        '[DIAG][TopOpportunities] raw=', opportunities.length,
+        'bmOnly=', bmOnly.length,
+        'sample=', bmOnly[0]
+      );
+    }
+
+    return [...bmOnly]
+      .sort((a, b) => (b.netProfit || 0) - (a.netProfit || 0))
       .slice(0, limit);
   }, [opportunities, limit]);
 
@@ -179,7 +208,7 @@ const TopOpportunities = ({ arbitrageData = null, limit = 10, refreshKey = 0, lo
                 <div className="flex items-center justify-between mt-1">
                   <span className="text-green-300 text-xs">Margem:</span>
                   <span className="text-green-300 text-xs font-medium">
-                    {opportunity.margin.toFixed(1)}%
+                    {(Number(opportunity.margin) || 0).toFixed(1)}%
                   </span>
                 </div>
               </div>

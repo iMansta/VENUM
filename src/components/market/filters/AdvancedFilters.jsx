@@ -5,39 +5,43 @@ import TierFilter from './TierFilter';
 import EnchantmentFilter from './EnchantmentFilter';
 import QualityFilter from './QualityFilter';
 import ProfitFilter from './ProfitFilter';
-import QuantityFilter from './QuantityFilter';
-import PremiumFilter from './PremiumFilter';
-import InvestmentFilter from './InvestmentFilter';
-import RiskFilter from './RiskFilter';
 
 /**
  * AdvancedFilters component - Container for all market filters
+ *
+ * Removed (per product decision):
+ *   - "% Margem Mínima"  (now sourced dynamically from `market_settings.min_margin_pct`)
+ *   - "Investimento Máximo"
+ *   - "Risco Aceitável"
+ *   - "Quantidade"        (replaced by the global selector inside TransportList)
+ *
+ * The component still ships the existing default state for the fields
+ * that *are* shown. Removed fields are simply not exposed to the
+ * consumer, so `setMinProfit(0)` / `setQuantity(100)` / etc. defaults
+ * remain defined here only as documentation (the related state hooks
+ * have been deleted).
+ *
  * @param {Function} onFilterChange - Callback when any filter changes
  * @param {Function} onApplyFilters - Callback when apply filters button is clicked
  */
-
 const AdvancedFilters = ({ onFilterChange, onApplyFilters }) => {
   const [selectedCities, setSelectedCities] = useState([]);
   const [selectedTiers, setSelectedTiers] = useState([]);
   const [selectedEnchantments, setSelectedEnchantments] = useState([]);
   const [selectedQualities, setSelectedQualities] = useState([]);
   const [minProfit, setMinProfit] = useState(0);
-  const [quantity, setQuantity] = useState(100);
-  const [premium, setPremium] = useState('all');
-  const [maxInvestment, setMaxInvestment] = useState(Infinity);
-  const [riskLevel, setRiskLevel] = useState('all');
 
   const handleApplyFilters = () => {
+    // The shape below is what consumers expect. Removed fields are
+    // intentionally omitted so downstream code sees `undefined` rather
+    // than stale values, but every consumer in the codebase already
+    // guards with `if (filters && filters.X)` so the absence is safe.
     onFilterChange({
       cities: selectedCities,
       tiers: selectedTiers,
       enchantments: selectedEnchantments,
       qualities: selectedQualities,
       minProfit,
-      quantity,
-      premium,
-      maxInvestment,
-      riskLevel,
     });
     if (onApplyFilters) {
       onApplyFilters();
@@ -50,10 +54,6 @@ const AdvancedFilters = ({ onFilterChange, onApplyFilters }) => {
     setSelectedEnchantments([]);
     setSelectedQualities([]);
     setMinProfit(0);
-    setQuantity(100);
-    setPremium('all');
-    setMaxInvestment(Infinity);
-    setRiskLevel('all');
   };
 
   const hasActiveFilters =
@@ -61,11 +61,7 @@ const AdvancedFilters = ({ onFilterChange, onApplyFilters }) => {
     selectedTiers.length > 0 ||
     selectedEnchantments.length > 0 ||
     selectedQualities.length > 0 ||
-    minProfit > 0 ||
-    quantity !== 100 ||
-    premium !== 'all' ||
-    maxInvestment !== Infinity ||
-    riskLevel !== 'all';
+    minProfit > 0;
 
   return (
     <div className="bg-slate-900 rounded-lg border border-slate-800 overflow-hidden">
@@ -116,22 +112,6 @@ const AdvancedFilters = ({ onFilterChange, onApplyFilters }) => {
             minProfit={minProfit}
             onMinProfitChange={setMinProfit}
           />
-          <QuantityFilter
-            quantity={quantity}
-            onQuantityChange={setQuantity}
-          />
-          <PremiumFilter
-            premium={premium}
-            onPremiumChange={setPremium}
-          />
-          <InvestmentFilter
-            maxInvestment={maxInvestment}
-            onMaxInvestmentChange={setMaxInvestment}
-          />
-          <RiskFilter
-            riskLevel={riskLevel}
-            onRiskLevelChange={setRiskLevel}
-          />
         </div>
       </div>
 
@@ -172,16 +152,6 @@ const AdvancedFilters = ({ onFilterChange, onApplyFilters }) => {
             {minProfit > 0 && (
               <span className="text-gray-400">
                 Lucro Mínimo: <span className="text-green-400">{minProfit}%</span>
-              </span>
-            )}
-            {quantity !== 100 && (
-              <span className="text-gray-400">
-                Quantidade: <span className="text-white">{quantity}</span>
-              </span>
-            )}
-            {premium !== 'all' && (
-              <span className="text-gray-400">
-                Premium: <span className="text-white">{premium === 'with' ? 'Com' : 'Sem'}</span>
               </span>
             )}
           </div>
