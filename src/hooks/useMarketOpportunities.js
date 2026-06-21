@@ -2,8 +2,19 @@ import { useState, useEffect, useCallback } from 'react';
 import { fetchTopOpportunities, COMMON_ITEMS } from '@/lib/albion/api';
 
 /**
- * Custom hook to fetch and manage market opportunities
- * Ensures single source of truth for market data across components
+ * Custom hook to fetch and manage market opportunities.
+ *
+ * Behaviour:
+ *   - Always fetches ALL tiers (T4 → T8). The legacy "Carregar T6-T8"
+ *     toggle has been removed from the UI, so the initial payload
+ *     includes every equipment tier.
+ *   - Profit / margin thresholds come from `market_settings` (Supabase)
+ *     with the documented defaults:
+ *       - minProfit = 10000
+ *       - minMarginPct = 0.10 (10%)
+ *   - Consumers receive the same `opportunities` shape regardless of
+ *     tier scope.
+ *
  * @param {number} limit - Number of opportunities to fetch (default: 50)
  * @param {number} refreshKey - Key to trigger refresh
  * @returns {Object} Opportunities data and loading state
@@ -13,20 +24,15 @@ export const useMarketOpportunities = (limit = 50, refreshKey = 0) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [progress, setProgress] = useState({ loaded: 0, total: 0, phase: 'idle' });
-  const [includeAllTiers, setIncludeAllTiers] = useState(false);
 
-  const loadOpportunities = useCallback(async ({
-    includeAllTiers: shouldIncludeAllTiers = false,
-    forceRefresh = false,
-  } = {}) => {
+  const loadOpportunities = useCallback(async ({ forceRefresh = false } = {}) => {
     setLoading(true);
     setError(null);
-    setIncludeAllTiers(shouldIncludeAllTiers);
     setProgress({ loaded: 0, total: 0, phase: 'cache' });
 
     try {
       const data = await fetchTopOpportunities(COMMON_ITEMS, limit, false, {
-        includeAllTiers: shouldIncludeAllTiers,
+        includeAllTiers: true, // always fetch T4-T8 (UI toggle removed)
         onProgress: setProgress,
         forceRefresh,
       });
@@ -39,6 +45,8 @@ export const useMarketOpportunities = (limit = 50, refreshKey = 0) => {
         Array.isArray(data) ? data.filter(o => (o?.sellCity || 'Black Market') === 'Black Market').length : 0,
         'withNetProfit=',
         Array.isArray(data) ? data.filter(o => Number.isFinite(o?.netProfit) && o.netProfit > 0).length : 0,
+        'withMarginOk=',
+        Array.isArray(data) ? data.filter(o => Number.isFinite(o?.netProfit) && o.netProfit >= 10000 && Number(o?.margin) >= 10).length : 0,
         'sample=', Array.isArray(data) ? data[0] : null
       );
 
@@ -53,17 +61,14 @@ export const useMarketOpportunities = (limit = 50, refreshKey = 0) => {
   }, [limit]);
 
   useEffect(() => {
-    loadOpportunities({ includeAllTiers: false, forceRefresh: false });
+    loadOpportunities({ forceRefresh: false });
   }, [refreshKey, loadOpportunities]);
 
   return {
     opportunities,
     loading,
     error,
-    refresh: loadOpportunities,
+    refresh: () => loadOpportunities({ forceRefresh: true }),
     progress,
-    includeAllTiers,
-    hasMoreTiers: !includeAllTiers,
-    loadAllTiers: () => loadOpportunities({ includeAllTiers: true, forceRefresh: true }),
   };
 };

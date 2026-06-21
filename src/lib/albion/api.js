@@ -531,7 +531,15 @@ export const calculateArbitrage = (priceData, targetCity = BLACK_MARKET, hasPrem
     ? bmEntry.buy_price_max
     : (bmEntry.sell_price_min || 0);
 
-  if (bmSellPrice <= 0) return null;
+  // [DEBUG] Missing price diagnostic
+  if (bmSellPrice <= 0) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[DEBUG][calculateArbitrage] Missing Black Market price for ${itemId}. ` +
+      `bmEntry=${JSON.stringify(bmEntry)}`
+    );
+    return null;
+  }
 
   // Find the cheapest city to buy from (anywhere that is NOT the target).
   let bestBuy = null;
@@ -540,14 +548,29 @@ export const calculateArbitrage = (priceData, targetCity = BLACK_MARKET, hasPrem
     if (!entry || typeof entry !== 'object') continue;
 
     const buyPrice = entry.buy_price_min;
-    if (!Number.isFinite(buyPrice) || buyPrice <= 0) continue;
+    if (!Number.isFinite(buyPrice) || buyPrice <= 0) {
+      // [DEBUG] Missing price diagnostic
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[DEBUG][calculateArbitrage] Missing price for ${itemId} @ ${city}. ` +
+        `entry=${JSON.stringify(entry)}`
+      );
+      continue;
+    }
 
     if (!bestBuy || buyPrice < bestBuy.price) {
       bestBuy = { city, price: buyPrice };
     }
   }
 
-  if (!bestBuy) return null;
+  if (!bestBuy) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[DEBUG][calculateArbitrage] ${itemId} has Black Market price (${bmSellPrice}) ` +
+      `but no valid city buy price. locations=${JSON.stringify(locations)}`
+    );
+    return null;
+  }
 
   // Black Market fees
   // Setup fee: 2.5% of sell price (fixed)
@@ -560,6 +583,30 @@ export const calculateArbitrage = (priceData, targetCity = BLACK_MARKET, hasPrem
   const grossProfit = bmSellPrice - bestBuy.price;
   const netProfit = grossProfit - totalFees;
   const margin = bestBuy.price > 0 ? ((netProfit / bestBuy.price) * 100) : 0;
+
+  // [DEBUG] Deep inspection for the first 5 items processed
+  // eslint-disable-next-line no-console
+  if (!calculateArbitrage.__debugCount) calculateArbitrage.__debugCount = 0;
+  if (calculateArbitrage.__debugCount < 5) {
+    calculateArbitrage.__debugCount++;
+    // eslint-disable-next-line no-console
+    console.log(
+      `[DEBUG][calculateArbitrage] #${calculateArbitrage.__debugCount}`,
+      JSON.stringify({
+        item: itemId,
+        pair: `${bestBuy.city} -> ${targetCity}`,
+        buyPrice: bestBuy.price,
+        bmPrice: bmSellPrice,
+        bmFound: Number.isFinite(bmSellPrice) && bmSellPrice > 0,
+        setupFee,
+        transactionFee,
+        totalFees,
+        grossProfit,
+        netProfit,
+        margin: Number(margin.toFixed(2)),
+      })
+    );
+  }
 
   // Calculate risk and efficiency
   const risk = getRouteRisk(bestBuy.city, targetCity);
@@ -664,11 +711,24 @@ export const fetchTopOpportunities = async (items, limit = 10, hasPremium = fals
       const itemMetadataById = new Map(selectedItems.map(item => [item.itemId, item]));
 
       // Map price data with item metadata, calculate arbitrage, apply filters
+      // [DEBUG] Temporarily ignore MIN_PROFIT and MIN_MARGIN_PCT to see any opportunity.
+      // Flip DEBUG_DISABLE_THRESHOLDS to false once we understand the data shape.
+      const DEBUG_DISABLE_THRESHOLDS = true;
+      const effectiveMinProfit = DEBUG_DISABLE_THRESHOLDS ? 0 : settings.minProfit;
+      const effectiveMinMarginPct = DEBUG_DISABLE_THRESHOLDS ? 0 : settings.minMarginPct * 100;
+
+      let filteredOutByProfit = 0;
+      let filteredOutByMargin = 0;
+      let filteredOutByNull = 0;
+
       const opportunities = priceData
         .map((data) => {
           const itemMetadata = itemMetadataById.get(data.item_id) || { enchantment: 0, quantity: 1 };
           const arbitrage = calculateArbitrage(data, BLACK_MARKET, premium);
-          if (!arbitrage) return null;
+          if (!arbitrage) {
+            filteredOutByNull++;
+            return null;
+          }
           return {
             ...arbitrage,
             enchantment: itemMetadata.enchantment,
@@ -677,8 +737,14 @@ export const fetchTopOpportunities = async (items, limit = 10, hasPremium = fals
         })
         .filter((opp) => {
           if (!opp) return false;
-          if (opp.netProfit < settings.minProfit) return false;
-          if (opp.margin < settings.minMarginPct * 100) return false;
+          if (opp.netProfit < effectiveMinProfit) {
+            filteredOutByProfit++;
+            return false;
+          }
+          if (opp.margin < effectiveMinMarginPct) {
+            filteredOutByMargin++;
+            return false;
+          }
           return true;
         })
         .sort((a, b) => b.netProfit - a.netProfit)
@@ -686,7 +752,13 @@ export const fetchTopOpportunities = async (items, limit = 10, hasPremium = fals
 
       console.log(
         `[FETCH] Calculated ${opportunities.length} profitable opportunities ` +
-        `(filter: netProfit>=${settings.minProfit}, margin>=${(settings.minMarginPct * 100).toFixed(2)}%)`
+        `(filter: netProfit>=${effectiveMinProfit}, margin>=${effectiveMinMarginPct.toFixed(2)}% ` +
+        `[DEBUG thresholds: ${DEBUG_DISABLE_THRESHOLDS ? 'OFF' : 'ON'}])`
+      );
+      console.log(
+        `[FETCH][DEBUG] Filtered out: ${filteredOutByNull} null (no BM or no buy city), ` +
+        `${filteredOutByProfit} by netProfit < ${effectiveMinProfit}, ` +
+        `${filteredOutByMargin} by margin < ${effectiveMinMarginPct.toFixed(2)}%`
       );
 
       return opportunities;

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { TrendingUp, Search, Filter, ArrowUpDown, RefreshCw } from 'lucide-react';
+import { TrendingUp, Filter, ArrowUpDown, RefreshCw } from 'lucide-react';
 import TopOpportunities from '@/components/market/TopOpportunities';
 import AdvancedFilters from '@/components/market/filters/AdvancedFilters';
 import TransportList from '@/components/market/TransportList';
@@ -7,6 +7,10 @@ import { useMarketOpportunities } from '@/hooks/useMarketOpportunities';
 
 /**
  * Market page - Market intelligence and arbitrage opportunities
+ *
+ * The "Carregar T6-T8" toggle has been removed from this header — the
+ * `useMarketOpportunities` hook now fetches every tier (T4 → T8) on
+ * initial load by default.
  */
 
 const Market = ({ userId }) => {
@@ -21,8 +25,6 @@ const Market = ({ userId }) => {
     loading: opportunitiesLoading,
     refresh: refreshOpportunities,
     progress,
-    hasMoreTiers,
-    loadAllTiers,
   } = useMarketOpportunities(50, refreshKey);
 
   const progressText = progress.total > 0
@@ -45,7 +47,7 @@ const Market = ({ userId }) => {
   };
 
   const handleRefresh = () => {
-    refreshOpportunities({ includeAllTiers: false, forceRefresh: true });
+    refreshOpportunities();
   };
 
   if (loading) {
@@ -68,16 +70,6 @@ const Market = ({ userId }) => {
           <p className="text-gray-400 text-sm mt-1">Análise de arbitragem Albion Online</p>
         </div>
         <div className="flex items-center gap-2">
-          {hasMoreTiers && (
-            <button
-              onClick={loadAllTiers}
-              disabled={opportunitiesLoading}
-              className="bg-amber-500 hover:bg-amber-600 disabled:bg-slate-700 disabled:text-gray-500 text-slate-950 font-semibold px-4 py-2 rounded-lg flex items-center gap-2 transition-colors"
-            >
-              <Search className="w-5 h-5" />
-              Carregar T6-T8
-            </button>
-          )}
           <button
             onClick={handleRefresh}
             disabled={opportunitiesLoading}
@@ -111,7 +103,7 @@ const Market = ({ userId }) => {
             Top Oportunidades
           </h2>
           <p className="text-gray-400 text-sm mt-1">
-            {opportunitiesLoading ? progressText : 'Melhores oportunidades de arbitragem (carregamento inicial T4-T5)'}
+            {opportunitiesLoading ? progressText : 'Melhores oportunidades de arbitragem (T4 → T8, Black Market, filtro de margem ≥ 10% e lucro ≥ 10.000)'}
           </p>
         </div>
         <div className="p-6">
