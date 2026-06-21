@@ -2,6 +2,9 @@ import { supabase } from './client';
 
 /**
  * Transport operations for VENUM MARKET
+ *
+ * Fluxo simplificado: o usuário clica em "Reservar" e a reserva é
+ * criada diretamente (sem checklist intermediário).
  */
 
 const RESERVE_TRANSPORT_RPC = 'reserve_transport';
@@ -13,25 +16,39 @@ const getReserveTransportErrorMessage = (error) => {
   const status = error.status || error.code;
 
   if (status === 404 || error.code === 'PGRST202' || details.includes(RESERVE_TRANSPORT_RPC)) {
-    return 'Funcao reserve_transport nao encontrada no Supabase. Verifique se a SQL foi aplicada no banco.';
+    return 'Funcao reserve_transport nao encontrada no Supabase. Aplique a migration supabase/schema_reserve_transport.sql.';
   }
 
   return error.message || 'Falha ao reservar transporte. Tente novamente.';
 };
 
-// Reserve a transport opportunity through the reserve_transport database function
+/**
+ * Reserva uma oportunidade de transporte via RPC `reserve_transport`.
+ *
+ * @param {Object}   params
+ * @param {Object}   params.opportunity   Oportunidade vinda de fetchTopOpportunities
+ * @param {string}   params.userId        auth.uid() do usuário
+ * @param {string}   params.itemName      Nome localizado do item (fallback = itemId)
+ * @param {string}   params.expiresAt     ISO string da expiração
+ * @param {Object=}  params.checklistData Mantido opcional para compat. Não usado no fluxo simplificado.
+ *
+ * @returns {Promise<{success: boolean, message?: string, data?: any, error?: any}>}
+ */
 export const reserveTransportOpportunity = async ({
   opportunity,
   userId,
   itemName,
   expiresAt,
-  checklistData,
+  checklistData, // opcional, ignorado no fluxo simplificado
 }) => {
+  // A RPC `reserve_transport` no Supabase espera p_checklist_data opcional.
+  // No fluxo simplificado mandamos NULL; mantemos o parâmetro caso admins
+  // ou fluxos antigos queiram usá-lo.
   const rpcParams = {
     p_item_id: opportunity.itemId,
-    p_item_name: itemName,
+    p_item_name: itemName || opportunity.itemId,
     p_from_city: opportunity.lowestCity,
-    p_to_city: 'Caerleon',
+    p_to_city: opportunity.sellCity || 'Caerleon',
     p_buy_price: opportunity.lowestPrice,
     p_sell_price: opportunity.bmPrice,
     p_profit: opportunity.netProfit,
@@ -39,19 +56,14 @@ export const reserveTransportOpportunity = async ({
     p_quantity: opportunity.quantity || 1,
     p_reserved_by: userId,
     p_expires_at: expiresAt,
-    p_checklist_data: checklistData,
+    p_checklist_data: checklistData ?? null,
   };
 
   try {
     const { data, error } = await supabase.rpc(RESERVE_TRANSPORT_RPC, rpcParams);
 
     if (error) {
-      console.error('reserve_transport RPC error:', {
-        error,
-        rpc: RESERVE_TRANSPORT_RPC,
-        params: rpcParams,
-      });
-
+      console.error('reserve_transport RPC error:', { error, params: rpcParams });
       return {
         success: false,
         message: getReserveTransportErrorMessage(error),
@@ -59,28 +71,25 @@ export const reserveTransportOpportunity = async ({
       };
     }
 
-    if (data?.success === false) {
-      console.warn('reserve_transport RPC returned failure:', {
-        data,
-        rpc: RESERVE_TRANSPORT_RPC,
-        params: rpcParams,
-      });
-
+    // A função retorna TABLE { success, message, transport_id }.
+    // O PostgREST entrega como array de objetos ou objeto único, conforme
+    // quantidade de linhas. Normalizamos aqui.
+    const row = Array.isArray(data) ? data[0] : data;
+    if (row && row.success === false) {
       return {
         success: false,
-        message: data.message || 'Esta rota acabou de ser assumida por outro jogador',
-        data,
+        message: row.message || 'Esta rota acabou de ser assumida por outro jogador',
+        data: row,
       };
     }
 
-    return { success: true, data };
+    return {
+      success: true,
+      data: row || { success: true },
+      transportId: row?.transport_id,
+    };
   } catch (error) {
-    console.error('Unexpected reserve_transport error:', {
-      error,
-      rpc: RESERVE_TRANSPORT_RPC,
-      params: rpcParams,
-    });
-
+    console.error('Unexpected reserve_transport error:', { error, params: rpcParams });
     return {
       success: false,
       message: getReserveTransportErrorMessage(error),
@@ -89,15 +98,15 @@ export const reserveTransportOpportunity = async ({
   }
 };
 
-// Reserve a transport opportunity
+// Reservar uma rota existente (atualiza status)
 export const reserveTransport = async (transportId, userId) => {
   try {
     const { data, error } = await supabase
       .from('transports')
-      .update({ 
+      .update({
         status: 'reserved',
         reserved_by: userId,
-        reserved_at: new Date().toISOString()
+        reserved_at: new Date().toISOString(),
       })
       .eq('id', transportId)
       .eq('status', 'available')
@@ -112,15 +121,15 @@ export const reserveTransport = async (transportId, userId) => {
   }
 };
 
-// Cancel a transport reservation
+// Cancelar reserva
 export const cancelTransportReservation = async (transportId, userId) => {
   try {
     const { data, error } = await supabase
       .from('transports')
-      .update({ 
+      .update({
         status: 'available',
         reserved_by: null,
-        reserved_at: null
+        reserved_at: null,
       })
       .eq('id', transportId)
       .eq('reserved_by', userId)
@@ -135,7 +144,7 @@ export const cancelTransportReservation = async (transportId, userId) => {
   }
 };
 
-// Get available transports (excluding reserved ones)
+// Listar transports disponíveis (não reservados)
 export const getAvailableTransports = async () => {
   try {
     const { data, error } = await supabase
@@ -152,7 +161,7 @@ export const getAvailableTransports = async () => {
   }
 };
 
-// Get user's reserved transports
+// Listar transports reservados pelo usuário
 export const getUserReservedTransports = async (userId) => {
   try {
     const { data, error } = await supabase
@@ -170,7 +179,7 @@ export const getUserReservedTransports = async (userId) => {
   }
 };
 
-// Create a new transport opportunity
+// Criar uma nova oportunidade de transporte
 export const createTransport = async (transportData) => {
   try {
     const { data, error } = await supabase
@@ -178,7 +187,7 @@ export const createTransport = async (transportData) => {
       .insert({
         ...transportData,
         status: 'available',
-        created_at: new Date().toISOString()
+        created_at: new Date().toISOString(),
       })
       .select()
       .single();
