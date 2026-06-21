@@ -1,8 +1,27 @@
 import { getRouteRisk, calculateExpectedProfit, getTravelTime, calculateEfficiency, calculateRiskAdjustedEfficiency } from './riskMap';
 import { getSaturationLevel, calculateSaturationAdjustedPrice, getSaturationWarning } from './saturation';
-import { getCachedMarketPrices, setCachedMarketPrice, isCacheValid } from '@/lib/supabase/marketCache';
+import {
+  getCachedMarketPricesByLocation,
+  setCachedMarketPriceByLocation,
+  setCachedMarketPricesByLocation,
+  isCacheValid as isLocationCacheValid,
+} from '@/lib/supabase/marketCacheByLocation';
+import { getMarketSettings } from '@/lib/supabase/marketSettings';
 
 const ALBION_API_BASE = 'https://www.albion-online-data.com/api/v2/stats/prices';
+
+// Locations we care about for arbitrage. The Black Market is where we sell,
+// the others are where we might buy cheaper.
+export const ARBITRAGE_LOCATIONS = Object.freeze([
+  'Black Market',
+  'Lymhurst',
+  'Fort Sterling',
+  'Bridgewatch',
+  'Martlock',
+  'Thetford',
+]);
+
+const BLACK_MARKET = 'Black Market';
 
 // Cache with TTL (5 minutes to reduce stale in-memory results)
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
@@ -245,13 +264,31 @@ export const fetchItemPrice = async (itemName, locations = 1) => {
 };
 
 /**
- * Fetch price data for multiple items with Supabase cache
+ * Fetch price data for multiple items across all arbitrage locations.
+ *
+ * Output shape is a normalized `priceData` object that mirrors what
+ * `calculateArbitrage` expects:
+ *
+ *   {
+ *     item_id: 'T4_BAG',
+ *     locations: {
+ *       'Black Market':  { buy_price_min, sell_price_min, buy_price_max, sell_price_max, ... },
+ *       'Lymhurst':      { ... },
+ *       ...
+ *     },
+ *     _source: 'cache' | 'api',
+ *   }
+ *
+ * Cache lookup is per (item_id, location): if every supported location
+ * for an item is cached and valid, the item is served entirely from
+ * Supabase. Otherwise, the missing locations are fetched from the API.
+ *
  * @param {Array<Object>} items - Array of item objects with itemId, enchantment, quantity
  * @param {boolean} hasPremium - Whether user has premium (affects transaction fee)
  * @param {Object} options - Fetch options
  * @param {Function} options.onProgress - Progress callback
  * @param {boolean} options.forceRefresh - Ignore Supabase cache and fetch fresh data
- * @returns {Promise<Array>} Array of price data for all items
+ * @returns {Promise<Array>} Array of normalized price data for all items
  */
 export const fetchMultipleItemPrices = async (items, hasPremium = false, options = {}) => {
   const { onProgress, forceRefresh = false } = options;
@@ -272,94 +309,167 @@ export const fetchMultipleItemPrices = async (items, hasPremium = false, options
 
     onProgress?.({ loaded: 0, total: validItems.length, phase: 'cache' });
 
-    // First, check Supabase cache for all items unless a fresh pull is requested
+    // 1. Cache lookup (per location)
     const itemIds = validItems.map(item => item.itemId);
-    const cachedPrices = forceRefresh ? {} : await getCachedMarketPrices(itemIds);
+    const cachedByLocation = forceRefresh ? {} : await getCachedMarketPricesByLocation(itemIds);
 
-    // Separate items into cached and uncached
-    const cachedItems = [];
-    const uncachedItems = [];
+    // Build a normalized cache state: itemId -> Set of cached valid locations
+    const cachedLocationsByItem = new Map(); // itemId -> Map(location -> priceData)
+    for (const itemId of itemIds) {
+      const rows = cachedByLocation[itemId] || [];
+      const validMap = new Map();
+      rows.forEach((row) => {
+        if (!forceRefresh && isLocationCacheValid(row.expiresAt)) {
+          validMap.set(row.location, row.priceData);
+        }
+      });
+      cachedLocationsByItem.set(itemId, validMap);
+    }
+
+    // 2. Determine which items still need fresh fetches (and which locations)
+    const uncachedItems = []; // items that need ANY API call
+    const itemsFullyCached = [];
 
     validItems.forEach((item) => {
-      const cached = cachedPrices[item.itemId];
-      if (!forceRefresh && cached && isCacheValid(cached.expiresAt)) {
-        cachedItems.push({
-          item,
-          priceData: cached.priceData,
-        });
-        console.log(`[CACHE HIT] ${item.itemId} from Supabase`);
+      const cachedMap = cachedLocationsByItem.get(item.itemId) || new Map();
+      const missingLocations = ARBITRAGE_LOCATIONS.filter((loc) => !cachedMap.has(loc));
+
+      if (missingLocations.length === 0) {
+        itemsFullyCached.push({ item, cachedMap });
+        console.log(`[CACHE HIT] ${item.itemId} - all ${cachedMap.size}/${ARBITRAGE_LOCATIONS.length} locations cached`);
       } else {
         uncachedItems.push(item);
-        console.log(`[CACHE MISS] ${item.itemId} - will fetch from API${forceRefresh ? ' (force refresh)' : ''}`);
+        if (forceRefresh) {
+          console.log(`[CACHE MISS] ${item.itemId} - force refresh of all locations`);
+        } else {
+          console.log(`[CACHE MISS] ${item.itemId} - missing ${missingLocations.length}/${ARBITRAGE_LOCATIONS.length} locations: ${missingLocations.join(', ')}`);
+        }
       }
     });
 
-    console.log(`[CACHE] ${cachedItems.length} items from cache, ${uncachedItems.length} items to fetch`);
+    console.log(`[CACHE] ${itemsFullyCached.length} items fully cached, ${uncachedItems.length} items need API fetch`);
     onProgress?.({
-      loaded: cachedItems.length,
+      loaded: itemsFullyCached.length,
       total: validItems.length,
       phase: uncachedItems.length > 0 ? 'fetch' : 'complete',
     });
 
-    // Fetch uncached items from API in batches
-    const batches = chunkArray(uncachedItems, API_BATCH_SIZE);
+    // 3. Fetch missing items from the API (we always request ALL locations
+    //    in one call - the API is fine with that and it's simpler).
+    const fetchedByItem = new Map(); // itemId -> Map(location -> priceData)
 
-    console.log(`[FETCH] Split ${uncachedItems.length} uncached items into ${batches.length} batches of ${API_BATCH_SIZE} items each`);
+    if (uncachedItems.length > 0) {
+      const batches = chunkArray(uncachedItems, API_BATCH_SIZE);
+      console.log(`[FETCH] Split ${uncachedItems.length} uncached items into ${batches.length} batches of ${API_BATCH_SIZE} items each`);
 
-    const fetchedResults = [];
-    let loadedCount = cachedItems.length;
+      const locationsParam = ARBITRAGE_LOCATIONS.map(encodeURIComponent).join(',');
+      let loadedCount = itemsFullyCached.length;
 
-    for (let i = 0; i < batches.length; i++) {
-      console.log(`[FETCH] Processing batch ${i + 1}/${batches.length}`);
-      
-      // Build comma-separated item IDs for batch API request
-      const itemIdsBatch = batches[i].map(item => item.itemId).join(',');
-      
-      try {
-        const response = await queueRequest(async () => {
-          return await fetchWithRetry(`${ALBION_API_BASE}/${itemIdsBatch}?locations=Black%20Market`);
+      for (let i = 0; i < batches.length; i++) {
+        console.log(`[FETCH] Processing batch ${i + 1}/${batches.length} (locations=${ARBITRAGE_LOCATIONS.length})`);
+
+        const itemIdsBatch = batches[i].map(item => item.itemId).join(',');
+
+        try {
+          const response = await queueRequest(async () => {
+            return await fetchWithRetry(`${ALBION_API_BASE}/${itemIdsBatch}?locations=${locationsParam}`);
+          });
+
+          const data = await response.json();
+
+          // The API returns one row per (item, location).
+          // Split each row into per-location cache entries AND keep the
+          // normalized shape that calculateArbitrage expects.
+          const upserts = [];
+          for (const row of data) {
+            if (!row || !isValidEquipment(row.item_id)) {
+              if (row) console.log(`[FILTER] Excluded resource item from API response: ${row.item_id}`);
+              continue;
+            }
+            const loc = row.location || row.city;
+            if (!loc || !ARBITRAGE_LOCATIONS.includes(loc)) {
+              // Skip locations we don't care about
+              continue;
+            }
+
+            const priceData = {
+              buy_price_min: row.buy_price_min ?? 0,
+              buy_price_max: row.buy_price_max ?? 0,
+              sell_price_min: row.sell_price_min ?? 0,
+              sell_price_max: row.sell_price_max ?? 0,
+            };
+
+            if (!fetchedByItem.has(row.item_id)) fetchedByItem.set(row.item_id, new Map());
+            fetchedByItem.get(row.item_id).set(loc, priceData);
+
+            upserts.push({
+              itemId: row.item_id,
+              location: loc,
+              priceData: priceData,
+            });
+          }
+
+          // Persist to Supabase (one row per location)
+          if (upserts.length > 0) {
+            await setCachedMarketPricesByLocation(upserts);
+            console.log(`[SUPABASE CACHE BY LOCATION] Persisted ${upserts.length} (item, location) rows`);
+          }
+        } catch (error) {
+          console.error(`[FETCH] Error fetching batch ${i + 1}:`, error);
+        }
+
+        loadedCount += batches[i].length;
+        onProgress?.({
+          loaded: Math.min(loadedCount, validItems.length),
+          total: validItems.length,
+          phase: i === batches.length - 1 ? 'complete' : 'fetch',
         });
 
-        const data = await response.json();
-        
-        // Cache the fetched data in Supabase and filter out resource items
-        for (const priceData of data) {
-          if (priceData && isValidEquipment(priceData.item_id)) {
-            await setCachedMarketPrice(priceData.item_id, priceData);
-            fetchedResults.push(priceData);
-          } else if (priceData) {
-            console.log(`[FILTER] Excluded resource item from API response: ${priceData.item_id}`);
-          }
+        await sleep(0);
+
+        if (i < batches.length - 1) {
+          const delay = 1000 + Math.random() * 500;
+          console.log(`[FETCH] Waiting ${delay}ms before next batch`);
+          await sleep(delay);
         }
-      } catch (error) {
-        console.error(`[FETCH] Error fetching batch ${i + 1}:`, error);
-      }
-
-      loadedCount += batches[i].length;
-      onProgress?.({
-        loaded: Math.min(loadedCount, validItems.length),
-        total: validItems.length,
-        phase: i === batches.length - 1 ? 'complete' : 'fetch',
-      });
-
-      await sleep(0);
-
-      // Add delay between batches to reduce burst
-      if (i < batches.length - 1) {
-        const delay = 1000 + Math.random() * 500; // 1000-1500ms delay
-        console.log(`[FETCH] Waiting ${delay}ms before next batch`);
-        await sleep(delay);
       }
     }
 
-    // Combine cached and fetched results
-    const allResults = [
-      ...cachedItems.map(c => c.priceData),
-      ...fetchedResults,
-    ];
+    // 4. Combine cached + freshly fetched data into the normalized shape
+    const allResults = [];
+    for (const item of validItems) {
+      const cachedMap = cachedLocationsByItem.get(item.itemId) || new Map();
+      const fetchedMap = fetchedByItem.get(item.itemId) || new Map();
+
+      const locations = {};
+      let fromCacheCount = 0;
+      let fromApiCount = 0;
+
+      for (const loc of ARBITRAGE_LOCATIONS) {
+        if (fetchedMap.has(loc)) {
+          locations[loc] = fetchedMap.get(loc);
+          fromApiCount++;
+        } else if (cachedMap.has(loc)) {
+          locations[loc] = cachedMap.get(loc);
+          fromCacheCount++;
+        }
+      }
+
+      if (Object.keys(locations).length === 0) {
+        console.log(`[FETCH] ${item.itemId} has no price data at any supported location`);
+        continue;
+      }
+
+      allResults.push({
+        item_id: item.itemId,
+        locations,
+        _source: fromApiCount > 0 ? 'mixed' : 'cache',
+        _stats: { fromCacheCount, fromApiCount },
+      });
+    }
 
     const duration = Date.now() - startTime;
-    console.log(`[FETCH] Fetched ${allResults.length}/${validItems.length} prices in ${duration}ms`);
+    console.log(`[FETCH] Assembled ${allResults.length}/${validItems.length} price snapshots in ${duration}ms`);
     console.log(`[FETCH] Request stats: ${requestCount} total requests, ${rateLimitErrorCount} rate limit errors, cache hits: ${cacheHits}, misses: ${cacheMisses}`);
 
     return allResults;
@@ -370,61 +480,101 @@ export const fetchMultipleItemPrices = async (items, hasPremium = false, options
 };
 
 /**
- * Calculate arbitrage opportunity for an item
- * @param {Object} priceData - Price data from Albion API
- * @param {string} targetCity - Target city (default: 'Black Market')
+ * Calculate arbitrage opportunity for an item.
+ *
+ * Compares a City (where we buy at the cheapest seller's `buy_price_min`,
+ * i.e. the lowest price an item is being listed at) against the Black
+ * Market (where we sell at `buy_price_max`, the highest instant-buy offer).
+ *
+ * Important rules:
+ *   - The buy and sell locations MUST be different (skip same-location).
+ *   - The Black Market row is required for the calculation; if missing,
+ *     no opportunity is emitted.
+ *   - At least one non-BM city must have a positive buy price.
+ *
+ * @param {Object} priceData - Normalized snapshot from fetchMultipleItemPrices
+ *                             Shape: { item_id, locations: { [city]: { buy_price_min, ... } } }
+ * @param {string} targetCity - Target city (always 'Black Market' by default)
  * @param {boolean} hasPremium - Whether user has premium (affects transaction fee)
- * @returns {Object|null} Arbitrage opportunity data
+ * @returns {Object|null} Arbitrage opportunity data, or null when invalid
  */
-export const calculateArbitrage = (priceData, targetCity = 'Black Market', hasPremium = false) => {
+export const calculateArbitrage = (priceData, targetCity = BLACK_MARKET, hasPremium = false) => {
   if (!priceData) return null;
 
-  // Validate that the item is equipment (can be sold in Black Market)
-  if (!isValidEquipment(priceData.item_id)) {
-    console.log(`[FILTER] Skipping calculation for resource item: ${priceData.item_id}`);
+  const itemId = priceData.item_id;
+  if (!isValidEquipment(itemId)) {
+    console.log(`[FILTER] Skipping calculation for resource item: ${itemId}`);
     return null;
   }
 
-  const bmPrice = priceData.data?.['Black Market']?.sell_price_min || 0;
-  const lowestCity = Object.entries(priceData.data || {})
-    .filter(([city]) => city !== 'Black Market')
-    .reduce((lowest, [city, data]) => {
-      const buyPrice = data.buy_price_min || Infinity;
-      return buyPrice < lowest.price ? { city, price: buyPrice } : lowest;
-    }, { city: 'Unknown', price: Infinity });
+  // Support both the new normalized shape (`priceData.locations`) and the
+  // legacy shape (`priceData.data`) for backwards compatibility.
+  const locations = priceData.locations || priceData.data;
+  if (!locations || typeof locations !== 'object') return null;
 
-  if (lowestCity.price === Infinity) return null;
+  const bmEntry = locations[BLACK_MARKET];
+  if (!bmEntry) {
+    // No Black Market data => can't compute an arbitrage that sells there.
+    return null;
+  }
+
+  // We sell to the Black Market. The "instant sell" price is the highest
+  // buy order (`buy_price_max`); if that is not available we fall back to
+  // the lowest listed sell price (`sell_price_min`) which represents the
+  // cheapest competing seller (still a reasonable proxy).
+  const bmSellPrice = bmEntry.buy_price_max > 0
+    ? bmEntry.buy_price_max
+    : (bmEntry.sell_price_min || 0);
+
+  if (bmSellPrice <= 0) return null;
+
+  // Find the cheapest city to buy from (anywhere that is NOT the target).
+  let bestBuy = null;
+  for (const [city, entry] of Object.entries(locations)) {
+    if (city === targetCity) continue; // ignore same-location pairs
+    if (!entry || typeof entry !== 'object') continue;
+
+    const buyPrice = entry.buy_price_min;
+    if (!Number.isFinite(buyPrice) || buyPrice <= 0) continue;
+
+    if (!bestBuy || buyPrice < bestBuy.price) {
+      bestBuy = { city, price: buyPrice };
+    }
+  }
+
+  if (!bestBuy) return null;
 
   // Black Market fees
   // Setup fee: 2.5% of sell price (fixed)
   // Transaction fee: 3.5% without premium, 2.5% with premium
-  const setupFee = bmPrice * 0.025;
+  const setupFee = bmSellPrice * 0.025;
   const transactionFeeRate = hasPremium ? 0.025 : 0.035;
-  const transactionFee = bmPrice * transactionFeeRate;
+  const transactionFee = bmSellPrice * transactionFeeRate;
   const totalFees = setupFee + transactionFee;
 
-  const grossProfit = bmPrice - lowestCity.price;
+  const grossProfit = bmSellPrice - bestBuy.price;
   const netProfit = grossProfit - totalFees;
-  const margin = lowestCity.price > 0 ? ((netProfit / lowestCity.price) * 100) : 0;
+  const margin = bestBuy.price > 0 ? ((netProfit / bestBuy.price) * 100) : 0;
 
   // Calculate risk and efficiency
-  const risk = getRouteRisk(lowestCity.city, targetCity);
-  const travelTime = getTravelTime(lowestCity.city, targetCity);
+  const risk = getRouteRisk(bestBuy.city, targetCity);
+  const travelTime = getTravelTime(bestBuy.city, targetCity);
   const expectedProfit = calculateExpectedProfit(netProfit, risk.value);
   const efficiency = calculateEfficiency(netProfit, travelTime);
   const riskAdjustedEfficiency = calculateRiskAdjustedEfficiency(netProfit, travelTime, risk.value);
 
   // Calculate saturation-adjusted price
-  const saturationLevel = getSaturationLevel(priceData.item_id);
-  const saturationAdjustedPrice = calculateSaturationAdjustedPrice(priceData.item_id, bmPrice);
-  const saturationAdjustedProfit = saturationAdjustedPrice - lowestCity.price - totalFees;
+  const saturationLevel = getSaturationLevel(itemId);
+  const saturationAdjustedPrice = calculateSaturationAdjustedPrice(itemId, bmSellPrice);
+  const saturationAdjustedProfit = saturationAdjustedPrice - bestBuy.price - totalFees;
 
   return {
-    itemId: priceData.item_id,
-    itemName: priceData.item_id,
-    lowestCity: lowestCity.city,
-    lowestPrice: lowestCity.price,
-    bmPrice: bmPrice,
+    itemId: itemId,
+    itemName: itemId,
+    buyCity: bestBuy.city,
+    buyPrice: bestBuy.price,
+    sellCity: targetCity,
+    bmPrice: bmSellPrice,
     grossProfit: grossProfit,
     setupFee: setupFee,
     transactionFee: transactionFee,
@@ -438,8 +588,11 @@ export const calculateArbitrage = (priceData, targetCity = 'Black Market', hasPr
     riskAdjustedEfficiency: riskAdjustedEfficiency,
     saturation: saturationLevel,
     saturationAdjustedProfit: saturationAdjustedProfit,
-    saturationWarning: getSaturationWarning(priceData.item_id),
+    saturationWarning: getSaturationWarning(itemId),
     hasPremium: hasPremium,
+    // Back-compat aliases (older UI may still read these)
+    lowestCity: bestBuy.city,
+    lowestPrice: bestBuy.price,
   };
 };
 
@@ -482,36 +635,55 @@ export const fetchTopOpportunities = async (items, limit = 10, hasPremium = fals
   const requestPromise = (async () => {
     try {
       console.log(`[FETCH] Fetching top opportunities for ${selectedItems.length}/${items.length} items (key: ${requestKey.substring(0, 50)}...)`);
+
+      // Load dynamic thresholds (min profit, min margin) before filtering
+      const settings = await getMarketSettings();
+
       const priceData = await fetchMultipleItemPrices(selectedItems, premium, { onProgress, forceRefresh });
       console.log(`[FETCH] Received price data for ${priceData.length} items`);
-      
+
       if (priceData.length === 0) {
         console.warn('[FETCH] No price data received from API');
         return [];
       }
-      
+
+      // Track cache vs API provenance for visibility
+      const sourceStats = { cache: 0, mixed: 0, api: 0 };
+      priceData.forEach((d) => {
+        if (d._source === 'cache') sourceStats.cache++;
+        else if (d._source === 'mixed') sourceStats.mixed++;
+        else sourceStats.api++;
+      });
+      console.log(`[FETCH] Price source breakdown: cache=${sourceStats.cache}, mixed=${sourceStats.mixed}, api=${sourceStats.api}`);
+
       const itemMetadataById = new Map(selectedItems.map(item => [item.itemId, item]));
 
-      // Map price data with item metadata
+      // Map price data with item metadata, calculate arbitrage, apply filters
       const opportunities = priceData
         .map((data) => {
           const itemMetadata = itemMetadataById.get(data.item_id) || { enchantment: 0, quantity: 1 };
-          const arbitrage = calculateArbitrage(data, 'Black Market', premium);
-          if (arbitrage) {
-            return {
-              ...arbitrage,
-              enchantment: itemMetadata.enchantment,
-              quantity: itemMetadata.quantity,
-            };
-          }
-          return null;
+          const arbitrage = calculateArbitrage(data, BLACK_MARKET, premium);
+          if (!arbitrage) return null;
+          return {
+            ...arbitrage,
+            enchantment: itemMetadata.enchantment,
+            quantity: itemMetadata.quantity,
+          };
         })
-        .filter(opp => opp !== null && opp.netProfit >= 0)
+        .filter((opp) => {
+          if (!opp) return false;
+          if (opp.netProfit < settings.minProfit) return false;
+          if (opp.margin < settings.minMarginPct * 100) return false;
+          return true;
+        })
         .sort((a, b) => b.netProfit - a.netProfit)
         .slice(0, limit);
 
-      console.log(`[FETCH] Calculated ${opportunities.length} profitable opportunities`);
-      
+      console.log(
+        `[FETCH] Calculated ${opportunities.length} profitable opportunities ` +
+        `(filter: netProfit>=${settings.minProfit}, margin>=${(settings.minMarginPct * 100).toFixed(2)}%)`
+      );
+
       return opportunities;
     } catch (error) {
       console.error('[FETCH] Error fetching top opportunities:', error);
