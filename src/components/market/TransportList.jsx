@@ -12,6 +12,7 @@ import { supabase } from '@/lib/supabase/client';
 import { reserveTransportOpportunity } from '@/lib/supabase/transports';
 import ItemIcon from './ItemIcon';
 import { getItemName } from '@/lib/i18n/itemNames';
+import { safeTranslate as translateItem } from '@/utils/itemTranslator';
 
 /**
  * TransportList - lista as oportunidades de transporte do Black Market.
@@ -99,7 +100,7 @@ const TransportList = ({
     const expiresAt = new Date(Date.now() + 20 * 60 * 1000).toISOString();
 
     const previousOpportunities = opportunities;
-    const itemName = getItemName(opportunity.itemId);
+    const itemName = translateItem(opportunity.itemId);
     const optimisticTransport = {
       id: `temp-${Date.now()}`,
       item_id: opportunity.itemId,
@@ -218,7 +219,7 @@ const TransportList = ({
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <h3 className="font-semibold text-white text-sm truncate">
-                          {getItemName(opportunity.itemId)}
+                          {translateItem(opportunity.itemId)}
                         </h3>
                         {opportunity.enchantment !== undefined && (
                           <span className="text-xs text-purple-400">.{opportunity.enchantment}</span>
@@ -336,3 +337,7 @@ const TransportList = ({
 };
 
 export default TransportList;
+
+
+
+

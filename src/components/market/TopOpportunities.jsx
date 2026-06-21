@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { TrendingUp, ArrowUpRight, Star, RefreshCw } from 'lucide-react';
 import ItemIcon from './ItemIcon';
 import { getItemName } from '@/lib/i18n/itemNames';
+import { safeTranslate as translateItem } from '@/utils/itemTranslator';
 import { fetchTopOpportunities, COMMON_ITEMS } from '@/lib/albion/api';
 
 // TODO[diag]: remove after verifying "0 profitable opportunities" issue
@@ -159,7 +160,7 @@ const TopOpportunities = ({ arbitrageData = null, limit = 10, refreshKey = 0, lo
                 <ItemIcon itemId={opportunity.itemId} size={48} />
                 <div className="text-center">
                   <h3 className="font-semibold text-white text-sm truncate">
-                    {getItemName(opportunity.itemId)}
+                    {translateItem(opportunity.itemId)}
                   </h3>
                   <p className="text-xs text-gray-500 truncate">
                     {opportunity.itemId}
@@ -240,3 +241,5 @@ const TopOpportunities = ({ arbitrageData = null, limit = 10, refreshKey = 0, lo
 };
 
 export default TopOpportunities;
+
+

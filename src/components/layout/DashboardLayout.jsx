@@ -6,6 +6,7 @@ import {
   Target,
   TrendingUp,
   Hammer,
+  Flame,
   LogOut,
   Menu,
   X,
@@ -33,6 +34,7 @@ const DashboardLayout = ({ userId, userRole, profile }) => {
     { name: 'Ranking', path: '/ranking', icon: Trophy },
     { name: 'Missões', path: '/missions', icon: Target },
     { name: 'Mercado', path: '/market', icon: TrendingUp },
+    { name: 'Produção', path: '/production', icon: Flame },
     { name: 'Builds', path: '/builds', icon: Hammer },
   ];
 

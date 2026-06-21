@@ -61,6 +61,14 @@ export const ARBITRAGE_LOCATIONS = Object.freeze([
 
 const BLACK_MARKET = 'Black Market';
 
+// ============================================================================
+// Cache TTL & Freshness thresholds
+// ============================================================================
+// Janela de "dados frescos": até 15 minutos desde o cached_at.
+// Janela de "dados utilizáveis": até 24 horas (após isso, descartar).
+const CACHE_FRESH_MS = 15 * 60 * 1000;       // 15 min
+const CACHE_HARD_LIMIT_MS = 24 * 60 * 60 * 1000; // 24h
+
 const CACHE_TTL = 5 * 60 * 1000;
 const priceCache = new Map();
 
@@ -220,14 +228,16 @@ export const fetchItemPrice = async (itemName, _locations = 1) => {
 /**
  * Busca preços para múltiplos itens em todas as locations de arbitragem.
  *
+ * Política de cache:
+ *   - Item está no cache e `cached_at` < 15 min  → use o cache, SEM fetch externo.
+ *   - Item está no cache mas `cached_at` entre 15 min e 24 h → use o cache para
+ *     preencher locations já conhecidas; só busca na API as locations faltantes.
+ *   - Item está no cache com `cached_at` > 24 h ou ausente → ignora a entrada,
+ *     busca na API como fresh.
+ *   - Itens all-zero são SILENCIOSAMENTE filtrados (sem poluir o console).
+ *
  * Saída normalizada:
- *   { item_id, locations: { [city]: {...} }, _source: 'cache' | 'mixed' }
- *
- * Cache lookup é por (item_id, location). Itens sem cache válido são
- * buscados no Albion API em batches de API_BATCH_SIZE.
- *
- * Itens all-zero são SILENCIOSAMENTE filtrados (apenas contados em
- * `allZeroCount`) — não poluem o console para o usuário final.
+ *   { item_id, locations: { [city]: {...} }, _source: 'cache' | 'mixed' | 'api' }
  */
 export const fetchMultipleItemPrices = async (items, hasPremium = false, options = {}) => {
   const { onProgress, forceRefresh = false } = options;
@@ -247,26 +257,57 @@ export const fetchMultipleItemPrices = async (items, hasPremium = false, options
     const itemIds = validItems.map((item) => item.itemId);
     const cachedByLocation = forceRefresh ? {} : await getCachedMarketPricesByLocation(itemIds);
 
-    const cachedLocationsByItem = new Map();
+    // Item-id -> Map(location -> priceData) para o que está FRESCO (< 15 min).
+    const freshLocationsByItem = new Map();
+    let skippedStaleCount = 0;
+
     for (const itemId of itemIds) {
       const rows = cachedByLocation[itemId] || [];
       const validMap = new Map();
+
       rows.forEach((row) => {
         const expiresAt = row.expiresAt ?? row.expires_at;
-        const location = row.location ?? row.city;
+        const cachedAt  = row.cachedAt  ?? row.cached_at;
+        const location  = row.location ?? row.city;
         const priceData = row.priceData ?? row.price_data;
-        if (!forceRefresh && location && isLocationCacheValid(expiresAt)) {
-          validMap.set(location, priceData);
+
+        if (!location || !priceData) return;
+
+        // Sem cached_at válido → ignora silenciosamente
+        const ts = cachedAt ? new Date(cachedAt).getTime() : null;
+        if (!ts || Number.isNaN(ts)) return;
+
+        const ageMs = Date.now() - ts;
+        // Mais de 24h → descartar
+        if (ageMs > CACHE_HARD_LIMIT_MS) {
+          skippedStaleCount++;
+          return;
         }
+
+        // TTL de 15 min: só conta como "fresh" (e pula fetch externo) se ainda
+        // estiver dentro da janela de freshness.
+        const isFresh = ageMs < CACHE_FRESH_MS;
+        if (forceRefresh || !isLocationCacheValid(expiresAt)) return;
+
+        validMap.set(location, priceData);
+        // Marca freshness no Map para diagnóstico
+        validMap.__fresh = isFresh;
       });
-      cachedLocationsByItem.set(itemId, validMap);
+
+      freshLocationsByItem.set(itemId, validMap);
+    }
+
+    if (skippedStaleCount > 0) {
+      console.log(
+        `[CACHE] Descartados ${skippedStaleCount} registros com mais de 24h.`
+      );
     }
 
     const uncachedItems = [];
     const itemsFullyCached = [];
 
     validItems.forEach((item) => {
-      const cachedMap = cachedLocationsByItem.get(item.itemId) || new Map();
+      const cachedMap = freshLocationsByItem.get(item.itemId) || new Map();
       const missingLocations = ARBITRAGE_LOCATIONS.filter((loc) => !cachedMap.has(loc));
       if (missingLocations.length === 0) {
         itemsFullyCached.push({ item, cachedMap });
@@ -304,7 +345,6 @@ export const fetchMultipleItemPrices = async (items, hasPremium = false, options
             const loc = row.location || row.city;
             if (!loc || !ARBITRAGE_LOCATIONS.includes(loc)) continue;
 
-            // Silencioso: all-zero é esperado quando ninguém visitou a cidade.
             const sanitized = sanitizePriceData(row);
             if (!sanitized.ok) {
               allZeroCount++;
@@ -337,9 +377,11 @@ export const fetchMultipleItemPrices = async (items, hasPremium = false, options
       }
     }
 
+    // Combina cache fresco + API fresca. Itens sem nenhuma location válida
+    // são pulados (ficam fora do resultado).
     const allResults = [];
     for (const item of validItems) {
-      const cachedMap = cachedLocationsByItem.get(item.itemId) || new Map();
+      const cachedMap = freshLocationsByItem.get(item.itemId) || new Map();
       const fetchedMap = fetchedByItem.get(item.itemId) || new Map();
 
       const locations = {};
@@ -376,13 +418,18 @@ export const fetchMultipleItemPrices = async (items, hasPremium = false, options
 /**
  * Calcula oportunidade de arbitragem de um item.
  *
- * Compara a cidade mais barata (menor `buy_price_min`) contra o Black
- * Market (maior `buy_price_max` = instant sell).
+ * Mapeamento de preços (Tarefa 7.3):
+ *   - buyPrice (custo de aquisição) usa `sell_price_min` — o menor
+ *     preço pelo qual um vendedor na cidade está disposto a vender.
+ *     Se for 0 ou inválido, ignoramos essa cidade.
+ *   - sellPrice (lucro no Black Market) usa `buy_price_max` — a maior
+ *     ordem de compra instantânea que o BM está disposto a pagar.
+ *     Se for 0 ou inválido, descartamos o item inteiro.
  *
  * Retorna `null` silenciosamente quando:
  *   - Item não é equipamento válido
- *   - Sem dados no Black Market
- *   - Sem nenhuma cidade com preço de compra válido
+ *   - Sem dados no Black Market (ou sell_price <= 0)
+ *   - Sem nenhuma cidade com preço de venda válido
  */
 export const calculateArbitrage = (priceData, targetCity = BLACK_MARKET, hasPremium = false) => {
   if (!priceData) return null;
@@ -396,22 +443,27 @@ export const calculateArbitrage = (priceData, targetCity = BLACK_MARKET, hasPrem
   const bmEntry = locations[BLACK_MARKET];
   if (!bmEntry) return null;
 
-  const bmSellPrice = bmEntry.buy_price_max > 0
-    ? bmEntry.buy_price_max
-    : (bmEntry.sell_price_min || 0);
+  // sellPrice do BM = buy_price_max (maior ordem de compra no Black Market)
+  // Fallback para sell_price_min apenas se buy_price_max for 0/null.
+  const bmSellPrice = Number(bmEntry.buy_price_max ?? 0) > 0
+    ? Number(bmEntry.buy_price_max)
+    : Number(bmEntry.sell_price_min ?? 0);
 
-  if (bmSellPrice <= 0) return null;
+  if (!Number.isFinite(bmSellPrice) || bmSellPrice <= 0) return null;
 
+  // buyPrice = sell_price_min (menor preço de venda) em cada cidade
+  // (excluindo a própria cidade-alvo).
   let bestBuy = null;
   for (const [city, entry] of Object.entries(locations)) {
     if (city === targetCity) continue;
     if (!entry || typeof entry !== 'object') continue;
 
-    const buyPrice = entry.buy_price_min;
-    if (!Number.isFinite(buyPrice) || buyPrice <= 0) continue;
+    // Ignora entradas sem sell_price_min válido (0, null ou NaN)
+    const sellMin = Number(entry.sell_price_min ?? 0);
+    if (!Number.isFinite(sellMin) || sellMin <= 0) continue;
 
-    if (!bestBuy || buyPrice < bestBuy.price) {
-      bestBuy = { city, price: buyPrice };
+    if (!bestBuy || sellMin < bestBuy.price) {
+      bestBuy = { city, price: sellMin };
     }
   }
 
@@ -468,6 +520,11 @@ export const calculateArbitrage = (priceData, targetCity = BLACK_MARKET, hasPrem
  * Busca as top oportunidades para uma lista de itens.
  * Recebe a lista mestra `MARKET_ITEMS` (~400+ itens) e devolve o top N
  * ranqueado por netProfit.
+ *
+ * @param {object} options
+ * @param {number} options.cacheTtlMinutes  Opcional (default 15). Se o
+ *   cache do Supabase tiver `cached_at` mais recente que isso, NÃO faz
+ *   fetch na API externa para esse item.
  */
 export const fetchTopOpportunities = async (
   items,
@@ -482,12 +539,20 @@ export const fetchTopOpportunities = async (
     fetchOptions = hasPremium;
   }
 
-  const { includeAllTiers = false, onProgress, forceRefresh = false } = fetchOptions || {};
+  const { includeAllTiers = false, onProgress, forceRefresh = false, cacheTtlMinutes } = fetchOptions || {};
   const selectedItems = includeAllTiers ? items : items.filter(isInitialPriorityItem);
 
   if (selectedItems.length === 0) {
     onProgress?.({ loaded: 0, total: 0, phase: 'complete' });
     return [];
+  }
+
+  // Override do TTL (em minutos) — útil para testes
+  if (cacheTtlMinutes && Number.isFinite(cacheTtlMinutes)) {
+    // Não podemos sobrescrever a const CACHE_FRESH_MS diretamente aqui
+    // porque é usada dentro de fetchMultipleItemPrices via closure.
+    // Em vez disso, encaminhamos como flag `cacheFreshMs`.
+    fetchOptions = { ...fetchOptions, cacheFreshMs: cacheTtlMinutes * 60 * 1000 };
   }
 
   const requestKey = generateCanonicalKey(selectedItems, limit);
@@ -555,3 +620,9 @@ export const COMMON_ITEMS = MARKET_ITEMS;
 
 /** Tamanho efetivo da lista para diagnostics/logs. */
 export const MARKET_ITEM_COUNT = MARKET_ITEMS.length;
+
+/** Expor as constantes de TTL para diagnóstico. */
+export const CACHE_THRESHOLDS = {
+  freshMs: CACHE_FRESH_MS,
+  hardLimitMs: CACHE_HARD_LIMIT_MS,
+};

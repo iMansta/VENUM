@@ -1,10 +1,27 @@
 import { supabase } from './client';
 
 /**
- * Build operations for VENUM MARKET
- * - Read-side helpers (used by /builds page) call the safe public RPCs.
- * - Admin write-side helpers call the admin-only RPCs (gated by RLS).
+ * Build operations for VENUM MARKET (Albian Online)
+ *
+ * Toda função aqui é defensiva: se a RPC não existir (PGRST202/404) ou
+ * se a resposta vier vazia, retornamos um valor seguro (array vazio /
+ * objeto vazio) ao invés de quebrar a UI.
  */
+
+const BUILD_CATEGORIES_RPC = 'get_build_categories_with_count';
+const BUILDS_BY_CATEGORY_RPC = 'get_builds_by_category';
+
+const isMissingRpcError = (error) => {
+  if (!error) return false;
+  const code = error.code;
+  const status = error.status;
+  const msg = String(error.message || '');
+  return (
+    code === 'PGRST202' ||
+    status === 404 ||
+    /Could not find the function public\./i.test(msg)
+  );
+};
 
 const safe = (fn) => async (...args) => {
   try {
@@ -15,31 +32,59 @@ const safe = (fn) => async (...args) => {
   }
 };
 
-// ---------- Read (public) ----------
+// ---------- Read (público) ----------
 
 /**
- * List build categories with build count.
- * Calls public RPC `get_build_categories_with_count()`.
+ * Lista categorias com contagem de builds.
+ * Retorna SEMPRE um array (vazio se der erro).
  */
 export const fetchBuildCategories = async () => {
-  const { data, error } = await supabase.rpc('get_build_categories_with_count');
-  if (error) throw error;
-  return data || [];
+  try {
+    const { data, error } = await supabase.rpc(BUILD_CATEGORIES_RPC);
+    if (error) {
+      if (isMissingRpcError(error)) {
+        console.warn(
+          '[builds] RPC get_build_categories_with_count missing. ' +
+            'Apply supabase/schema_builds_and_reservations.sql.'
+        );
+        return [];
+      }
+      console.error('[builds] fetchBuildCategories error:', error);
+      return [];
+    }
+    return Array.isArray(data) ? data : [];
+  } catch (error) {
+    console.error('[builds] fetchBuildCategories exception:', error);
+    return [];
+  }
 };
 
 /**
- * List builds inside a single category.
- * Calls public RPC `get_builds_by_category(p_category_id)`.
+ * Lista builds dentro de uma categoria.
+ * Retorna SEMPRE um array.
  */
 export const fetchBuildsByCategory = async (categoryId) => {
-  const { data, error } = await supabase.rpc('get_builds_by_category', {
-    p_category_id: categoryId,
-  });
-  if (error) throw error;
-  return data || [];
+  if (!categoryId) return [];
+  try {
+    const { data, error } = await supabase.rpc(BUILDS_BY_CATEGORY_RPC, {
+      p_category_id: categoryId,
+    });
+    if (error) {
+      if (isMissingRpcError(error)) {
+        console.warn('[builds] RPC get_builds_by_category missing.');
+        return [];
+      }
+      console.error('[builds] fetchBuildsByCategory error:', error);
+      return [];
+    }
+    return Array.isArray(data) ? data : [];
+  } catch (error) {
+    console.error('[builds] fetchBuildsByCategory exception:', error);
+    return [];
+  }
 };
 
-// ---------- Admin: categories ----------
+// ---------- Admin: categorias ----------
 
 export const fetchAllCategoriesAdmin = safe(async () => {
   const { data, error } = await supabase
@@ -47,7 +92,7 @@ export const fetchAllCategoriesAdmin = safe(async () => {
     .select('*')
     .order('name');
   if (error) throw error;
-  return data || [];
+  return Array.isArray(data) ? data : [];
 });
 
 export const createCategory = safe(async (payload) => {
@@ -85,16 +130,16 @@ export const fetchBuildsAdmin = safe(async () => {
     .select('*')
     .order('created_at', { ascending: false });
   if (error) throw error;
-  return data || [];
+  return Array.isArray(data) ? data : [];
 });
 
 export const createBuild = safe(async (payload) => {
   const { data, error } = await supabase.rpc('admin_create_build', {
     p_category_id: payload.category_id,
     p_title: payload.title,
+    p_items: payload.items_json ?? payload.items ?? [],
+    p_description: payload.description ?? null,
     p_author: payload.author ?? null,
-    p_items_json: payload.items_json ?? [],
-    p_tactics: payload.tactics ?? null,
   });
   if (error) throw error;
   return { success: true, data };
@@ -105,9 +150,9 @@ export const updateBuild = safe(async (id, payload) => {
     p_build_id: id,
     p_category_id: payload.category_id,
     p_title: payload.title,
+    p_items: payload.items_json ?? payload.items ?? [],
+    p_description: payload.description ?? null,
     p_author: payload.author ?? null,
-    p_items_json: payload.items_json ?? [],
-    p_tactics: payload.tactics ?? null,
   });
   if (error) throw error;
   return { success: true, data };
