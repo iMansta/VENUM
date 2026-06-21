@@ -506,7 +506,7 @@ export const fetchTopOpportunities = async (items, limit = 10, hasPremium = fals
           }
           return null;
         })
-        .filter(opp => opp !== null && opp.netProfit > 0)
+        .filter(opp => opp !== null && opp.netProfit >= 0)
         .sort((a, b) => b.netProfit - a.netProfit)
         .slice(0, limit);
 
