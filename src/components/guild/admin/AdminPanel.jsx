@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
-import { Shield, Users, Key, Target, Award, RefreshCw } from 'lucide-react';
+import { Shield, Users, Key, Target, Award, RefreshCw, Hammer } from 'lucide-react';
 import { getGuildMembers, updateUserRole } from '@/lib/supabase/profiles';
 import { createGuildCode } from '@/lib/supabase/guildCodes';
 import UserManagement from './UserManagement';
 import InviteCodeGenerator from './InviteCodeGenerator';
 import MissionManagement from './MissionManagement';
 import PointsManagement from './PointsManagement';
+import BuildManagement from './BuildManagement';
 
 /**
  * AdminPanel component - Main admin dashboard for guild management
@@ -45,6 +46,7 @@ const AdminPanel = ({ userId, userRole }) => {
     { id: 'codes', label: 'Códigos', icon: Key },
     { id: 'missions', label: 'Missões', icon: Target },
     { id: 'points', label: 'Pontos', icon: Award },
+    { id: 'builds', label: 'Builds', icon: Hammer },
   ];
 
   return (
@@ -126,6 +128,7 @@ const AdminPanel = ({ userId, userRole }) => {
         {activeTab === 'codes' && <InviteCodeGenerator userId={userId} userRole={userRole} />}
         {activeTab === 'missions' && <MissionManagement userId={userId} userRole={userRole} />}
         {activeTab === 'points' && <PointsManagement userId={userId} userRole={userRole} />}
+        {activeTab === 'builds' && <BuildManagement />}
       </div>
     </div>
   );

@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { 
-  LayoutDashboard, 
-  Trophy, 
-  Target, 
-  TrendingUp, 
-  Settings, 
+import {
+  LayoutDashboard,
+  Trophy,
+  Target,
+  TrendingUp,
+  Hammer,
   LogOut,
   Menu,
   X,
@@ -33,6 +33,7 @@ const DashboardLayout = ({ userId, userRole, profile }) => {
     { name: 'Ranking', path: '/ranking', icon: Trophy },
     { name: 'Missões', path: '/missions', icon: Target },
     { name: 'Mercado', path: '/market', icon: TrendingUp },
+    { name: 'Builds', path: '/builds', icon: Hammer },
   ];
 
   const adminNavigation = [

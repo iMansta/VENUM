@@ -8,6 +8,7 @@ import Dashboard from '@/pages/Dashboard';
 import Ranking from '@/pages/Ranking';
 import Missions from '@/pages/Missions';
 import Market from '@/pages/Market';
+import Builds from '@/pages/Builds';
 import AdminPanel from '@/components/guild/admin/AdminPanel';
 import { getSession, onAuthStateChange } from '@/lib/supabase/auth';
 import { getProfile } from '@/lib/supabase/profiles';
@@ -24,7 +25,7 @@ function App() {
     // Listen to auth state changes
     const { data: { subscription } } = onAuthStateChange(async (event, session) => {
       console.log('Auth state changed:', event, session?.user?.id);
-      
+
       if (event === 'SIGNED_IN' && session?.user) {
         setUser(session.user);
         const { success, data: userProfile } = await getProfile(session.user.id);
@@ -47,7 +48,7 @@ function App() {
       console.log('Checking session...');
       const { success, session } = await getSession();
       console.log('Session check result:', success, session?.user?.id);
-      
+
       if (success && session?.user) {
         setUser(session.user);
         const { success: profileSuccess, data: userProfile } = await getProfile(session.user.id);
@@ -118,6 +119,16 @@ function App() {
           }
         >
           <Route index element={<Market userId={user?.id} />} />
+        </Route>
+        <Route
+          path="/builds"
+          element={
+            <ProtectedRoute>
+              <DashboardLayout userId={user?.id} userRole={profile?.role} profile={profile} />
+            </ProtectedRoute>
+          }
+        >
+          <Route index element={<Builds />} />
         </Route>
         <Route
           path="/admin"
