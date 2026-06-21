@@ -77,12 +77,21 @@ export const getCachedMarketPricesByLocation = async (itemIds) => {
 
     const grouped = {};
     (data || []).forEach((row) => {
-      if (!grouped[row.item_id]) grouped[row.item_id] = [];
-      grouped[row.item_id].push({
-        location: row.location,
-        priceData: row.price_data,
-        cachedAt: row.cached_at,
-        expiresAt: row.expires_at,
+      // Tolerate either snake_case (PostgREST default for our RPC) or
+      // camelCase (e.g. when called via a custom server-side transformer).
+      const itemId = row.item_id ?? row.itemId;
+      const location = row.location ?? row.city;
+      const priceData = row.price_data ?? row.priceData;
+      const cachedAt = row.cached_at ?? row.cachedAt;
+      const expiresAt = row.expires_at ?? row.expiresAt;
+
+      if (!itemId) return; // skip malformed rows
+      if (!grouped[itemId]) grouped[itemId] = [];
+      grouped[itemId].push({
+        location,
+        priceData,
+        cachedAt,
+        expiresAt,
       });
     });
 

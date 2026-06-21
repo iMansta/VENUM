@@ -319,8 +319,13 @@ export const fetchMultipleItemPrices = async (items, hasPremium = false, options
       const rows = cachedByLocation[itemId] || [];
       const validMap = new Map();
       rows.forEach((row) => {
-        if (!forceRefresh && isLocationCacheValid(row.expiresAt)) {
-          validMap.set(row.location, row.priceData);
+        // Defensive: accept both camelCase (normalized by the adapter) and
+        // snake_case (in case a future code path returns rows untransformed).
+        const expiresAt = row.expiresAt ?? row.expires_at;
+        const location = row.location ?? row.city;
+        const priceData = row.priceData ?? row.price_data;
+        if (!forceRefresh && location && isLocationCacheValid(expiresAt)) {
+          validMap.set(location, priceData);
         }
       });
       cachedLocationsByItem.set(itemId, validMap);
