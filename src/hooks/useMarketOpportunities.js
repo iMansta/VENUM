@@ -12,24 +12,32 @@ export const useMarketOpportunities = (limit = 50, refreshKey = 0) => {
   const [opportunities, setOpportunities] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [progress, setProgress] = useState({ loaded: 0, total: 0, phase: 'idle' });
+  const [includeAllTiers, setIncludeAllTiers] = useState(false);
 
-  const loadOpportunities = useCallback(async () => {
+  const loadOpportunities = useCallback(async ({ includeAllTiers: shouldIncludeAllTiers = false } = {}) => {
     setLoading(true);
     setError(null);
+    setIncludeAllTiers(shouldIncludeAllTiers);
+    setProgress({ loaded: 0, total: 0, phase: 'cache' });
     
     try {
-      const data = await fetchTopOpportunities(COMMON_ITEMS, limit);
+      const data = await fetchTopOpportunities(COMMON_ITEMS, limit, false, {
+        includeAllTiers: shouldIncludeAllTiers,
+        onProgress: setProgress,
+      });
       setOpportunities(data);
     } catch (err) {
       setError('Failed to load opportunities');
       console.error('Error loading opportunities:', err);
     } finally {
       setLoading(false);
+      setProgress(prev => ({ ...prev, phase: 'complete' }));
     }
   }, [limit]);
 
   useEffect(() => {
-    loadOpportunities();
+    loadOpportunities({ includeAllTiers: false });
   }, [refreshKey, loadOpportunities]);
 
   return {
@@ -37,5 +45,9 @@ export const useMarketOpportunities = (limit = 50, refreshKey = 0) => {
     loading,
     error,
     refresh: loadOpportunities,
+    progress,
+    includeAllTiers,
+    hasMoreTiers: !includeAllTiers,
+    loadAllTiers: () => loadOpportunities({ includeAllTiers: true }),
   };
 };

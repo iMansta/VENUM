@@ -10,7 +10,7 @@ import { fetchTopOpportunities, COMMON_ITEMS } from '@/lib/albion/api';
  * @param {number} limit - Number of cards to display (default: 10)
  */
 
-const TopOpportunities = ({ arbitrageData = null, limit = 10, refreshKey = 0 }) => {
+const TopOpportunities = ({ arbitrageData = null, limit = 10, refreshKey = 0, loading: externalLoading = null, loadingProgress = null }) => {
   const [opportunities, setOpportunities] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -43,6 +43,11 @@ const TopOpportunities = ({ arbitrageData = null, limit = 10, refreshKey = 0 }) 
     return new Intl.NumberFormat('pt-BR').format(Math.round(value || 0));
   };
 
+  const isLoading = externalLoading ?? loading;
+  const loadingText = loadingProgress?.total > 0
+    ? `Carregando ${Math.min(loadingProgress.loaded, loadingProgress.total)} de ${loadingProgress.total} itens...`
+    : 'Carregando oportunidades...';
+
   // Sort by net profit and get top opportunities
   const topOpportunities = useMemo(() => {
     if (!opportunities || opportunities.length === 0) return [];
@@ -51,12 +56,12 @@ const TopOpportunities = ({ arbitrageData = null, limit = 10, refreshKey = 0 }) 
       .slice(0, limit);
   }, [opportunities, limit]);
 
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="bg-slate-900 rounded-lg border border-slate-800 p-8">
         <div className="text-center">
           <div className="w-12 h-12 border-4 border-red-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-400">Carregando oportunidades...</p>
+          <p className="text-gray-400">{loadingText}</p>
         </div>
       </div>
     );

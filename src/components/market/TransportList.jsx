@@ -7,7 +7,7 @@ import ItemIcon from './ItemIcon';
 import { getItemName } from '@/lib/i18n/itemNames';
 import SecurityChecklist from './SecurityChecklist';
 
-const TransportList = ({ userId, filters, refreshKey, opportunities: propOpportunities, loading: propLoading }) => {
+const TransportList = ({ userId, filters, refreshKey, opportunities: propOpportunities, loading: propLoading, loadingProgress = null }) => {
   const [opportunities, setOpportunities] = useState([]);
   const [myTransports, setMyTransports] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -225,6 +225,9 @@ const TransportList = ({ userId, filters, refreshKey, opportunities: propOpportu
   };
 
   const cities = [...new Set(opportunities.map(opp => opp.lowestCity))];
+  const loadingText = loadingProgress?.total > 0
+    ? `Carregando ${Math.min(loadingProgress.loaded, loadingProgress.total)} de ${loadingProgress.total} itens...`
+    : 'Carregando oportunidades...';
 
   return (
     <div className="space-y-6">
@@ -259,7 +262,7 @@ const TransportList = ({ userId, filters, refreshKey, opportunities: propOpportu
           {loading ? (
             <div className="text-center py-12">
               <div className="w-12 h-12 border-4 border-red-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-              <p className="text-gray-400">Carregando oportunidades...</p>
+              <p className="text-gray-400">{loadingText}</p>
             </div>
           ) : opportunities.length === 0 ? (
             <div className="text-center py-12">

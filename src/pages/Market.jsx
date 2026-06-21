@@ -16,7 +16,18 @@ const Market = ({ userId }) => {
   const [refreshKey, setRefreshKey] = useState(0);
 
   // Single source of truth for market opportunities
-  const { opportunities, loading: opportunitiesLoading, refresh: refreshOpportunities } = useMarketOpportunities(50, refreshKey);
+  const {
+    opportunities,
+    loading: opportunitiesLoading,
+    refresh: refreshOpportunities,
+    progress,
+    hasMoreTiers,
+    loadAllTiers,
+  } = useMarketOpportunities(50, refreshKey);
+
+  const progressText = progress.total > 0
+    ? `Carregando ${Math.min(progress.loaded, progress.total)} de ${progress.total} itens...`
+    : 'Preparando consulta de mercado...';
 
   useEffect(() => {
     // Simulate loading or check if data is ready
@@ -34,9 +45,7 @@ const Market = ({ userId }) => {
   };
 
   const handleRefresh = () => {
-    // Refresh opportunities
-    refreshOpportunities();
-    setRefreshKey(prev => prev + 1);
+    refreshOpportunities({ includeAllTiers: false });
   };
 
   if (loading) {
@@ -59,8 +68,19 @@ const Market = ({ userId }) => {
           <p className="text-gray-400 text-sm mt-1">Análise de arbitragem Albion Online</p>
         </div>
         <div className="flex items-center gap-2">
+          {hasMoreTiers && (
+            <button
+              onClick={loadAllTiers}
+              disabled={opportunitiesLoading}
+              className="bg-amber-500 hover:bg-amber-600 disabled:bg-slate-700 disabled:text-gray-500 text-slate-950 font-semibold px-4 py-2 rounded-lg flex items-center gap-2 transition-colors"
+            >
+              <Search className="w-5 h-5" />
+              Carregar T6-T8
+            </button>
+          )}
           <button
             onClick={handleRefresh}
+            disabled={opportunitiesLoading}
             className="bg-slate-800 hover:bg-slate-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors"
           >
             <RefreshCw className="w-5 h-5" />
@@ -90,10 +110,17 @@ const Market = ({ userId }) => {
             <ArrowUpDown className="w-5 h-5 text-red-500" />
             Top Oportunidades
           </h2>
-          <p className="text-gray-400 text-sm mt-1">Melhores oportunidades de arbitragem (sem filtro)</p>
+          <p className="text-gray-400 text-sm mt-1">
+            {opportunitiesLoading ? progressText : 'Melhores oportunidades de arbitragem (carregamento inicial T4-T5)'}
+          </p>
         </div>
         <div className="p-6">
-          <TopOpportunities arbitrageData={opportunities} limit={10} />
+          <TopOpportunities
+            arbitrageData={opportunities}
+            limit={10}
+            loading={opportunitiesLoading}
+            loadingProgress={progress}
+          />
         </div>
       </div>
 
@@ -104,7 +131,9 @@ const Market = ({ userId }) => {
             <ArrowUpDown className="w-5 h-5 text-red-500" />
             Lista de Transporte
           </h2>
-          <p className="text-gray-400 text-sm mt-1">Oportunidades de transporte (com filtro)</p>
+          <p className="text-gray-400 text-sm mt-1">
+            {opportunitiesLoading ? progressText : 'Oportunidades de transporte (com filtro)'}
+          </p>
         </div>
         <div className="p-6">
           <TransportList 
@@ -113,6 +142,7 @@ const Market = ({ userId }) => {
             refreshKey={refreshKey}
             opportunities={opportunities}
             loading={opportunitiesLoading}
+            loadingProgress={progress}
           />
         </div>
       </div>

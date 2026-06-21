@@ -25,6 +25,24 @@ const inFlightRequests = new Map();
 // Global cooldown for rate limiting
 let globalBlockUntil = 0;
 
+const API_BATCH_SIZE = 10;
+const INITIAL_VISIBLE_TIERS = new Set([4, 5]);
+
+const getItemTier = (itemId) => {
+  const tier = itemId?.match(/T(\d+)/)?.[1];
+  return tier ? parseInt(tier, 10) : null;
+};
+
+const isInitialPriorityItem = (item) => INITIAL_VISIBLE_TIERS.has(getItemTier(item.itemId));
+
+const chunkArray = (items, size) => {
+  const chunks = [];
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+  return chunks;
+};
+
 /**
  * Generate canonical key for cache and single-flight
  * Ensures consistent keys regardless of parameter order
@@ -230,9 +248,13 @@ export const fetchItemPrice = async (itemName, locations = 1) => {
  * Fetch price data for multiple items with Supabase cache
  * @param {Array<Object>} items - Array of item objects with itemId, enchantment, quantity
  * @param {boolean} hasPremium - Whether user has premium (affects transaction fee)
+ * @param {Object} options - Fetch options
+ * @param {Function} options.onProgress - Progress callback
  * @returns {Promise<Array>} Array of price data for all items
  */
-export const fetchMultipleItemPrices = async (items, hasPremium = false) => {
+export const fetchMultipleItemPrices = async (items, hasPremium = false, options = {}) => {
+  const { onProgress } = options;
+
   try {
     console.log(`[FETCH] Fetching prices for ${items.length} items (max ${MAX_CONCURRENT_REQUESTS} concurrent)`);
     const startTime = Date.now();
@@ -243,8 +265,11 @@ export const fetchMultipleItemPrices = async (items, hasPremium = false) => {
 
     if (validItems.length === 0) {
       console.warn('[FILTER] No valid equipment items to fetch');
+      onProgress?.({ loaded: 0, total: 0, phase: 'complete' });
       return [];
     }
+
+    onProgress?.({ loaded: 0, total: validItems.length, phase: 'cache' });
 
     // First, check Supabase cache for all items
     const itemIds = validItems.map(item => item.itemId);
@@ -269,17 +294,20 @@ export const fetchMultipleItemPrices = async (items, hasPremium = false) => {
     });
 
     console.log(`[CACHE] ${cachedItems.length} items from cache, ${uncachedItems.length} items to fetch`);
+    onProgress?.({
+      loaded: cachedItems.length,
+      total: validItems.length,
+      phase: uncachedItems.length > 0 ? 'fetch' : 'complete',
+    });
 
     // Fetch uncached items from API in batches
-    const BATCH_SIZE = 100; // Increased to 100 for API batch requests
-    const batches = [];
-    for (let i = 0; i < uncachedItems.length; i += BATCH_SIZE) {
-      batches.push(uncachedItems.slice(i, i + BATCH_SIZE));
-    }
+    const batches = chunkArray(uncachedItems, API_BATCH_SIZE);
 
-    console.log(`[FETCH] Split ${uncachedItems.length} uncached items into ${batches.length} batches of ${BATCH_SIZE} items each`);
+    console.log(`[FETCH] Split ${uncachedItems.length} uncached items into ${batches.length} batches of ${API_BATCH_SIZE} items each`);
 
     const fetchedResults = [];
+    let loadedCount = cachedItems.length;
+
     for (let i = 0; i < batches.length; i++) {
       console.log(`[FETCH] Processing batch ${i + 1}/${batches.length}`);
       
@@ -305,6 +333,15 @@ export const fetchMultipleItemPrices = async (items, hasPremium = false) => {
       } catch (error) {
         console.error(`[FETCH] Error fetching batch ${i + 1}:`, error);
       }
+
+      loadedCount += batches[i].length;
+      onProgress?.({
+        loaded: Math.min(loadedCount, validItems.length),
+        total: validItems.length,
+        phase: i === batches.length - 1 ? 'complete' : 'fetch',
+      });
+
+      await sleep(0);
 
       // Add delay between batches to reduce burst
       if (i < batches.length - 1) {
@@ -410,21 +447,40 @@ export const calculateArbitrage = (priceData, targetCity = 'Black Market', hasPr
  * @param {Array<Object>} items - Array of item objects with itemId, enchantment, quantity
  * @param {number} limit - Number of top opportunities to return
  * @param {boolean} hasPremium - Whether user has premium (affects transaction fee)
+ * @param {Object} options - Fetch options
+ * @param {boolean} options.includeAllTiers - Include T6-T8 items instead of only initial T4/T5 items
+ * @param {Function} options.onProgress - Progress callback
  * @returns {Promise<Array>} Array of top arbitrage opportunities
  */
-export const fetchTopOpportunities = async (items, limit = 10, hasPremium = false) => {
+export const fetchTopOpportunities = async (items, limit = 10, hasPremium = false, options = {}) => {
+  let premium = hasPremium;
+  let fetchOptions = options;
+
+  if (typeof hasPremium === 'object') {
+    premium = false;
+    fetchOptions = hasPremium;
+  }
+
+  const { includeAllTiers = false, onProgress } = fetchOptions || {};
+  const selectedItems = includeAllTiers ? items : items.filter(isInitialPriorityItem);
+
+  if (selectedItems.length === 0) {
+    onProgress?.({ loaded: 0, total: 0, phase: 'complete' });
+    return [];
+  }
+
   // Single-flight: if the same request is already in flight, return the same promise
-  const requestKey = generateCanonicalKey(items, limit);
+  const requestKey = generateCanonicalKey(selectedItems, limit);
   
   if (inFlightRequests.has(requestKey)) {
-    console.log(`[SINGLE-FLIGHT] Reusing in-flight request for ${items.length} items`);
+    console.log(`[SINGLE-FLIGHT] Reusing in-flight request for ${selectedItems.length} items`);
     return inFlightRequests.get(requestKey);
   }
 
   const requestPromise = (async () => {
     try {
-      console.log(`[FETCH] Fetching top opportunities for ${items.length} items (key: ${requestKey.substring(0, 50)}...)`);
-      const priceData = await fetchMultipleItemPrices(items, hasPremium);
+      console.log(`[FETCH] Fetching top opportunities for ${selectedItems.length}/${items.length} items (key: ${requestKey.substring(0, 50)}...)`);
+      const priceData = await fetchMultipleItemPrices(selectedItems, premium, { onProgress });
       console.log(`[FETCH] Received price data for ${priceData.length} items`);
       
       if (priceData.length === 0) {
@@ -432,11 +488,13 @@ export const fetchTopOpportunities = async (items, limit = 10, hasPremium = fals
         return [];
       }
       
+      const itemMetadataById = new Map(selectedItems.map(item => [item.itemId, item]));
+
       // Map price data with item metadata
       const opportunities = priceData
-        .map((data, index) => {
-          const itemMetadata = items[index] || { enchantment: 0, quantity: 1 };
-          const arbitrage = calculateArbitrage(data, 'Black Market', hasPremium);
+        .map((data) => {
+          const itemMetadata = itemMetadataById.get(data.item_id) || { enchantment: 0, quantity: 1 };
+          const arbitrage = calculateArbitrage(data, 'Black Market', premium);
           if (arbitrage) {
             return {
               ...arbitrage,
