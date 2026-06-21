@@ -33,7 +33,10 @@ const TransportList = ({ userId, filters, refreshKey, opportunities: propOpportu
     try {
       const count = filters?.quantity || opportunityCount;
       console.log('Loading opportunities with count:', count, 'filters:', filters);
-      const data = await fetchTopOpportunities(COMMON_ITEMS, count);
+      const data = await fetchTopOpportunities(COMMON_ITEMS, count, false, {
+        includeAllTiers: false,
+        forceRefresh: true,
+      });
       console.log('Fetched opportunities:', data.length);
 
       // Apply filters from props if provided

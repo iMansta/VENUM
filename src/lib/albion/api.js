@@ -4,8 +4,8 @@ import { getCachedMarketPrices, setCachedMarketPrice, isCacheValid } from '@/lib
 
 const ALBION_API_BASE = 'https://www.albion-online-data.com/api/v2/stats/prices';
 
-// Cache with TTL (10 minutes - increased to reduce API calls)
-const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+// Cache with TTL (5 minutes to reduce stale in-memory results)
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 const priceCache = new Map();
 
 // Request statistics
@@ -87,7 +87,7 @@ const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 /**
  * Validate if an item is equipment (can be sold in Black Market)
  * Black Market only accepts: Weapons, Armor, Bags, Shoes, Head, Capes
- * Excludes: Resources (Wood, Planks, Ore, MetalBars, Fiber, Cloth, Hide, Leather, Rock, StoneBlocks)
+ * Excludes resource-only item patterns while allowing cloth/leather equipment
  * @param {string} itemId - Item ID to validate
  * @returns {boolean} True if item is valid equipment
  */
@@ -96,7 +96,7 @@ const isValidEquipment = (itemId) => {
   
   const excludedPatterns = [
     'PLANK', 'WOOD', 'ORE', 'METALBAR', 'FIBER', 
-    'CLOTH', 'HIDE', 'LEATHER', 'ROCK', 'STONE'
+    'ROCK', 'STONE'
   ];
   
   const upperItemId = itemId.toUpperCase();
@@ -250,10 +250,11 @@ export const fetchItemPrice = async (itemName, locations = 1) => {
  * @param {boolean} hasPremium - Whether user has premium (affects transaction fee)
  * @param {Object} options - Fetch options
  * @param {Function} options.onProgress - Progress callback
+ * @param {boolean} options.forceRefresh - Ignore Supabase cache and fetch fresh data
  * @returns {Promise<Array>} Array of price data for all items
  */
 export const fetchMultipleItemPrices = async (items, hasPremium = false, options = {}) => {
-  const { onProgress } = options;
+  const { onProgress, forceRefresh = false } = options;
 
   try {
     console.log(`[FETCH] Fetching prices for ${items.length} items (max ${MAX_CONCURRENT_REQUESTS} concurrent)`);
@@ -271,9 +272,9 @@ export const fetchMultipleItemPrices = async (items, hasPremium = false, options
 
     onProgress?.({ loaded: 0, total: validItems.length, phase: 'cache' });
 
-    // First, check Supabase cache for all items
+    // First, check Supabase cache for all items unless a fresh pull is requested
     const itemIds = validItems.map(item => item.itemId);
-    const cachedPrices = await getCachedMarketPrices(itemIds);
+    const cachedPrices = forceRefresh ? {} : await getCachedMarketPrices(itemIds);
 
     // Separate items into cached and uncached
     const cachedItems = [];
@@ -281,7 +282,7 @@ export const fetchMultipleItemPrices = async (items, hasPremium = false, options
 
     validItems.forEach((item) => {
       const cached = cachedPrices[item.itemId];
-      if (cached && isCacheValid(cached.expiresAt)) {
+      if (!forceRefresh && cached && isCacheValid(cached.expiresAt)) {
         cachedItems.push({
           item,
           priceData: cached.priceData,
@@ -289,7 +290,7 @@ export const fetchMultipleItemPrices = async (items, hasPremium = false, options
         console.log(`[CACHE HIT] ${item.itemId} from Supabase`);
       } else {
         uncachedItems.push(item);
-        console.log(`[CACHE MISS] ${item.itemId} - will fetch from API`);
+        console.log(`[CACHE MISS] ${item.itemId} - will fetch from API${forceRefresh ? ' (force refresh)' : ''}`);
       }
     });
 
@@ -450,6 +451,7 @@ export const calculateArbitrage = (priceData, targetCity = 'Black Market', hasPr
  * @param {Object} options - Fetch options
  * @param {boolean} options.includeAllTiers - Include T6-T8 items instead of only initial T4/T5 items
  * @param {Function} options.onProgress - Progress callback
+ * @param {boolean} options.forceRefresh - Ignore Supabase cache and fetch fresh data
  * @returns {Promise<Array>} Array of top arbitrage opportunities
  */
 export const fetchTopOpportunities = async (items, limit = 10, hasPremium = false, options = {}) => {
@@ -461,7 +463,7 @@ export const fetchTopOpportunities = async (items, limit = 10, hasPremium = fals
     fetchOptions = hasPremium;
   }
 
-  const { includeAllTiers = false, onProgress } = fetchOptions || {};
+  const { includeAllTiers = false, onProgress, forceRefresh = false } = fetchOptions || {};
   const selectedItems = includeAllTiers ? items : items.filter(isInitialPriorityItem);
 
   if (selectedItems.length === 0) {
@@ -480,7 +482,7 @@ export const fetchTopOpportunities = async (items, limit = 10, hasPremium = fals
   const requestPromise = (async () => {
     try {
       console.log(`[FETCH] Fetching top opportunities for ${selectedItems.length}/${items.length} items (key: ${requestKey.substring(0, 50)}...)`);
-      const priceData = await fetchMultipleItemPrices(selectedItems, premium, { onProgress });
+      const priceData = await fetchMultipleItemPrices(selectedItems, premium, { onProgress, forceRefresh });
       console.log(`[FETCH] Received price data for ${priceData.length} items`);
       
       if (priceData.length === 0) {
@@ -525,7 +527,7 @@ export const fetchTopOpportunities = async (items, limit = 10, hasPremium = fals
 
 // Common items to check for arbitrage with enchantment and quantity
 // Only equipable items that can be sold in Black Market (Weapons, Armor, Bags, Shoes, Head, Capes)
-// Excluded: Resources (Wood, Planks, Ore, MetalBars, Fiber, Cloth, Hide, Leather, Rock, StoneBlocks)
+// Resource-only item patterns are excluded before fetching prices
 export const COMMON_ITEMS = [
   { itemId: 'T4_BAG', enchantment: 0, quantity: 1 },
   { itemId: 'T5_BAG', enchantment: 0, quantity: 1 },

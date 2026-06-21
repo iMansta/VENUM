@@ -45,7 +45,7 @@ const Market = ({ userId }) => {
   };
 
   const handleRefresh = () => {
-    refreshOpportunities({ includeAllTiers: false });
+    refreshOpportunities({ includeAllTiers: false, forceRefresh: true });
   };
 
   if (loading) {

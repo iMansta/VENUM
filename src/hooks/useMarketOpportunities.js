@@ -15,7 +15,10 @@ export const useMarketOpportunities = (limit = 50, refreshKey = 0) => {
   const [progress, setProgress] = useState({ loaded: 0, total: 0, phase: 'idle' });
   const [includeAllTiers, setIncludeAllTiers] = useState(false);
 
-  const loadOpportunities = useCallback(async ({ includeAllTiers: shouldIncludeAllTiers = false } = {}) => {
+  const loadOpportunities = useCallback(async ({
+    includeAllTiers: shouldIncludeAllTiers = false,
+    forceRefresh = false,
+  } = {}) => {
     setLoading(true);
     setError(null);
     setIncludeAllTiers(shouldIncludeAllTiers);
@@ -25,6 +28,7 @@ export const useMarketOpportunities = (limit = 50, refreshKey = 0) => {
       const data = await fetchTopOpportunities(COMMON_ITEMS, limit, false, {
         includeAllTiers: shouldIncludeAllTiers,
         onProgress: setProgress,
+        forceRefresh,
       });
       setOpportunities(data);
     } catch (err) {
@@ -37,7 +41,7 @@ export const useMarketOpportunities = (limit = 50, refreshKey = 0) => {
   }, [limit]);
 
   useEffect(() => {
-    loadOpportunities({ includeAllTiers: false });
+    loadOpportunities({ includeAllTiers: false, forceRefresh: false });
   }, [refreshKey, loadOpportunities]);
 
   return {
@@ -48,6 +52,6 @@ export const useMarketOpportunities = (limit = 50, refreshKey = 0) => {
     progress,
     includeAllTiers,
     hasMoreTiers: !includeAllTiers,
-    loadAllTiers: () => loadOpportunities({ includeAllTiers: true }),
+    loadAllTiers: () => loadOpportunities({ includeAllTiers: true, forceRefresh: true }),
   };
 };
