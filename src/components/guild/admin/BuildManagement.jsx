@@ -10,40 +10,30 @@ import {
   updateBuild,
   deleteBuild,
 } from '@/lib/supabase/builds';
+import BuildBuilder from '@/components/builds/BuildBuilder';
 
 /**
  * BuildManagement - Admin tab to manage build categories and builds.
  * Provides simple CRUD on `build_categories` and `builds`.
+ *
+ * Integração com BuildBuilder (Tarefa 11):
+ *   - O campo items_json legado foi substituído por um construtor visual
+ *     (grid de slots + skill-selector).
+ *   - O JSON estruturado salvo segue o formato:
+ *     { version: 2, items: { slot: { item_id, skills: {...} } } }
  */
 
 const EMPTY_BUILD = {
   title: '',
   category_id: '',
   author: '',
-  items_json: [],
-  tactics: '',
+  description: '',
+  items_json: { version: 2, items: {} },
 };
 
 const EMPTY_CATEGORY = {
   name: '',
   description: '',
-};
-
-const parseItems = (raw) => {
-  if (!raw) return [];
-  return raw
-    .split('\n')
-    .map((l) => l.trim())
-    .filter(Boolean)
-    .map((name) => ({ name }));
-};
-
-const stringifyItems = (items) => {
-  if (!Array.isArray(items)) return '';
-  return items
-    .map((i) => (typeof i === 'string' ? i : i?.name || ''))
-    .filter(Boolean)
-    .join('\n');
 };
 
 export default function BuildManagement() {
@@ -57,7 +47,7 @@ export default function BuildManagement() {
 
   const [buildForm, setBuildForm] = useState(EMPTY_BUILD);
   const [buildEditing, setBuildEditing] = useState(null);
-  const [itemsRaw, setItemsRaw] = useState('');
+  const [showBuilder, setShowBuilder] = useState(false);
 
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState(null);
@@ -146,8 +136,8 @@ export default function BuildManagement() {
         title: buildForm.title.trim(),
         category_id: buildForm.category_id,
         author: buildForm.author.trim() || null,
-        items_json: parseItems(itemsRaw),
-        tactics: buildForm.tactics.trim() || null,
+        description: buildForm.description.trim() || null,
+        items_json: buildForm.items_json || { version: 2, items: {} },
       };
 
       const res = buildEditing
@@ -159,7 +149,7 @@ export default function BuildManagement() {
       flash(buildEditing ? 'Build atualizada.' : 'Build criada.');
       setBuildForm(EMPTY_BUILD);
       setBuildEditing(null);
-      setItemsRaw('');
+      setShowBuilder(false);
       await loadAll();
     } catch (e2) {
       flash(e2.message || 'Erro ao salvar build.', true);
@@ -170,14 +160,20 @@ export default function BuildManagement() {
 
   const editBuild = (b) => {
     setBuildEditing(b);
+    // Normaliza items_json para o formato novo (aceita legado)
+    const itemsRaw = b.items_json || {};
+    const items = itemsRaw.items && typeof itemsRaw.items === 'object'
+      ? itemsRaw.items
+      : itemsRaw;
+
     setBuildForm({
       title: b.title || '',
       category_id: b.category_id || '',
       author: b.author || '',
-      items_json: b.items_json || [],
-      tactics: b.tactics || '',
+      description: b.description || '',
+      items_json: { version: 2, items },
     });
-    setItemsRaw(stringifyItems(b.items_json));
+    setShowBuilder(true);
   };
 
   const removeBuild = async (b) => {
@@ -189,6 +185,12 @@ export default function BuildManagement() {
       flash('Build excluída.');
       await loadAll();
     }
+  };
+
+  const startNewBuild = () => {
+    setBuildEditing(null);
+    setBuildForm(EMPTY_BUILD);
+    setShowBuilder(true);
   };
 
   const buildsByCategory = (catId) =>
@@ -298,73 +300,92 @@ export default function BuildManagement() {
 
       {/* Builds */}
       <section className="bg-zinc-900/60 border border-zinc-800 rounded-lg p-5">
-        <h3 className="text-lg font-semibold text-zinc-100 mb-4 flex items-center gap-2">
-          <Plus className="w-5 h-5 text-amber-400" /> Builds
-        </h3>
-
-        <form onSubmit={submitBuild} className="grid gap-3 md:grid-cols-2 mb-4">
-          <input
-            type="text"
-            placeholder="Título da build"
-            value={buildForm.title}
-            onChange={(e) => setBuildForm((f) => ({ ...f, title: e.target.value }))}
-            className="bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 placeholder-zinc-500"
-            required
-          />
-          <input
-            type="text"
-            placeholder="Autor (opcional)"
-            value={buildForm.author}
-            onChange={(e) => setBuildForm((f) => ({ ...f, author: e.target.value }))}
-            className="bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 placeholder-zinc-500"
-          />
-          <select
-            value={buildForm.category_id}
-            onChange={(e) => setBuildForm((f) => ({ ...f, category_id: e.target.value }))}
-            className="bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100"
-            required
-          >
-            <option value="">Selecione uma categoria…</option>
-            {categories.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </select>
-          <textarea
-            placeholder="Itens (um por linha)"
-            value={itemsRaw}
-            onChange={(e) => setItemsRaw(e.target.value)}
-            rows={4}
-            className="bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 placeholder-zinc-500 font-mono text-sm"
-          />
-          <textarea
-            placeholder="Táticas / observações (opcional)"
-            value={buildForm.tactics}
-            onChange={(e) => setBuildForm((f) => ({ ...f, tactics: e.target.value }))}
-            rows={3}
-            className="bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 placeholder-zinc-500 md:col-span-2"
-          />
-          <div className="md:col-span-2 flex gap-2">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-zinc-100 flex items-center gap-2">
+            <Plus className="w-5 h-5 text-amber-400" /> Builds
+          </h3>
+          {!showBuilder && (
             <button
-              type="submit"
-              disabled={saving}
-              className="bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-zinc-950 font-semibold px-4 py-2 rounded flex items-center gap-2"
+              type="button"
+              onClick={startNewBuild}
+              className="bg-amber-500 hover:bg-amber-400 text-zinc-950 font-semibold px-3 py-1.5 rounded flex items-center gap-2 text-sm"
             >
-              <Save className="w-4 h-4" />
-              {buildEditing ? 'Salvar alterações' : 'Criar build'}
+              <Plus className="w-4 h-4" /> Nova build
             </button>
-            {buildEditing && (
+          )}
+        </div>
+
+        {/* Construtor visual */}
+        {showBuilder && (
+          <form onSubmit={submitBuild} className="mb-4 border border-amber-500/30 rounded-lg p-4 bg-zinc-950/40 space-y-4">
+            <div className="grid gap-3 md:grid-cols-2">
+              <input
+                type="text"
+                placeholder="Título da build (ex: DG Avaloniana T8 DPS)"
+                value={buildForm.title}
+                onChange={(e) => setBuildForm((f) => ({ ...f, title: e.target.value }))}
+                className="bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 placeholder-zinc-500"
+                required
+              />
+              <input
+                type="text"
+                placeholder="Autor (opcional)"
+                value={buildForm.author}
+                onChange={(e) => setBuildForm((f) => ({ ...f, author: e.target.value }))}
+                className="bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 placeholder-zinc-500"
+              />
+              <select
+                value={buildForm.category_id}
+                onChange={(e) => setBuildForm((f) => ({ ...f, category_id: e.target.value }))}
+                className="bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100"
+                required
+              >
+                <option value="">Selecione uma categoria…</option>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+              <textarea
+                placeholder="Descrição / táticas (opcional)"
+                value={buildForm.description}
+                onChange={(e) => setBuildForm((f) => ({ ...f, description: e.target.value }))}
+                rows={2}
+                className="bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 placeholder-zinc-500"
+              />
+            </div>
+
+            <BuildBuilder
+              value={buildForm.items_json}
+              onChange={(newJson) => setBuildForm((f) => ({ ...f, items_json: newJson }))}
+            />
+
+            <div className="flex gap-2 pt-2 border-t border-zinc-800">
+              <button
+                type="submit"
+                disabled={saving}
+                className="bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-zinc-950 font-semibold px-4 py-2 rounded flex items-center gap-2"
+              >
+                <Save className="w-4 h-4" />
+                {buildEditing ? 'Salvar alterações' : 'Criar build'}
+              </button>
               <button
                 type="button"
-                onClick={() => { setBuildEditing(null); setBuildForm(EMPTY_BUILD); setItemsRaw(''); }}
+                onClick={() => { setBuildForm(EMPTY_BUILD); setBuildEditing(null); setShowBuilder(false); }}
                 className="bg-zinc-700 hover:bg-zinc-600 text-zinc-100 px-4 py-2 rounded flex items-center gap-2"
               >
                 <X className="w-4 h-4" /> Cancelar
               </button>
-            )}
-          </div>
-        </form>
+            </div>
+          </form>
+        )}
 
+        {/* Lista agrupada por categoria */}
         <div className="space-y-3">
+          {categories.length === 0 && (
+            <p className="text-sm text-zinc-500 italic">
+              Crie uma categoria acima antes de adicionar builds.
+            </p>
+          )}
           {categories.map((cat) => {
             const list = buildsByCategory(cat.id);
             return (

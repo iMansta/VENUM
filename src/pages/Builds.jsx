@@ -12,6 +12,7 @@ import {
   Loader2,
   Info,
 } from 'lucide-react';
+import BuildCard from '@/components/builds/BuildCard';
 
 const CATEGORY_ICONS = {
   PvE:        Sword,
@@ -83,10 +84,10 @@ export default function Builds() {
   }
 
   return (
-    <div className="p-4 md:p-6 max-w-5xl mx-auto">
+    <div className="p-4 md:p-6 max-w-6xl mx-auto">
       <h1 className="text-2xl font-bold text-zinc-100 mb-1">Catálogo de Builds</h1>
       <p className="text-zinc-400 mb-6 text-sm">
-        Builds recomendados pela guilda para diferentes situações.
+        Builds recomendados pela guilda para diferentes situações no Albian Online.
       </p>
 
       <div className="space-y-2">
@@ -123,7 +124,7 @@ export default function Builds() {
               </button>
 
               {isOpen && (
-                <div className="border-t border-zinc-800 p-4 space-y-3 bg-zinc-950/40">
+                <div className="border-t border-zinc-800 p-4 space-y-4 bg-zinc-950/40">
                   {!builds.length ? (
                     <div className="text-zinc-500 text-sm">Nenhuma build nesta categoria.</div>
                   ) : (
@@ -137,39 +138,6 @@ export default function Builds() {
           );
         })}
       </div>
-    </div>
-  );
-}
-
-function BuildCard({ build }) {
-  const items = Array.isArray(build.items_json) ? build.items_json : [];
-  return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h3 className="font-semibold text-zinc-100">{build.title}</h3>
-          {build.author && (
-            <div className="text-xs text-zinc-500 mt-0.5">por {build.author}</div>
-          )}
-        </div>
-      </div>
-
-      {!!items.length && (
-        <ul className="mt-3 grid grid-cols-2 md:grid-cols-3 gap-1 text-sm text-zinc-300">
-          {items.map((it, idx) => (
-            <li key={idx} className="flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-              {typeof it === 'string' ? it : (it.name || it.item || JSON.stringify(it))}
-            </li>
-          ))}
-        </ul>
-      )}
-
-      {build.tactics && (
-        <p className="mt-3 text-sm text-zinc-400 whitespace-pre-line border-t border-zinc-800 pt-3">
-          {build.tactics}
-        </p>
-      )}
     </div>
   );
 }
