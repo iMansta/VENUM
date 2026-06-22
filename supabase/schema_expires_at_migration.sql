@@ -1,18 +1,72 @@
 -- =====================================================================
 -- VENUM MARKET - Migration: garantir expires_at em transport_reservations
 -- =====================================================================
--- Esta migration é idempotente e deve ser aplicada se você criou a
--- tabela `transport_reservations` antes do suporte a `expires_at`
--- ter sido incluído.
+-- Esta migration é IDEMPOTENTE e robusta:
+--   1) Cria a tabela `transport_reservations` se ela ainda não existir.
+--   2) Garante que a coluna `expires_at` exista.
+--   3) (Re)cria a função `reserve_transport` com `expires_at` default
+--      = NOW() + 30 minutos.
 --
--- Erro que ela corrige: 400 Bad Request ao chamar reserve_transport,
--- porque a função tenta inserir em uma coluna que não existe.
+-- Erro que ela corrige:
+--   - "relation public.transport_reservations does not exist" (42P01)
+--   - "Failed to run sql query: 400 Bad Request" no reserve_transport
+--     por causa da coluna expires_at ausente.
 -- =====================================================================
 
+-- ---------------------------------------------------------------------
+-- 1) Tabela transport_reservations (idempotente)
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.transport_reservations (
+  id               UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  item_id          TEXT NOT NULL,
+  item_name        TEXT,
+  from_city        TEXT NOT NULL,
+  to_city          TEXT NOT NULL DEFAULT 'Caerleon',
+  buy_price        NUMERIC NOT NULL DEFAULT 0,
+  sell_price       NUMERIC NOT NULL DEFAULT 0,
+  profit           NUMERIC NOT NULL DEFAULT 0,
+  expected_profit  NUMERIC NOT NULL DEFAULT 0,
+  quantity         INTEGER NOT NULL DEFAULT 1,
+  status           TEXT NOT NULL DEFAULT 'reserved'
+                     CHECK (status IN ('reserved','completed','cancelled','expired')),
+  reserved_by      UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  reserved_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  expires_at       TIMESTAMPTZ,
+  checklist_data   JSONB,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_tr_item ON public.transport_reservations(item_id);
+CREATE INDEX IF NOT EXISTS idx_tr_status ON public.transport_reservations(status);
+CREATE INDEX IF NOT EXISTS idx_tr_user ON public.transport_reservations(reserved_by);
+CREATE INDEX IF NOT EXISTS idx_tr_expires ON public.transport_reservations(expires_at);
+
+ALTER TABLE public.transport_reservations ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Anyone can view transport reservations" ON public.transport_reservations;
+CREATE POLICY "Anyone can view transport reservations"
+  ON public.transport_reservations FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Authenticated users can reserve transport" ON public.transport_reservations;
+CREATE POLICY "Authenticated users can reserve transport"
+  ON public.transport_reservations FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
+
+DROP POLICY IF EXISTS "Users can update their own reservations" ON public.transport_reservations;
+CREATE POLICY "Users can update their own reservations"
+  ON public.transport_reservations FOR UPDATE USING (
+    reserved_by = auth.uid()
+    OR EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role IN ('admin','officer'))
+  );
+
+-- ---------------------------------------------------------------------
+-- 2) Garantir coluna expires_at (se a tabela já existia sem ela)
+-- ---------------------------------------------------------------------
 ALTER TABLE public.transport_reservations
   ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ;
 
--- Atualiza a RPC reserve_transport para usar expires_at default = NOW() + 30min
+-- ---------------------------------------------------------------------
+-- 3) (Re)criar função reserve_transport (idempotente)
+-- ---------------------------------------------------------------------
 DROP FUNCTION IF EXISTS public.reserve_transport CASCADE;
 
 CREATE OR REPLACE FUNCTION public.reserve_transport(
