@@ -65,7 +65,7 @@ const TransportList = ({
     if (!userId) return;
     try {
       const { data, error } = await supabase
-        .from('transports')
+        .from('transport_reservations')
         .select('*')
         .eq('reserved_by', userId)
         .eq('status', 'reserved')
@@ -155,7 +155,7 @@ const TransportList = ({
     setCompletingId(transportId);
     try {
       const { error } = await supabase
-        .from('transports')
+        .from('transport_reservations')
         .update({ status: 'completed' })
         .eq('id', transportId);
 
@@ -337,7 +337,6 @@ const TransportList = ({
 };
 
 export default TransportList;
-
 
 
 
