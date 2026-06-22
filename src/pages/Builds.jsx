@@ -13,6 +13,7 @@ import {
   Info,
 } from 'lucide-react';
 import BuildCard from '@/components/builds/BuildCard';
+import LoadingSkeleton from '@/components/ui/LoadingSkeleton';
 
 const CATEGORY_ICONS = {
   PvE:        Sword,
@@ -60,8 +61,12 @@ export default function Builds() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-24 text-zinc-400 gap-2">
-        <Loader2 className="w-5 h-5 animate-spin" /> Carregando catálogo de builds…
+      <div className="p-4 md:p-6 max-w-6xl mx-auto">
+        <h1 className="text-2xl font-bold text-zinc-100 mb-1">Catálogo de Builds</h1>
+        <p className="text-zinc-400 mb-6 text-sm">
+          Builds recomendados pela guilda para diferentes situações no Albian Online.
+        </p>
+        <LoadingSkeleton variant="list" rows={4} />
       </div>
     );
   }

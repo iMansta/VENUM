@@ -1,22 +1,22 @@
 import { useState, useMemo } from 'react';
-import { Search, X, Check, ChevronDown } from 'lucide-react';
+import { Search, X } from 'lucide-react';
 import ItemSlot from './ItemSlot';
 import { BUILD_SLOTS, getSlotConfig } from '@/utils/albionItemData';
 import { translateItem, parseItemId } from '@/utils/itemTranslator';
-import { MARKET_ITEMS } from '@/constants/marketItems';
+import { MARKET_ITEMS_BASE_ONLY } from '@/constants/marketItems';
 
 /**
  * BuildBuilder - Construtor visual de builds do Albian Online.
  *
- * - Grid de slots (Mão Principal, Mão Secundária, Cabeça, etc).
- * - Ao clicar num slot, abre popover com busca de itens (lista mestra
- *   gerada em src/constants/marketItems.js).
+ * - Grid visual de 10 slots (Mão Principal, Mão Secundária, Cabeça, etc).
+ * - Ao clicar num slot, abre popover com busca de itens da lista
+ *   BASE_ONLY (sem encantamentos duplicados).
  * - Após escolher um item, exibe seletor de habilidades/passivas para
- *   aquele slot.
+ *   aquele slot, com selects dinâmicos.
  * - Salva no formato JSON estruturado:
  *     {
  *       "items": {
- *         "main_hand": { "item_id": "T8_MAIN_HOLYSTAFF@1", "skills": { "Q": "...", "P": "..." } },
+ *         "main_hand": { "item_id": "T8_MAIN_HOLYSTAFF", "skills": { "Q": "..." } },
  *         ...
  *       },
  *       "version": 2
@@ -28,10 +28,8 @@ import { MARKET_ITEMS } from '@/constants/marketItems';
  *   readOnly      se true, desabilita edição (modo visualização)
  */
 const BuildBuilder = ({ value, onChange, readOnly = false }) => {
-  // Normaliza o value para o formato novo { items: { slot: { item_id, skills } } }
   const initialItems = useMemo(() => {
     const raw = value?.items || value || {};
-    // Legacy: era { slot: 'T8_MAIN_HOLYSTAFF' } (string) ou { slot: { item_id, ... } }
     const normalized = {};
     Object.entries(raw).forEach(([slot, val]) => {
       if (!val) return;
@@ -57,7 +55,10 @@ const BuildBuilder = ({ value, onChange, readOnly = false }) => {
   };
 
   const setSlotItem = (slotKey, itemId) => {
-    const newItems = { ...items, [slotKey]: { item_id: itemId, skills: items[slotKey]?.skills || {} } };
+    const newItems = {
+      ...items,
+      [slotKey]: { item_id: itemId, skills: items[slotKey]?.skills || {} },
+    };
     emitChange(newItems);
   };
 
@@ -82,16 +83,17 @@ const BuildBuilder = ({ value, onChange, readOnly = false }) => {
     setSearch('');
   };
 
-  // Lista de itens para o popover, filtrada pelo prefixo do slot
+  // Lista de itens para o popover, filtrada pelo prefixo do slot.
+  // Usa MARKET_ITEMS_BASE_ONLY (~40 itens, sem encantamentos duplicados).
   const filteredItems = useMemo(() => {
     if (!openSlot) return [];
     const prefix = openSlot.iconPrefix;
     const q = search.trim().toLowerCase();
 
-    return MARKET_ITEMS
+    return MARKET_ITEMS_BASE_ONLY
       .filter((it) => !prefix || it.itemId.includes(prefix))
       .filter((it) => !q || it.itemId.toLowerCase().includes(q))
-      .slice(0, 60);
+      .slice(0, 80);
   }, [openSlot, search]);
 
   return (
@@ -120,21 +122,17 @@ const BuildBuilder = ({ value, onChange, readOnly = false }) => {
         </div>
       </div>
 
-      {/* Item picker popover */}
       {!readOnly && openSlot && (
         <ItemPicker
           slotInfo={openSlot}
           items={filteredItems}
           search={search}
           onSearch={setSearch}
-          onPick={(itemId) => {
-            setSlotItem(openSlot.slotKey, itemId);
-          }}
+          onPick={(itemId) => setSlotItem(openSlot.slotKey, itemId)}
           onClose={() => setOpenSlot(null)}
         />
       )}
 
-      {/* Skill selector — sempre que o slot atual tem item */}
       {!readOnly && openSlot && items[openSlot.slotKey]?.item_id && (
         <SkillSelector
           slotKey={openSlot.slotKey}
@@ -144,7 +142,6 @@ const BuildBuilder = ({ value, onChange, readOnly = false }) => {
         />
       )}
 
-      {/* Resumo JSON (read-only) para debug */}
       <details className="text-xs text-zinc-500">
         <summary className="cursor-pointer hover:text-zinc-300 select-none">
           Ver JSON estruturado ({Object.keys(items).length} slots preenchidos)
@@ -158,7 +155,7 @@ const BuildBuilder = ({ value, onChange, readOnly = false }) => {
 };
 
 // ============================================================================
-// ItemPicker - popover de busca
+// ItemPicker - popover com busca e thumbnails
 // ============================================================================
 const ItemPicker = ({ slotInfo, items, search, onSearch, onPick, onClose }) => {
   return (
@@ -170,7 +167,7 @@ const ItemPicker = ({ slotInfo, items, search, onSearch, onPick, onClose }) => {
           autoFocus
           value={search}
           onChange={(e) => onSearch(e.target.value)}
-          placeholder={`Buscar item para ${slotInfo.slotLabel}...`}
+          placeholder={`Buscar item base para ${slotInfo.slotLabel} (ex: T8, Holy, Cloth)...`}
           className="flex-1 bg-transparent text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none"
         />
         <button
@@ -205,7 +202,7 @@ const ItemPicker = ({ slotInfo, items, search, onSearch, onPick, onClose }) => {
       </div>
 
       <div className="px-3 py-2 border-t border-zinc-800 bg-zinc-900/40 text-[10px] text-zinc-500 flex items-center justify-between">
-        <span>{items.length} itens disponíveis</span>
+        <span>{items.length} itens base · sem encantamentos</span>
         <span className="flex items-center gap-1">
           <kbd className="px-1 bg-zinc-800 rounded">Esc</kbd> fecha
         </span>
@@ -231,13 +228,27 @@ const ItemPickerCard = ({ itemId, onPick }) => (
     <span className="text-[10px] text-zinc-300 text-center line-clamp-1 w-full">
       {translateItem(itemId, { includeTier: false })}
     </span>
-    <span className="text-[9px] text-zinc-500 font-mono">{parseItemId(itemId).tier ? `T${parseItemId(itemId).tier}` : ''}</span>
+    <span className="text-[9px] text-zinc-500 font-mono">
+      {parseItemId(itemId).tier ? `T${parseItemId(itemId).tier}` : ''}
+    </span>
   </button>
 );
 
 // ============================================================================
-// SkillSelector - inputs para habilidades/passivas
+// SkillSelector - selects dinâmicos de habilidades/passivas
 // ============================================================================
+const COMMON_PASSIVES = [
+  'Regeneração de Vida',
+  'Regeneração de Energia',
+  'Resistência Física',
+  'Resistência Mágica',
+  'Poder de Ataque',
+  'Poder de Defesa',
+  'Bônus de Carga',
+  'Sorte',
+  'Honra',
+];
+
 const SkillSelector = ({ slotKey, slotLabel, skills, onChange }) => {
   const config = getSlotConfig(slotKey);
   if (!config) return null;
@@ -252,23 +263,39 @@ const SkillSelector = ({ slotKey, slotLabel, skills, onChange }) => {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {config.abilities.map((ab) => (
-          <div key={ab.key}>
-            <label className="block text-xs font-medium text-zinc-400 mb-1">
-              <span className="inline-block px-1.5 py-0.5 rounded bg-zinc-800 text-amber-400 font-mono mr-2">
-                {ab.key}
-              </span>
-              {ab.name}
-            </label>
-            <input
-              type="text"
-              value={skills[ab.key] || ''}
-              onChange={(e) => onChange(ab.key, e.target.value)}
-              placeholder={ab.description}
-              className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-amber-500"
-            />
-          </div>
-        ))}
+        {config.abilities.map((ab) => {
+          const value = skills[ab.key] || '';
+          return (
+            <div key={ab.key}>
+              <label className="block text-xs font-medium text-zinc-400 mb-1">
+                <span className="inline-block px-1.5 py-0.5 rounded bg-zinc-800 text-amber-400 font-mono mr-2">
+                  {ab.key}
+                </span>
+                {ab.name}
+              </label>
+              {ab.key.startsWith('P') ? (
+                <select
+                  value={value}
+                  onChange={(e) => onChange(ab.key, e.target.value)}
+                  className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                >
+                  <option value="">— Selecione uma passiva —</option>
+                  {COMMON_PASSIVES.map((p) => (
+                    <option key={p} value={p}>{p}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  value={value}
+                  onChange={(e) => onChange(ab.key, e.target.value)}
+                  placeholder={ab.description}
+                  className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                />
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

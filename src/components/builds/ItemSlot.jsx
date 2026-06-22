@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { Package, X } from 'lucide-react';
 import { getAlbionIconUrl } from '@/utils/albionIcon';
 import { translateItem } from '@/utils/itemTranslator';
@@ -6,6 +6,8 @@ import { translateItem } from '@/utils/itemTranslator';
 /**
  * ItemSlot - Renderiza um slot de equipamento com ícone do Albian Online.
  *
+ * - Memoizado com React.memo para não rerenderizar quando outros
+ *   slots do mesmo BuildBuilder mudam.
  * - Visual: caixa escura com borda hover brilhante (estilo do jogo).
  * - Fallback: se a imagem falhar ou o ID for inválido, mostra um
  *   placeholder cinza com o ícone genérico `Package`.
@@ -109,4 +111,21 @@ const ItemSlot = ({
   );
 };
 
-export default ItemSlot;
+// Compara só props que importam para renderização visual.
+// onClick/onRemove são recriados a cada render do pai — usamos
+// shallow compare via memo custom.
+export default memo(ItemSlot, (prev, next) => {
+  // Re-renderiza se: ID do item mudou, ou flags visuais mudaram,
+  // ou size mudou. Callbacks onClick/onRemove são recriados a cada
+  // render do pai, mas não devem causar re-render do slot se o
+  // conteúdo dele não mudou.
+  return (
+    prev.itemId === next.itemId &&
+    prev.size === next.size &&
+    prev.editable === next.editable &&
+    prev.selected === next.selected &&
+    prev.slotKey === next.slotKey &&
+    prev.slotLabel === next.slotLabel &&
+    prev.iconPrefix === next.iconPrefix
+  );
+});

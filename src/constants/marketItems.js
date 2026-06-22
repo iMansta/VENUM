@@ -58,7 +58,7 @@ const isExcluded = (itemId) => {
  *   - enc 0 → 'T4_BAG'
  *   - enc N → 'T4_HEAD_PLATE@N'
  */
-const formatItemId = (tier, family, enc) => {
+export const buildItemId = (tier, family, enc) => {
   const base = `T${tier}_${family}`;
   return enc > 0 ? `${base}@${enc}` : base;
 };
@@ -70,7 +70,7 @@ const buildItems = () => {
       // BAG não tem encantamento (não há bag encantada no jogo).
       const enchants = family === 'BAG' ? [0] : ENCHANTMENTS;
       for (const enc of enchants) {
-        const itemId = formatItemId(tier, family, enc);
+        const itemId = buildItemId(tier, family, enc);
         if (isExcluded(itemId)) continue;
         items.push({ itemId, enchantment: enc, quantity: 1 });
       }
@@ -81,17 +81,27 @@ const buildItems = () => {
 
 /**
  * Lista mestra de itens que o app consulta no Albion Data Project.
- * Calculada uma única vez no carregamento do módulo.
+ * Inclui T4-T8 × encantamentos 0-3 (~400+ itens).
  */
 export const MARKET_ITEMS = Object.freeze(buildItems());
 
 /**
- * Mantido por compatibilidade com componentes legados que ainda
- * importam `COMMON_ITEMS`. Aponta para a mesma lista mestra.
+ * Lista enxuta para o Construtor de Builds (UX limpa):
+ *   - Apenas versões base (encantamento 0).
+ *   - Apenas tiers T4-T8 (sem T2/T3 raros).
+ *   - Sem BAG (não tem habilidades relevantes).
+ *   - Total: ~40 itens (10 famílias × 5 tiers).
+ *
+ * Ideal para o item-picker do BuildBuilder — sem variações infinitas.
+ */
+export const MARKET_ITEMS_BASE_ONLY = Object.freeze(
+  MARKET_ITEMS.filter((it) => it.enchantment === 0)
+);
+
+/**
+ * Mantido por compatibilidade com componentes legados.
  */
 export const COMMON_ITEMS = MARKET_ITEMS;
 
 export const MARKET_ITEM_COUNT = MARKET_ITEMS.length;
-
-/** Helper exportado para construir IDs no mesmo padrão. */
-export const buildItemId = formatItemId;
+export const MARKET_ITEMS_BASE_COUNT = MARKET_ITEMS_BASE_ONLY.length;
