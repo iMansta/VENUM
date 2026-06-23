@@ -16,7 +16,7 @@ import { supabase } from '@/lib/supabase/client';
 // =============================================================================
 
 /**
- * BuildBuilder - Construtor visual de builds do Albian Online.
+ * BuildBuilder - Construtor visual de builds do Albion Online.
  *
  * Refatoração (Tarefa 13):
  *   - Slots padronizados (ITEM_SLOTS) e sempre visíveis (incluindo
@@ -87,7 +87,7 @@ const BuildBuilder = ({ value, onChange, readOnly = false }) => {
       <div>
         <h3 className="text-sm font-semibold text-zinc-200 mb-3 flex items-center gap-2">
           <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-          Slots do personagem (Albian Online)
+          Slots do personagem (Albion Online)
         </h3>
 
         <div className="grid grid-cols-5 sm:grid-cols-10 gap-3 p-4 bg-zinc-900/60 rounded-lg border border-zinc-800">
@@ -125,15 +125,6 @@ const BuildBuilder = ({ value, onChange, readOnly = false }) => {
           onChange={(abilityKey, value) => setSlotSkill(openSlot, abilityKey, value)}
         />
       )}
-
-      <details className="text-xs text-zinc-500">
-        <summary className="cursor-pointer hover:text-zinc-300 select-none">
-          Ver JSON estruturado ({Object.keys(items).length} slots preenchidos)
-        </summary>
-        <pre className="mt-2 p-3 bg-zinc-950 border border-zinc-800 rounded text-[11px] overflow-x-auto">
-{JSON.stringify({ version: 2, items }, null, 2)}
-        </pre>
-      </details>
     </div>
   );
 };
@@ -224,7 +215,7 @@ const ItemPickerLazy = ({ slotKey, slotLabel, currentItemId, onPick, onClose }) 
           autoFocus
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder={`Buscar ${slotLabel} — Tier ${TIER_DEFAULT} do Albian Online...`}
+          placeholder={`Buscar ${slotLabel} — Tier ${TIER_DEFAULT} do Albion Online...`}
           className="flex-1 bg-transparent text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none"
         />
         <button
@@ -240,7 +231,7 @@ const ItemPickerLazy = ({ slotKey, slotLabel, currentItemId, onPick, onClose }) 
       <div className="max-h-72 overflow-y-auto p-2">
         {loading ? (
           <p className="text-xs text-zinc-500 text-center py-6 animate-pulse">
-            Carregando itens do Albian Online...
+            Carregando itens do Albion Online...
           </p>
         ) : error ? (
           <p className="text-xs text-red-400 text-center py-6">
@@ -416,3 +407,4 @@ const SkillSelectorDynamic = ({ itemId, skills, onChange }) => {
 };
 
 export default BuildBuilder;
+

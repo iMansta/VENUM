@@ -64,7 +64,7 @@ export default function Builds() {
       <div className="p-4 md:p-6 max-w-6xl mx-auto">
         <h1 className="text-2xl font-bold text-zinc-100 mb-1">Catálogo de Builds</h1>
         <p className="text-zinc-400 mb-6 text-sm">
-          Builds recomendados pela guilda para diferentes situações no Albian Online.
+          Builds recomendados pela guilda para diferentes situações no Albion Online.
         </p>
         <LoadingSkeleton variant="list" rows={4} />
       </div>
@@ -92,7 +92,7 @@ export default function Builds() {
     <div className="p-4 md:p-6 max-w-6xl mx-auto">
       <h1 className="text-2xl font-bold text-zinc-100 mb-1">Catálogo de Builds</h1>
       <p className="text-zinc-400 mb-6 text-sm">
-        Builds recomendados pela guilda para diferentes situações no Albian Online.
+        Builds recomendados pela guilda para diferentes situações no Albion Online.
       </p>
 
       <div className="space-y-2">

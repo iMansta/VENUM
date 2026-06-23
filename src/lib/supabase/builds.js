@@ -1,7 +1,7 @@
 import { supabase } from './client';
 
 /**
- * Build operations for VENUM MARKET (Albian Online)
+ * Build operations for VENUM MARKET (Albion Online)
  *
  * Toda função aqui é defensiva: se a RPC não existir (PGRST202/404) ou
  * se a resposta vier vazia, retornamos um valor seguro (array vazio /

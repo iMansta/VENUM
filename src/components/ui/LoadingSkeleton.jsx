@@ -4,7 +4,7 @@ import { Loader2 } from 'lucide-react';
  * LoadingSkeleton - Skeleton screen para carregamento assíncrono.
  *
  * Evita que a UI "pule" durante o fetch. Estilo consistente com o
- * tema escuro do Albian Online.
+ * tema escuro do Albion Online.
  *
  * Variantes:
  *   - card    → caixa genérica de 200x100

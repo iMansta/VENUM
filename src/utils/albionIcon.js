@@ -14,7 +14,7 @@
 const ALBION_ICON_BASE = 'https://render.albiononline.com/v1/item';
 
 /**
- * Retorna a URL do ícone do item no Albian Online.
+ * Retorna a URL do ícone do item no Albion Online.
  * @param {string} itemId  Ex: 'T8_MAIN_HOLYSTAFF@1' ou 'T4_BAG'
  * @returns {string|null}   URL absoluta ou null se itemId inválido
  */

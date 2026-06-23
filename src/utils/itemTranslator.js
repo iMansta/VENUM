@@ -1,5 +1,5 @@
 /**
- * Tradução nativa para PT-BR de IDs brutos do Albian Online Data Project.
+ * Tradução nativa para PT-BR de IDs brutos do Albion Online Data Project.
  *
  * Converte IDs no padrão `T{n}_{FAMILY}` ou `T{n}_{FAMILY}@{N}` em
  * nomes legíveis:
@@ -117,7 +117,7 @@ export const parseItemId = (itemId) => {
 };
 
 /**
- * Formata um itemId do Albian Online em português.
+ * Formata um itemId do Albion Online em português.
  *
  * @param {string} itemId  Ex: 'T8_MAIN_HOLYSTAFF@1'
  * @param {object} [opts]

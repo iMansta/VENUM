@@ -1,225 +1,237 @@
 import { useMemo } from 'react';
-import ItemSlot from './ItemSlot';
-import { BUILD_SLOTS, getSlotConfig } from '@/utils/albionItemData';
+import { Package } from 'lucide-react';
+import { getAlbionIconUrl } from '@/utils/albionIcon';
+import { translateItem } from '@/utils/itemTranslator';
 
 /**
- * BuildCard - Visualização de uma build completa (estilo "Visão Geral"
- * do personagem no jogo).
+ * BuildCard - Visualização de uma build completa do Albion Online.
  *
- * - Layout em grid: coluna esquerda com manequim de equipamento,
- *   coluna direita com habilidades agrupadas.
- * - Slots vazios renderizam como placeholders tracejados.
- * - Suporta tanto o novo formato (slot com item_id + skills) quanto o
- *   legado (slot = string).
+ * Layout: "Visão Geral" de inventário (formato de cruz/manequim).
+ *
+ *   Esquerda: grid 3x3 com BAG/CAPA/HEAD, MAIN/CHEST/OFF, POTION/SHOES/FOOD
+ *             + montaria opcional abaixo.
+ *   Direita:  título, autor, descrição, táticas.
+ *
+ * Slots vazios renderizam como placeholders tracejados.
  */
+const SLOT_LABELS = {
+  MAIN_HAND: 'Mão Principal',
+  OFF_HAND:  'Mão Secundária',
+  HEAD:      'Cabeça',
+  ARMOR:     'Peito',
+  SHOES:     'Calçado',
+  CAPE:      'Capa',
+  BAG:       'Mochila',
+  FOOD:      'Comida',
+  POTION:    'Poção',
+  MOUNT:     'Montaria',
+};
+
 const BuildCard = ({ build }) => {
   if (!build) return null;
 
-  // Aceita tanto { items: {...} } quanto {...} legado
   const rawItems = useMemo(() => {
     const v = build?.items ?? build;
     if (!v || typeof v !== 'object') return {};
-    // Detecta novo formato: { items: {...} } ou legado: {...} plano
     return v.items && typeof v.items === 'object' ? v.items : v;
   }, [build]);
 
-  const slotsByKey = useMemo(() => {
-    const m = {};
-    BUILD_SLOTS.forEach((s) => {
-      m[s.key] = { ...s, rawValue: rawItems[s.key] };
-    });
-    return m;
-  }, [rawItems]);
-
-  // Item em um slot pode ser:
-  //   string → só ID
-  //   { item_id, skills } → formato novo
-  //   { id, ... } → formato alternativo
-  const getSlotItemId = (raw) => {
+  const getItemId = (raw) => {
     if (!raw) return null;
     if (typeof raw === 'string') return raw;
     if (typeof raw === 'object') return raw.item_id || raw.id || null;
     return null;
   };
 
-  const getSlotSkills = (raw) => {
-    if (!raw || typeof raw !== 'object') return {};
-    return raw.skills || raw.habilidades || {};
+  const getSkills = (raw) => {
+    if (!raw || typeof raw !== 'object') return [];
+    const sk = raw.skills || raw.habilidades || {};
+    return Object.entries(sk).filter(([, v]) => v && String(v).trim());
   };
+
+  /**
+   * Layout de cruz 3x3 (estilo inventário):
+   *   Topo:    [BAG]  [HEAD]  [CAPE]
+   *   Meio:    [MAIN] [CHEST] [OFF]
+   *   Fundo:   [POT]  [SHOES] [FOOD]
+   *
+   * Montaria fica em uma linha separada abaixo do grid (à direita).
+   */
+  const gridSlots = [
+    { row: 0, col: 0, slotKey: 'BAG' },
+    { row: 0, col: 1, slotKey: 'HEAD' },
+    { row: 0, col: 2, slotKey: 'CAPE' },
+    { row: 1, col: 0, slotKey: 'MAIN_HAND' },
+    { row: 1, col: 1, slotKey: 'ARMOR' },
+    { row: 1, col: 2, slotKey: 'OFF_HAND' },
+    { row: 2, col: 0, slotKey: 'POTION' },
+    { row: 2, col: 1, slotKey: 'SHOES' },
+    { row: 2, col: 2, slotKey: 'FOOD' },
+  ];
+
+  const renderSlotCell = (slotKey) => {
+    const raw = rawItems[slotKey];
+    const itemId = getItemId(raw);
+    const skills = getSkills(raw);
+
+    return (
+      <div className="flex flex-col items-center gap-1.5">
+        {itemId ? (
+          <div className="relative w-16 h-16 rounded border-2 border-amber-400 bg-zinc-900 shadow-[0_0_8px_rgba(245,158,11,0.3)] overflow-hidden">
+            <img
+              src={getAlbionIconUrl(itemId)}
+              alt={itemId}
+              className="w-full h-full object-contain"
+              onError={(e) => {
+                e.currentTarget.style.opacity = '0.2';
+              }}
+            />
+            {skills.length > 0 && (
+              <span className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-amber-500 text-zinc-950 text-[9px] font-bold flex items-center justify-center shadow">
+                {skills.length}
+              </span>
+            )}
+          </div>
+        ) : (
+          <div
+            title={`${SLOT_LABELS[slotKey]} (vazio)`}
+            className="w-16 h-16 rounded border-2 border-dashed border-zinc-700 bg-zinc-900/50 flex items-center justify-center"
+          >
+            <Package className="w-5 h-5 text-zinc-700" />
+          </div>
+        )}
+        <span className="text-[9px] uppercase tracking-wider text-zinc-500 font-semibold text-center">
+          {SLOT_LABELS[slotKey]}
+        </span>
+      </div>
+    );
+  };
+
+  // Coletar todas as skills/passivas por slot para exibir no painel direito
+  const allSkills = [];
+  for (const slotKey of Object.keys(SLOT_LABELS)) {
+    const skills = getSkills(rawItems[slotKey]);
+    skills.forEach(([key, value]) => {
+      allSkills.push({ slot: SLOT_LABELS[slotKey], slotKey, abilityKey: key, value });
+    });
+  }
+
+  const mountRaw = rawItems.MOUNT;
+  const mountId = getItemId(mountRaw);
 
   return (
     <article className="bg-zinc-900 rounded-lg border border-zinc-800 overflow-hidden">
       {/* Header */}
-      <header className="bg-zinc-800 px-5 py-3 border-b border-zinc-700">
-        <div className="flex items-start justify-between gap-3 flex-wrap">
-          <div>
-            <h3 className="text-lg font-bold text-zinc-100">
-              {build?.title || build?.name || 'Build sem título'}
-            </h3>
-            {build?.author && (
-              <p className="text-xs text-zinc-500 mt-0.5">por {build.author}</p>
-            )}
-          </div>
-          {build?.description && (
-            <p className="text-sm text-zinc-400 max-w-md whitespace-pre-line">
-              {build.description}
-            </p>
-          )}
-        </div>
+      <header className="bg-zinc-800 px-5 py-3 border-b border-slate-700">
+        <h3 className="text-lg font-bold text-zinc-100">
+          {build?.title || build?.name || 'Build sem título'}
+        </h3>
+        {build?.author && (
+          <p className="text-xs text-zinc-500 mt-0.5">por {build.author}</p>
+        )}
       </header>
 
-      <div className="p-5 grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-5">
-        {/* Coluna esquerda: manequim de equipamento */}
-        <div className="space-y-2">
-          <h4 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2">
-            Equipamento
-          </h4>
-          <div className="grid grid-cols-3 gap-3 p-3 bg-zinc-950/60 rounded border border-zinc-800">
-            {/* Top row: head */}
-            <div className="col-span-3 flex justify-center">
-              <ItemSlot
-                slotKey="head"
-                slotLabel={slotsByKey.head.label}
-                iconPrefix={slotsByKey.head.icon}
-                itemId={getSlotItemId(rawItems.head)}
-                size={48}
-              />
+      <div className="p-5 grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-6">
+        {/* Coluna esquerda: MANEQUIM em cruz 3x3 */}
+        <div className="flex flex-col items-center">
+          <div className="bg-zinc-950/60 rounded-lg p-3 border border-zinc-800 w-full max-w-[260px]">
+            <div className="grid grid-cols-3 gap-3">
+              {gridSlots.map(({ row, col, slotKey }) => (
+                <div
+                  key={slotKey}
+                  style={{ gridColumn: col + 1, gridRow: row + 1 }}
+                >
+                  {renderSlotCell(slotKey)}
+                </div>
+              ))}
             </div>
-            {/* Main row */}
-            <div className="col-span-3 flex justify-center gap-3">
-              <ItemSlot
-                slotKey="main_hand"
-                slotLabel={slotsByKey.main_hand.label}
-                iconPrefix={slotsByKey.main_hand.icon}
-                itemId={getSlotItemId(rawItems.main_hand)}
-                size={48}
-              />
-              <ItemSlot
-                slotKey="off_hand"
-                slotLabel={slotsByKey.off_hand.label}
-                iconPrefix={slotsByKey.off_hand.icon}
-                itemId={getSlotItemId(rawItems.off_hand)}
-                size={48}
-              />
-            </div>
-            {/* Armor */}
-            <div className="col-span-3 flex justify-center">
-              <ItemSlot
-                slotKey="armor"
-                slotLabel={slotsByKey.armor.label}
-                iconPrefix={slotsByKey.armor.icon}
-                itemId={getSlotItemId(rawItems.armor)}
-                size={48}
-              />
-            </div>
-            {/* Shoes */}
-            <div className="col-span-3 flex justify-center">
-              <ItemSlot
-                slotKey="shoes"
-                slotLabel={slotsByKey.shoes.label}
-                iconPrefix={slotsByKey.shoes.icon}
-                itemId={getSlotItemId(rawItems.shoes)}
-                size={48}
-              />
-            </div>
-            {/* Cape */}
-            <div className="col-span-3 flex justify-center">
-              <ItemSlot
-                slotKey="cape"
-                slotLabel={slotsByKey.cape.label}
-                iconPrefix={slotsByKey.cape.icon}
-                itemId={getSlotItemId(rawItems.cape)}
-                size={48}
-              />
+
+            {/* Montaria: linha separada abaixo */}
+            <div className="mt-3 pt-3 border-t border-zinc-800 flex justify-center">
+              <div className="flex flex-col items-center gap-1.5">
+                {mountId ? (
+                  <div className="relative w-16 h-16 rounded border-2 border-purple-400 bg-zinc-900 shadow-[0_0_8px_rgba(168,85,247,0.3)] overflow-hidden">
+                    <img
+                      src={getAlbionIconUrl(mountId)}
+                      alt={mountId}
+                      className="w-full h-full object-contain"
+                      onError={(e) => { e.currentTarget.style.opacity = '0.2'; }}
+                    />
+                  </div>
+                ) : (
+                  <div className="w-16 h-16 rounded border-2 border-dashed border-zinc-700 bg-zinc-900/50 flex items-center justify-center">
+                    <Package className="w-5 h-5 text-zinc-700" />
+                  </div>
+                )}
+                <span className="text-[9px] uppercase tracking-wider text-zinc-500 font-semibold">
+                  Montaria
+                </span>
+              </div>
             </div>
           </div>
 
-          {/* Consumíveis: bag, food, potion, mount */}
-          <div className="grid grid-cols-4 gap-2 p-2 bg-zinc-950/40 rounded border border-zinc-800/60">
-            {['bag', 'food', 'potion', 'mount'].map((k) => (
-              <ItemSlot
-                key={k}
-                slotKey={k}
-                slotLabel={slotsByKey[k].label}
-                iconPrefix={slotsByKey[k].icon}
-                itemId={getSlotItemId(rawItems[k])}
-                size={36}
-              />
-            ))}
-          </div>
+          <p className="text-[10px] text-zinc-500 mt-2 italic text-center">
+            Equipamento da build (Albian Online)
+          </p>
         </div>
 
-        {/* Coluna direita: habilidades por slot */}
-        <div className="space-y-3">
-          <h4 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2">
-            Habilidades & Passivas
-          </h4>
+        {/* Coluna direita: informações e skills/passivas */}
+        <div className="space-y-4 min-w-0">
+          {/* Táticas / descrição */}
+          {build?.description && (
+            <section className="bg-zinc-950/60 rounded-lg border border-zinc-800 p-4">
+              <h4 className="text-sm font-semibold text-zinc-200 mb-2 flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                Táticas
+              </h4>
+              <p className="text-sm text-zinc-300 whitespace-pre-line break-words">
+                {build.description}
+              </p>
+            </section>
+          )}
 
-          {BUILD_SLOTS.filter((s) => ['main_hand', 'off_hand', 'head', 'armor', 'shoes', 'cape'].includes(s.key))
-            .map((slot) => {
-              const itemId = getSlotItemId(rawItems[slot.key]);
-              const skills = getSlotSkills(rawItems[slot.key]);
-              const filledSkills = Object.entries(skills).filter(([, v]) => v && String(v).trim());
-              if (!itemId && filledSkills.length === 0) return null;
-
-              return (
-                <SkillPanel
-                  key={slot.key}
-                  slotLabel={slot.label}
-                  itemId={itemId}
-                  skills={filledSkills}
-                />
-              );
-            })}
-
-          {Object.keys(rawItems).length === 0 && (
-            <p className="text-sm text-zinc-500 italic">
-              Esta build ainda não tem itens configurados.
-            </p>
+          {/* Skills/Passivas */}
+          {allSkills.length > 0 ? (
+            <section className="bg-zinc-950/60 rounded-lg border border-zinc-800 p-4">
+              <h4 className="text-sm font-semibold text-zinc-200 mb-3 flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                Habilidades & Passivas
+              </h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {allSkills.map((s, idx) => (
+                  <div
+                    key={`${s.slotKey}-${s.abilityKey}-${idx}`}
+                    className="bg-zinc-900 rounded px-2 py-1.5 border border-zinc-800"
+                  >
+                    <div className="flex items-center gap-1.5 mb-0.5">
+                      <span className="inline-block px-1 py-0.5 rounded bg-zinc-800 text-amber-400 font-mono text-[9px] uppercase">
+                        {s.abilityKey}
+                      </span>
+                      <span className="text-[10px] text-zinc-500 uppercase tracking-wider">
+                        {s.slot}
+                      </span>
+                    </div>
+                    <p className="text-xs text-zinc-300 break-words">
+                      {translateItem(s.value, { includeTier: false }) || s.value}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </section>
+          ) : (
+            <section className="bg-zinc-950/60 rounded-lg border border-zinc-800 p-4">
+              <h4 className="text-sm font-semibold text-zinc-200 mb-2 flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                Habilidades & Passivas
+              </h4>
+              <p className="text-xs text-zinc-500 italic">
+                Nenhuma habilidade/passiva catalogada para esta build.
+              </p>
+            </section>
           )}
         </div>
       </div>
     </article>
-  );
-};
-
-// ============================================================================
-// SkillPanel - mostra habilidades de um slot (read-only)
-// ============================================================================
-const SkillPanel = ({ slotLabel, itemId, skills }) => {
-  const config = getSlotConfig(slotLabel === 'Mão Principal' ? 'main_hand' : 'main_hand');
-  return (
-    <section className="bg-zinc-950/60 rounded border border-zinc-800 p-3">
-      <header className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold text-zinc-300 uppercase tracking-wider">
-            {slotLabel}
-          </span>
-          {itemId && (
-            <span className="text-[10px] text-zinc-500 font-mono truncate max-w-[180px]" title={itemId}>
-              {itemId}
-            </span>
-          )}
-        </div>
-      </header>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-        {skills.map(([abilityKey, value]) => (
-          <div
-            key={abilityKey}
-            className="flex items-start gap-2 bg-zinc-900 rounded px-2 py-1.5 border border-zinc-800"
-          >
-            <span className="inline-block px-1.5 py-0.5 rounded bg-zinc-800 text-amber-400 font-mono text-[10px] flex-shrink-0">
-              {abilityKey}
-            </span>
-            <span className="text-xs text-zinc-300 line-clamp-2">{value}</span>
-          </div>
-        ))}
-        {skills.length === 0 && (
-          <span className="text-xs text-zinc-500 italic">Sem habilidades configuradas.</span>
-        )}
-      </div>
-    </section>
   );
 };
 

@@ -19,7 +19,7 @@ import { MARKET_ITEMS } from '@/constants/marketItems';
 import { buildItemId } from '@/constants/marketItems';
 
 /**
- * Production Calculator — Módulo de Craft & Refino para Albian Online.
+ * Production Calculator — Módulo de Craft & Refino para Albion Online.
  *
  * Unifica o cálculo de duas operações de produção:
  *   1) Refino de recursos (Wood→Planks, Ore→Metalbar, etc.)
@@ -31,7 +31,7 @@ import { buildItemId } from '@/constants/marketItems';
  */
 
 // =============================================================================
-// Constantes oficiais do Albian Online
+// Constantes oficiais do Albion Online
 // =============================================================================
 
 const TIERS = [4, 5, 6, 7, 8];
@@ -86,7 +86,7 @@ const MARKET_TAX_NORMAL = 0.08;
 const SETUP_FEE = 0.025;
 
 // =============================================================================
-// Receitas de craft (oficiais do Albian Online — fonte: wiki)
+// Receitas de craft (oficiais do Albion Online — fonte: wiki)
 // =============================================================================
 // Apenas equipamentos aceitos no Black Market. Cada receita lista os
 // recursos refinados necessários para craftar UMA unidade.
@@ -421,7 +421,7 @@ const Production = () => {
             Calculadora de Craft & Refino
           </h1>
           <p className="text-zinc-400 mt-1 text-sm">
-            Calcule o lucro real de produção no Albian Online,
+            Calcule o lucro real de produção no Albion Online,
             considerando taxas de mercado, RRR por cidade e bônus de foco.
           </p>
         </div>
@@ -457,7 +457,7 @@ const Production = () => {
       {pricesLoading && (
         <div className="flex items-center gap-2 text-xs text-zinc-500 bg-zinc-900/60 border border-zinc-800 rounded px-3 py-2">
           <Loader2 className="w-3 h-3 animate-spin" />
-          Carregando preços do mercado do Albian Online…
+          Carregando preços do mercado do Albion Online…
         </div>
       )}
 
@@ -583,7 +583,7 @@ const CraftCalculator = ({
         {/* Preço de venda do item final */}
         <FieldGroup
           label="Preço de venda estimado (por unidade)"
-          rightHint="vem do cache de preços do Albian Online"
+          rightHint="vem do cache de preços do Albion Online"
         >
           <NumberInput
             value={sellPrice}
@@ -667,7 +667,7 @@ const CraftCalculator = ({
           ]}
           footer={result.netProfit >= 0
             ? <span className="text-emerald-400 font-semibold flex items-center gap-2">
-                <Check className="w-4 h-4" /> Craftar é lucrativo no Albian Online!
+                <Check className="w-4 h-4" /> Craftar é lucrativo no Albion Online!
               </span>
             : <span className="text-red-400 font-semibold flex items-center gap-2">
                 <AlertCircle className="w-4 h-4" /> Craftar dá prejuízo. Considere comprar.
@@ -806,7 +806,7 @@ const RefineCalculator = ({
         <div className="bg-zinc-900 rounded-lg border border-zinc-800 p-4 text-xs text-zinc-400 flex items-start gap-2">
           <Info className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
           <div>
-            Refino no Albian Online:{' '}
+            Refino no Albion Online:{' '}
             <span className="font-mono text-zinc-300">
               T{tier}_{resObj.raw} → T{tier}_{resObj.refined}
             </span>
@@ -855,7 +855,7 @@ const RefineCalculator = ({
           ]}
           footer={result.netProfit >= 0
             ? <span className="text-emerald-400 font-semibold flex items-center gap-2">
-                <Check className="w-4 h-4" /> Refinar é lucrativo no Albian Online!
+                <Check className="w-4 h-4" /> Refinar é lucrativo no Albion Online!
               </span>
             : <span className="text-red-400 font-semibold flex items-center gap-2">
                 <AlertCircle className="w-4 h-4" /> Refinar dá prejuízo. Venda direto.

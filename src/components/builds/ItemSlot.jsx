@@ -4,7 +4,7 @@ import { getAlbionIconUrl } from '@/utils/albionIcon';
 import { translateItem } from '@/utils/itemTranslator';
 
 /**
- * ItemSlot - Renderiza um slot de equipamento com ícone do Albian Online.
+ * ItemSlot - Renderiza um slot de equipamento com ícone do Albion Online.
  *
  * - Memoizado com React.memo para não rerenderizar quando outros
  *   slots do mesmo BuildBuilder mudam.

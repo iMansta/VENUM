@@ -8,6 +8,8 @@ import { supabase } from '@/lib/supabase/client';
  * itens que o usuário precisa ao clicar num slot:
  *   - Filtro: tier=8 + enchantment=0 + (family IN [...])
  *   - Cache em memória (Map) para não refazer a mesma consulta.
+ *   - Fallback FINAL: se o banco retornar vazio, gera items Tier 8
+ *     a partir do dicionário local ITEM_DEFINITIONS.
  *
  * Retorna:
  *   { items, loading, error, refresh }
@@ -31,12 +33,44 @@ export const SLOT_TO_FAMILIES = {
   SHOES:     ['SHOES_PLATE', 'SHOES_CLOTH', 'SHOES_LEATHER'],
   CAPE:      ['CAPE'],
   BAG:       ['BAG'],
-  FOOD:      [],  // FOOD_T8 é gerado a partir de MARKET_ITEMS (sem família)
+  FOOD:      [],
   POTION:    [],
   MOUNT:     [],
 };
 
 const cache = new Map();
+
+/**
+ * Fallback DEFINITIVO: gera items Tier 8 base a partir do dicionário
+ * local ITEM_DEFINITIONS quando o banco está vazio.
+ */
+const buildFallbackFromDefinitions = (slotKey, tier) => {
+  try {
+    // Lazy require para evitar ciclos em build
+    const defModule = require('@/constants/itemDefinitions');
+    const ITEM_DEFINITIONS = defModule.ITEM_DEFINITIONS || defModule.default || {};
+    const FAMILY_TO_SLOT = defModule.FAMILY_TO_SLOT || {};
+
+    return Object.keys(ITEM_DEFINITIONS)
+      .filter((k) => k.endsWith(`_T${tier}`))
+      .map((k) => {
+        const family = k.replace(`_T${tier}`, '');
+        if (FAMILY_TO_SLOT[family] !== slotKey) return null;
+        return {
+          item_id: `T${tier}_${family}`,
+          tier,
+          enchantment: 0,
+          family,
+          category: 'equipment',
+          name_pt: null,
+        };
+      })
+      .filter(Boolean);
+  } catch (e) {
+    console.warn('[useItemPicker] fallback definition fail:', e);
+    return [];
+  }
+};
 
 export const useItemPicker = (slotKey = null, tier = 8) => {
   const families = slotKey ? (SLOT_TO_FAMILIES[slotKey] || []) : null;
@@ -66,8 +100,6 @@ export const useItemPicker = (slotKey = null, tier = 8) => {
         if (families && families.length > 0) {
           query = query.in('family', families);
         } else if (families && families.length === 0 && slotKey) {
-          // Slot sem família conhecida (FOOD/POTION/MOUNT) — não busca nada
-          // no banco, retorna array vazio.
           cache.set(cacheKey, []);
           setItems([]);
           return;
@@ -77,17 +109,16 @@ export const useItemPicker = (slotKey = null, tier = 8) => {
 
         // 2) Fallback via RPC se a view não existir
         if (error && (error.code === '42P01' || /does not exist/i.test(error.message || ''))) {
-          console.warn('[useItemPicker] view v_market_items_base_only missing, using RPC fallback');
+          console.warn('[useItemPicker] view missing, using RPC fallback');
           const rpc = await supabase.rpc('get_market_items_catalog', {
             p_tier: tier,
-            p_family: null, // a RPC atual não aceita array, então busca todas
+            p_family: null,
             p_base_only: true,
             p_limit: 200,
           });
           data = rpc.data;
           error = rpc.error;
 
-          // Aplica filtro client-side por família se necessário
           if (!error && families && families.length > 0 && Array.isArray(data)) {
             data = data.filter((it) => families.includes(it.family));
           }
@@ -95,13 +126,20 @@ export const useItemPicker = (slotKey = null, tier = 8) => {
 
         if (error) throw error;
 
-        const list = Array.isArray(data) ? data : [];
+        let list = Array.isArray(data) ? data : [];
 
-        // 3) Diagnóstico: log de quantos itens foram encontrados
+        // 3) Fallback DEFINITIVO: dicionário local
+        if (list.length === 0 && slotKey) {
+          list = buildFallbackFromDefinitions(slotKey, tier);
+          console.log(
+            `[useItemPicker] fallback local para slot=${slotKey} → ${list.length} item(s)`
+          );
+        }
+
         console.log(
           `[useItemPicker] slot=${slotKey} tier=${tier} ` +
           `families=[${(families || []).join(',')}] ` +
-          `→ ${list.length} item(s) encontrado(s)`
+          `→ ${list.length} item(s)`
         );
 
         cache.set(cacheKey, list);

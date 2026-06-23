@@ -1,5 +1,5 @@
 /**
- * Banco de dados estático de habilidades do Albian Online.
+ * Banco de dados estático de habilidades do Albion Online.
  *
  * Para cada tipo de equipamento aceito no Black Market, listamos as
  * habilidades (Q, W, E) e passivas disponíveis. Estes dados vêm da wiki

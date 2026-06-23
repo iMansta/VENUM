@@ -1,5 +1,5 @@
 /**
- * VENUM MARKET - Dicionário de definições de itens do Albian Online.
+ * VENUM MARKET - Dicionário de definições de itens do Albion Online.
  *
  * Estrutura compacta (mentalidade: o agente trata o item como uma chave):
  *
