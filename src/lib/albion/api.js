@@ -510,7 +510,23 @@ export const calculateArbitrage = (priceData, targetCity = BLACK_MARKET, hasPrem
 
   const grossProfit = bmSellPrice - bestBuy.price;
   const netProfit = grossProfit - totalFees;
+  // margin é calculado como PERCENTUAL DIRETO (ex.: 12.5 = 12.5%).
+  // O filtro em fetchTopOpportunities usa minMarginPct (do banco, fração 0..1)
+  // normalizado para a mesma escala 0..100 via normalizeMinMarginPctToPercent.
   const margin = bestBuy.price > 0 ? (netProfit / bestBuy.price) * 100 : 0;
+
+  // [DIAG] Log estruturado por item para validação de unidades.
+  // Mostra os valores brutos que entram no filtro (buy/sell, fees, netProfit, margin em %)
+  // para que se possa auditar se margin está em 0..100 e se a comparação com o threshold
+  // normalizado está na mesma escala.
+  console.log('[ARB]', itemId, {
+    buyCity: bestBuy.city,
+    buyPrice: bestBuy.price,
+    bmSellPrice,
+    totalFees,
+    netProfit,
+    marginPct: margin,
+  });
 
   const risk = getRouteRisk(bestBuy.city, targetCity);
   const travelTime = getTravelTime(bestBuy.city, targetCity);
