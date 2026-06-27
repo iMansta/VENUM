@@ -605,13 +605,10 @@ export const fetchTopOpportunities = async (
         selectedItems.map((item) => [item.itemId, item])
       );
 
-      const DEBUG_DISABLE_THRESHOLDS = true;
-      const effectiveMinProfit = DEBUG_DISABLE_THRESHOLDS ? 0 : settings.minProfit;
+      const effectiveMinProfit = settings.minProfit;
       // Normaliza minMarginPct (banco: fração 0–1 OU percentual direto) para %
       // e compara diretamente com opp.margin (que está em percentual).
-      const effectiveMinMarginPct = DEBUG_DISABLE_THRESHOLDS
-        ? 0
-        : normalizeMinMarginPctToPercent(settings.minMarginPct);
+      const effectiveMinMarginPct = normalizeMinMarginPctToPercent(settings.minMarginPct);
 
       return priceData
         .map((data) => {
