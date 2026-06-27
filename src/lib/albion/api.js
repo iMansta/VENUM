@@ -109,6 +109,39 @@ const generateCanonicalKey = (items, limit) => {
   return `fetchTopOpportunities-${itemsKey}-${limit}`;
 };
 
+/**
+ * Normaliza `minMarginPct` (do `market_settings`) para **percentual (0–100)**.
+ *
+ * O banco deveria gravar como fração (0.10 = 10%), mas dados legados podem
+ * estar como percentual direto (10 = 10%). Esta função:
+ *   - Trata NaN/inválido como 0
+ *   - Auto-detecta a unidade: valor > 1 já está em percentual
+ *   - Faz clamp em [0, 100] para evitar absurdos (ex.: 1000%)
+ *   - Loga warning quando detecta valor suspeito (> 1) para facilitar cleanup
+ *
+ * @param {number} value - valor bruto de `market_settings.min_margin_pct`
+ * @returns {number} percentual em escala 0–100
+ */
+const normalizeMinMarginPctToPercent = (value) => {
+  if (typeof value !== 'number' || !Number.isFinite(value) || Number.isNaN(value)) {
+    return 0;
+  }
+  if (value < 0) {
+    console.warn(`[MARKET] minMarginPct negativo (${value}), clamped para 0.`);
+    return 0;
+  }
+  // Auto-detect: se > 1, assume que já está em percentual (10 = 10%).
+  // Caso contrário, trata como fração (0.10 = 10%).
+  if (value > 1) {
+    console.warn(
+      `[MARKET] minMarginPct=${value} detectado como percentual direto (>1). ` +
+        `Esperado fração (0–1). Considere normalizar market_settings.min_margin_pct.`
+    );
+    return Math.max(0, Math.min(100, value));
+  }
+  return Math.max(0, Math.min(100, value * 100));
+};
+
 const getCachedPrice = (itemName) => {
   const cached = priceCache.get(itemName);
   if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
@@ -574,7 +607,11 @@ export const fetchTopOpportunities = async (
 
       const DEBUG_DISABLE_THRESHOLDS = true;
       const effectiveMinProfit = DEBUG_DISABLE_THRESHOLDS ? 0 : settings.minProfit;
-      const effectiveMinMarginPct = DEBUG_DISABLE_THRESHOLDS ? 0 : settings.minMarginPct * 100;
+      // Normaliza minMarginPct (banco: fração 0–1 OU percentual direto) para %
+      // e compara diretamente com opp.margin (que está em percentual).
+      const effectiveMinMarginPct = DEBUG_DISABLE_THRESHOLDS
+        ? 0
+        : normalizeMinMarginPctToPercent(settings.minMarginPct);
 
       return priceData
         .map((data) => {
