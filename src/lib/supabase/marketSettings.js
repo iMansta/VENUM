@@ -16,8 +16,8 @@ import { supabase } from './client';
  */
 
 const DEFAULT_SETTINGS = Object.freeze({
-  minProfit: 10000,
-  minMarginPct: 0.10,
+  minProfit: 100,
+  minMarginPct: 0.02,
 });
 
 let cachedSettings = null;
@@ -42,8 +42,8 @@ const noteMissingRpc = (error) => {
   missingRpcReported = true;
   console.warn(
     "[MARKET SETTINGS] RPC 'get_market_settings' is missing in Supabase. " +
-      "Falling back to defaults (minProfit=10000, minMarginPct=0.10). " +
-      "Apply 'supabase/schema_market_refactor.sql' in the Supabase SQL editor to enable dynamic settings. " +
+      "Falling back to defaults (minProfit=100, minMarginPct=0.02). " +
+      "Apply 'supabase/schema_catalog_skills.sql' in the Supabase SQL editor to enable dynamic settings. " +
       `(Underlying error: ${error?.message || error})`
   );
 };

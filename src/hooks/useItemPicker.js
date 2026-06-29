@@ -2,166 +2,95 @@ import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase/client';
 
 /**
- * useItemPicker - hook de lazy loading para o seletor de itens.
+ * useItemPicker - hook de lazy loading paginado para o seletor de itens.
  *
- * Em vez de carregar os ~845 itens todos de uma vez, busca APENOS os
- * itens que o usuário precisa ao clicar num slot:
- *   - Filtro: tier=8 + enchantment=0 + (family IN [...])
- *   - Cache em memória (Map) para não refazer a mesma consulta.
- *   - Fallback FINAL: se o banco retornar vazio, gera items Tier 8
- *     a partir do dicionário local ITEM_DEFINITIONS.
+ * Refatoração (Single Source of Truth):
+ *   - Usa RPC get_items_for_slot do Supabase com paginação (50 itens)
+ *   - Cache em memória (Map) para não refazer a mesma consulta
+ *   - Suporta busca textual via parâmetro p_search
+ *   - Carrega mais itens sob demanda (offset)
  *
  * Retorna:
- *   { items, loading, error, refresh }
+ *   { items, loading, error, refresh, loadMore, hasMore }
  */
-
-// Mapeamento: slot do build → famílias aceitas no banco market_items.
-// A coluna `family` em market_items guarda MAIN_AXE, MAIN_SWORD, etc.
-// (não o nome do slot). Aqui convertemos slot → lista de famílias.
-export const SLOT_TO_FAMILIES = {
-  MAIN_HAND: ['MAIN_AXE', 'MAIN_SWORD', 'MAIN_MACE', 'MAIN_DAGGER',
-              'MAIN_QUARTERSTAFF', 'MAIN_HAMMER', 'MAIN_SPEAR',
-              'MAIN_BOW', 'MAIN_CROSSBOW', 'MAIN_FIRESTAFF',
-              'MAIN_FROSTSTAFF', 'MAIN_HOLYSTAFF', 'MAIN_NATURESTAFF',
-              'MAIN_ARCANESTAFF', 'MAIN_DEMONICSTAFF', 'MAIN_CURSEDSTAFF'],
-  OFF_HAND:  ['OFF_AXE', 'OFF_DAGGER', 'OFF_HOLY', 'OFF_NATURE',
-              'OFF_ARCANESTAFF', 'OFF_DEMONICSTAFF', 'OFF_FIRESTAFF',
-              'OFF_FROSTSTAFF', 'OFF_CROSSBOW', 'OFF_TORCH', 'OFF_SHIELD',
-              'OFF_BOOK', 'OFF_ORB', 'OFF_TOTEM', 'OFF_HORN', 'SHIELD'],
-  HEAD:      ['HEAD_PLATE', 'HEAD_CLOTH', 'HEAD_LEATHER'],
-  ARMOR:     ['ARMOR_PLATE', 'ARMOR_CLOTH', 'ARMOR_LEATHER'],
-  SHOES:     ['SHOES_PLATE', 'SHOES_CLOTH', 'SHOES_LEATHER'],
-  CAPE:      ['CAPE'],
-  BAG:       ['BAG'],
-  FOOD:      [],
-  POTION:    [],
-  MOUNT:     [],
-};
 
 const cache = new Map();
 
-/**
- * Fallback DEFINITIVO: gera items Tier 8 base a partir do dicionário
- * local ITEM_DEFINITIONS quando o banco está vazio.
- */
-const buildFallbackFromDefinitions = (slotKey, tier) => {
-  try {
-    // Lazy require para evitar ciclos em build
-    const defModule = require('@/constants/itemDefinitions');
-    const ITEM_DEFINITIONS = defModule.ITEM_DEFINITIONS || defModule.default || {};
-    const FAMILY_TO_SLOT = defModule.FAMILY_TO_SLOT || {};
-
-    return Object.keys(ITEM_DEFINITIONS)
-      .filter((k) => k.endsWith(`_T${tier}`))
-      .map((k) => {
-        const family = k.replace(`_T${tier}`, '');
-        if (FAMILY_TO_SLOT[family] !== slotKey) return null;
-        return {
-          item_id: `T${tier}_${family}`,
-          tier,
-          enchantment: 0,
-          family,
-          category: 'equipment',
-          name_pt: null,
-        };
-      })
-      .filter(Boolean);
-  } catch (e) {
-    console.warn('[useItemPicker] fallback definition fail:', e);
-    return [];
-  }
-};
-
-export const useItemPicker = (slotKey = null, tier = 8) => {
-  const families = slotKey ? (SLOT_TO_FAMILIES[slotKey] || []) : null;
-  const cacheKey = `${tier}::${slotKey || 'ALL'}::${(families || []).join(',')}`;
-  const [items, setItems] = useState(() => cache.get(cacheKey) || []);
-  const [loading, setLoading] = useState(!cache.has(cacheKey));
+export const useItemPicker = (slotKey = null, tier = 8, search = '') => {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [offset, setOffset] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
   const inflight = useRef(false);
+  const limit = 50;
 
-  useEffect(() => {
-    if (cache.has(cacheKey) || inflight.current) return;
+  const cacheKey = `${tier}::${slotKey || 'ALL'}::${search}::${offset}`;
+
+  const loadItems = async (reset = false) => {
+    const currentOffset = reset ? 0 : offset;
+    const currentCacheKey = `${tier}::${slotKey || 'ALL'}::${search}::${currentOffset}`;
+
+    if (cache.has(currentCacheKey) && !reset) {
+      setItems(cache.get(currentCacheKey));
+      return;
+    }
+
+    if (inflight.current) return;
 
     inflight.current = true;
     setLoading(true);
     setError(null);
 
-    (async () => {
-      try {
-        // 1) Tenta via VIEW primeiro
-        let query = supabase
-          .from('v_market_items_base_only')
-          .select('item_id, tier, enchantment, family, category, name_pt')
-          .eq('tier', tier)
-          .eq('enchantment', 0)
-          .limit(150);
+    try {
+      const { data, error } = await supabase.rpc('get_items_for_slot', {
+        p_slot: slotKey,
+        p_tier: tier,
+        p_search: search || null,
+        p_limit: limit,
+        p_offset: currentOffset,
+      });
 
-        if (families && families.length > 0) {
-          query = query.in('family', families);
-        } else if (families && families.length === 0 && slotKey) {
-          cache.set(cacheKey, []);
-          setItems([]);
-          return;
-        }
+      if (error) throw error;
 
-        let { data, error } = await query;
+      const list = Array.isArray(data) ? data : [];
+      setHasMore(list.length === limit);
 
-        // 2) Fallback via RPC se a view não existir
-        if (error && (error.code === '42P01' || /does not exist/i.test(error.message || ''))) {
-          console.warn('[useItemPicker] view missing, using RPC fallback');
-          const rpc = await supabase.rpc('get_market_items_catalog', {
-            p_tier: tier,
-            p_family: null,
-            p_base_only: true,
-            p_limit: 200,
-          });
-          data = rpc.data;
-          error = rpc.error;
-
-          if (!error && families && families.length > 0 && Array.isArray(data)) {
-            data = data.filter((it) => families.includes(it.family));
-          }
-        }
-
-        if (error) throw error;
-
-        let list = Array.isArray(data) ? data : [];
-
-        // 3) Fallback DEFINITIVO: dicionário local
-        if (list.length === 0 && slotKey) {
-          list = buildFallbackFromDefinitions(slotKey, tier);
-          console.log(
-            `[useItemPicker] fallback local para slot=${slotKey} → ${list.length} item(s)`
-          );
-        }
-
-        console.log(
-          `[useItemPicker] slot=${slotKey} tier=${tier} ` +
-          `families=[${(families || []).join(',')}] ` +
-          `→ ${list.length} item(s)`
-        );
-
-        cache.set(cacheKey, list);
+      if (reset) {
         setItems(list);
-      } catch (e) {
-        console.warn('[useItemPicker] failed:', e?.message);
-        setError(e);
-        setItems([]);
-      } finally {
-        setLoading(false);
-        inflight.current = false;
+        setOffset(limit);
+      } else {
+        setItems(prev => [...prev, ...list]);
+        setOffset(currentOffset + limit);
       }
-    })();
-  }, [cacheKey, slotKey, tier, families]);
 
-  const refresh = async () => {
-    cache.delete(cacheKey);
-    setItems([]);
-    setLoading(true);
+      cache.set(currentCacheKey, list);
+    } catch (e) {
+      console.warn('[useItemPicker] failed:', e?.message);
+      setError(e);
+    } finally {
+      setLoading(false);
+      inflight.current = false;
+    }
   };
 
-  return { items, loading, error, refresh };
+  useEffect(() => {
+    loadItems(true);
+  }, [slotKey, tier, search]);
+
+  const loadMore = () => {
+    if (!loading && hasMore) {
+      loadItems(false);
+    }
+  };
+
+  const refresh = () => {
+    cache.clear();
+    setOffset(0);
+    loadItems(true);
+  };
+
+  return { items, loading, error, refresh, loadMore, hasMore };
 };
 
 export const clearItemPickerCache = () => cache.clear();

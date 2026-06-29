@@ -1,12 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { Search, X } from 'lucide-react';
 import ItemSlot from './ItemSlot';
-import {
-  ITEM_SLOTS,
-  SLOT_LABELS_PT,
-  FAMILY_TO_SLOT,
-  getItemDefinition,
-} from '@/constants/itemDefinitions';
+import { ITEM_SLOTS, SLOT_LABELS_PT } from '@/constants/itemDefinitions';
 import { translateItem, parseItemId } from '@/utils/itemTranslator';
 import { supabase } from '@/lib/supabase/client';
 
@@ -18,12 +13,11 @@ import { supabase } from '@/lib/supabase/client';
 /**
  * BuildBuilder - Construtor visual de builds do Albion Online.
  *
- * Refatoração (Tarefa 13):
+ * Refatoração (Single Source of Truth):
  *   - Slots padronizados (ITEM_SLOTS) e sempre visíveis (incluindo
  *     FOOD, POTION, MOUNT).
- *   - Itens são carregados via useItemPicker (lazy load por family)
- *     em vez de ter 845 itens no bundle.
- *   - Skills/passivas vêm de itemDefinitions (lookup local).
+ *   - Itens são carregados via RPC get_items_for_slot (lazy load por slot)
+ *   - Skills/passivas vêm de RPC get_item_with_skills (Supabase)
  *   - Campos de habilidade SÓ aparecem quando o item tem skills.
  */
 const TIER_DEFAULT = 8;
@@ -130,80 +124,68 @@ const BuildBuilder = ({ value, onChange, readOnly = false }) => {
 };
 
 // =============================================================================
-// ItemPickerLazy - popover com lazy load via Supabase
+// ItemPickerLazy - popover com lazy load via RPC get_items_for_slot
 // =============================================================================
 const ItemPickerLazy = ({ slotKey, slotLabel, currentItemId, onPick, onClose }) => {
   const [search, setSearch] = useState('');
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [offset, setOffset] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const limit = 50;
 
-  useEffect(() => {
-    let cancelled = false;
+  const loadItems = async (reset = false) => {
+    const currentOffset = reset ? 0 : offset;
     setLoading(true);
     setError(null);
 
-    (async () => {
-      try {
-        let data;
-        let rpcErr;
+    try {
+      const { data, error } = await supabase.rpc('get_items_for_slot', {
+        p_slot: slotKey,
+        p_tier: TIER_DEFAULT,
+        p_search: search || null,
+        p_limit: limit,
+        p_offset: currentOffset,
+      });
 
-        // Tenta via view primeiro
-        let res = await supabase
-          .from('v_market_items_base_only')
-          .select('item_id, tier, enchantment, family, category, name_pt')
-          .eq('tier', TIER_DEFAULT)
-          .eq('enchantment', 0)
-          .limit(120);
+      if (error) throw error;
 
-        if (res.error && /does not exist/i.test(res.error.message || '')) {
-          // Fallback via RPC
-          const rpc = await supabase.rpc('get_market_items_catalog', {
-            p_tier: TIER_DEFAULT,
-            p_family: slotKey,
-            p_base_only: true,
-            p_limit: 120,
-          });
-          data = rpc.data;
-          rpcErr = rpc.error;
-          if (rpcErr) throw rpcErr;
-        } else if (res.error) {
-          throw res.error;
-        } else {
-          data = res.data;
-        }
+      const list = Array.isArray(data) ? data : [];
+      setHasMore(list.length === limit);
 
-        if (cancelled) return;
-        // Filtrar pela slot usando FAMILY_TO_SLOT
-        const filtered = (Array.isArray(data) ? data : []).filter((it) => {
-          if (slotKey === 'MAIN_HAND') return it.item_id.includes('MAIN_');
-          if (slotKey === 'OFF_HAND')  return it.item_id.includes('OFF_') || it.item_id.includes('SHIELD');
-          if (slotKey === 'HEAD')      return it.item_id.includes('HEAD_');
-          if (slotKey === 'ARMOR')     return it.item_id.includes('ARMOR_');
-          if (slotKey === 'SHOES')     return it.item_id.includes('SHOES_');
-          if (slotKey === 'CAPE')      return it.item_id === 'T8_CAPE';
-          if (slotKey === 'BAG')       return it.item_id === 'T8_BAG';
-          if (slotKey === 'FOOD')      return it.item_id.startsWith('T8_FOOD');
-          if (slotKey === 'POTION')    return it.item_id.startsWith('T8_POTION');
-          if (slotKey === 'MOUNT')     return it.item_id.startsWith('T8_MOUNT');
-          return true;
-        });
-
-        setItems(filtered);
-      } catch (e) {
-        if (!cancelled) setError(e);
-      } finally {
-        if (!cancelled) setLoading(false);
+      if (reset) {
+        setItems(list);
+        setOffset(limit);
+      } else {
+        setItems(prev => [...prev, ...list]);
+        setOffset(currentOffset + limit);
       }
-    })();
+    } catch (e) {
+      setError(e);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    return () => { cancelled = true; };
+  useEffect(() => {
+    loadItems(true);
   }, [slotKey]);
+
+  useEffect(() => {
+    const debounceTimer = setTimeout(() => {
+      loadItems(true);
+    }, 300);
+    return () => clearTimeout(debounceTimer);
+  }, [search]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return items;
-    return items.filter((it) => it.item_id.toLowerCase().includes(q));
+    return items.filter((it) => 
+      it.item_id.toLowerCase().includes(q) || 
+      (it.name_pt && it.name_pt.toLowerCase().includes(q))
+    );
   }, [items, search]);
 
   return (
@@ -242,19 +224,30 @@ const ItemPickerLazy = ({ slotKey, slotLabel, currentItemId, onPick, onClose }) 
             Nenhum item encontrado para este slot.
           </p>
         ) : (
-          <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-6 gap-2">
-            {filtered.map((it) => (
-              <ItemPickerCard
-                key={it.item_id}
-                itemId={it.item_id}
-                selected={it.item_id === currentItemId}
-                onPick={() => {
-                  onPick(it.item_id);
-                  onClose();
-                }}
-              />
-            ))}
-          </div>
+          <>
+            <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-6 gap-2">
+              {filtered.map((it) => (
+                <ItemPickerCard
+                  key={it.item_id}
+                  item={it}
+                  selected={it.item_id === currentItemId}
+                  onPick={() => {
+                    onPick(it.item_id);
+                    onClose();
+                  }}
+                />
+              ))}
+            </div>
+            {hasMore && (
+              <button
+                type="button"
+                onClick={() => loadItems(false)}
+                className="w-full mt-2 text-xs text-amber-400 hover:text-amber-300 py-1"
+              >
+                Carregar mais itens...
+              </button>
+            )}
+          </>
         )}
       </div>
 
@@ -266,11 +259,11 @@ const ItemPickerLazy = ({ slotKey, slotLabel, currentItemId, onPick, onClose }) 
   );
 };
 
-const ItemPickerCard = ({ itemId, onPick, selected = false }) => (
+const ItemPickerCard = ({ item, onPick, selected = false }) => (
   <button
     type="button"
     onClick={onPick}
-    title={itemId}
+    title={item.item_id}
     className={[
       'flex flex-col items-center gap-1 p-2 rounded border transition-all group',
       selected
@@ -279,23 +272,23 @@ const ItemPickerCard = ({ itemId, onPick, selected = false }) => (
     ].join(' ')}
   >
     <img
-      src={`https://render.albiononline.com/v1/item/${encodeURIComponent(itemId)}.png`}
-      alt={itemId}
+      src={item.image_url || `https://render.albionorganic.com/v1/item/${encodeURIComponent(item.item_id)}.png`}
+      alt={item.item_id}
       loading="lazy"
       onError={(e) => { e.currentTarget.style.opacity = '0.3'; }}
       className="w-12 h-12 object-contain"
     />
     <span className="text-[10px] text-zinc-300 text-center line-clamp-1 w-full">
-      {translateItem(itemId, { includeTier: false })}
+      {item.name_pt || translateItem(item.item_id, { includeTier: false })}
     </span>
     <span className="text-[9px] text-zinc-500 font-mono">
-      {parseItemId(itemId).tier ? `T${parseItemId(itemId).tier}` : ''}
+      T{item.tier}
     </span>
   </button>
 );
 
 // =============================================================================
-// SkillSelectorDynamic - lê skills/passivas do itemDefinitions
+// SkillSelectorDynamic - lê skills/passivas via RPC get_item_with_skills
 // =============================================================================
 const COMMON_PASSIVES = [
   'HP Máximo',
@@ -316,9 +309,73 @@ const COMMON_PASSIVES = [
 ];
 
 const SkillSelectorDynamic = ({ itemId, skills, onChange }) => {
-  const def = getItemDefinition(itemId);
+  const [itemData, setItemData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
-  if (!def || (!def.skills || Object.keys(def.skills).length === 0) && (!def.passives || def.passives.length === 0)) {
+  useEffect(() => {
+    if (!itemId) return;
+
+    const loadItemSkills = async () => {
+      setLoading(true);
+      setError(null);
+
+      try {
+        const { data, error } = await supabase.rpc('get_item_with_skills', {
+          p_item_id: itemId,
+        });
+
+        if (error) throw error;
+
+        if (data && data.length > 0) {
+          setItemData(data[0]);
+        } else {
+          setItemData(null);
+        }
+      } catch (e) {
+        console.warn('[SkillSelectorDynamic] failed:', e?.message);
+        setError(e);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadItemSkills();
+  }, [itemId]);
+
+  if (loading) {
+    return (
+      <div className="bg-zinc-900/60 rounded-lg border border-zinc-800 p-4">
+        <div className="flex items-center gap-2 mb-2">
+          <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+          <h4 className="text-sm font-semibold text-zinc-200">
+            Habilidades & Passivas
+          </h4>
+        </div>
+        <p className="text-xs text-zinc-500 animate-pulse">
+          Carregando habilidades do item...
+        </p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-zinc-900/60 rounded-lg border border-zinc-800 p-4">
+        <div className="flex items-center gap-2 mb-2">
+          <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+          <h4 className="text-sm font-semibold text-zinc-200">
+            Habilidades & Passivas
+          </h4>
+        </div>
+        <p className="text-xs text-red-400">
+          Erro ao carregar habilidades. Use o campo de táticas na descrição.
+        </p>
+      </div>
+    );
+  }
+
+  if (!itemData || (!itemData.active_skills || itemData.active_skills.length === 0) && (!itemData.passive_skills || itemData.passive_skills.length === 0)) {
     return (
       <div className="bg-zinc-900/60 rounded-lg border border-zinc-800 p-4">
         <div className="flex items-center gap-2 mb-2">
@@ -335,8 +392,8 @@ const SkillSelectorDynamic = ({ itemId, skills, onChange }) => {
     );
   }
 
-  const skillEntries = Object.entries(def.skills || {}).filter(([, arr]) => arr?.length > 0);
-  const passiveList = def.passives || [];
+  const activeSkills = itemData.active_skills || [];
+  const passiveSkills = itemData.passive_skills || [];
 
   return (
     <div className="bg-zinc-900/60 rounded-lg border border-zinc-800 p-4">
@@ -350,42 +407,45 @@ const SkillSelectorDynamic = ({ itemId, skills, onChange }) => {
         </span>
       </div>
 
-      {skillEntries.length > 0 && (
+      {activeSkills.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
-          {skillEntries.map(([key, options]) => (
-            <div key={key}>
+          {activeSkills.map((skill) => (
+            <div key={skill.key}>
               <label className="block text-xs font-medium text-zinc-400 mb-1">
                 <span className="inline-block px-1.5 py-0.5 rounded bg-zinc-800 text-amber-400 font-mono mr-2 uppercase">
-                  {key}
+                  {skill.key}
                 </span>
-                Habilidade
+                {skill.name_pt}
               </label>
               <select
-                value={skills[key.toUpperCase()] || ''}
-                onChange={(e) => onChange(key.toUpperCase(), e.target.value)}
+                value={skills[skill.key.toUpperCase()] || ''}
+                onChange={(e) => onChange(skill.key.toUpperCase(), e.target.value)}
                 className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-amber-500"
               >
                 <option value="">— Selecione —</option>
-                {options.map((opt) => (
-                  <option key={opt} value={opt}>{opt}</option>
-                ))}
+                <option value={skill.name_pt}>{skill.name_pt}</option>
               </select>
+              {skill.description_pt && (
+                <p className="text-[10px] text-zinc-500 mt-1 line-clamp-2">
+                  {skill.description_pt}
+                </p>
+              )}
             </div>
           ))}
         </div>
       )}
 
-      {passiveList.length > 0 && (
+      {passiveSkills.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 border-t border-zinc-800 pt-3">
-          {passiveList.map((p) => {
-            const passiveKey = `passive_${p.split(':')[0].trim()}`;
+          {passiveSkills.map((skill) => {
+            const passiveKey = `passive_${skill.key}`;
             return (
-              <div key={p}>
+              <div key={skill.key}>
                 <label className="block text-xs font-medium text-zinc-400 mb-1">
                   <span className="inline-block px-1.5 py-0.5 rounded bg-zinc-800 text-amber-400 font-mono mr-2 uppercase">
                     P
                   </span>
-                  {p}
+                  {skill.name_pt}
                 </label>
                 <select
                   value={skills[passiveKey] || ''}
@@ -393,6 +453,7 @@ const SkillSelectorDynamic = ({ itemId, skills, onChange }) => {
                   className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-amber-500"
                 >
                   <option value="">— Selecione uma passiva —</option>
+                  <option value={skill.name_pt}>{skill.name_pt}</option>
                   {COMMON_PASSIVES.map((cp) => (
                     <option key={cp} value={cp}>{cp}</option>
                   ))}
