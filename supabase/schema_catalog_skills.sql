@@ -1,5 +1,5 @@
 -- =====================================================================
--- VENUM - Evolução do Catálogo Canônico de Itens (Etapa 1)
+-- VENUM - Evolução do Catálogo Canônico de Itens (Etapa 1 - CORRIGIDO)
 -- =====================================================================
 -- Adiciona a VENUM knowledge layer ao market_items:
 --   - slot / subcategory (normalização do nome → equipamento real)
@@ -13,8 +13,6 @@
 --   - get_item_with_skills(item_id)   -> leitura rica (catálogo + skills)
 --   - get_items_for_slot(slot, tier)  -> listagem paginada por slot
 --   - upsert_market_items_full(arr)   -> upsert em lote estendido
---
--- 100% idempotente. Pode ser reaplicado sem erros.
 -- =====================================================================
 
 -- ---------------------------------------------------------------------
@@ -50,28 +48,24 @@ COMMENT ON COLUMN public.market_items.passive_skills IS
 -- ---------------------------------------------------------------------
 -- 2) Reforço do índice composto do cache dinâmico
 -- ---------------------------------------------------------------------
--- O índice idx_mpcl_item_location já cobre (item_id, location).
--- Esta é uma rede de segurança adicional para queries que filtram
--- também por expires_at.
 CREATE INDEX IF NOT EXISTS idx_mpcl_item_location_expires
   ON public.market_prices_cache_by_location (item_id, location, expires_at);
 
 -- ---------------------------------------------------------------------
 -- 3) Afrouxamento dos thresholds (destrava o pipeline de arbitragem)
 -- ---------------------------------------------------------------------
--- Antes: min_profit=10000, min_margin_pct=0.10 (10% e 10k prata)
--- Agora: min_profit=100,   min_margin_pct=0.02 (2% e 100 prata)
 UPDATE public.market_settings
    SET min_profit = 100,
        min_margin_pct = 0.02,
        updated_at = NOW()
  WHERE id = 1;
 
--- Flag opcional para debug (exibe oportunidades marginais no painel)
 ALTER TABLE public.market_settings
   ADD COLUMN IF NOT EXISTS show_marginal_opportunities BOOLEAN NOT NULL DEFAULT FALSE;
 
--- Garante fallback dentro da RPC caso a row ainda não exista
+-- Remoção preventiva para evitar conflito de assinaturas
+DROP FUNCTION IF EXISTS public.get_market_settings();
+
 CREATE OR REPLACE FUNCTION public.get_market_settings()
 RETURNS TABLE (
   min_profit     NUMERIC,
@@ -92,13 +86,15 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
-GRANT EXECUTE ON FUNCTION public.get_market_settings TO authenticated;
-GRANT EXECUTE ON FUNCTION public.get_market_settings TO anon;
+GRANT EXECUTE ON FUNCTION public.get_market_settings() TO authenticated;
+GRANT EXECUTE ON FUNCTION public.get_market_settings() TO anon;
 
 -- ---------------------------------------------------------------------
 -- 4) RPC: get_item_with_skills
---    Retorna um item completo com skills para uso no BuildBuilder.
 -- ---------------------------------------------------------------------
+-- Remove versões anteriores com a mesma assinatura para garantir unicidade
+DROP FUNCTION IF EXISTS public.get_item_with_skills(TEXT);
+
 CREATE OR REPLACE FUNCTION public.get_item_with_skills(p_item_id TEXT)
 RETURNS TABLE (
   item_id        TEXT,
@@ -123,12 +119,17 @@ AS $$
   WHERE mi.item_id = p_item_id;
 $$;
 
-GRANT EXECUTE ON FUNCTION public.get_item_with_skills TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.get_item_with_skills(TEXT) TO anon, authenticated;
 
 -- ---------------------------------------------------------------------
--- 5) RPC: get_items_for_slot (paginado, busca opcional)
---    Substitui a leitura de itemDefinitions.js.
+-- 5) RPC: get_items_for_slot (Causa raiz do erro 42725 resolvida)
 -- ---------------------------------------------------------------------
+-- Remove todas as variações antigas possíveis desta função do banco
+DROP FUNCTION IF EXISTS public.get_items_for_slot(TEXT);
+DROP FUNCTION IF EXISTS public.get_items_for_slot(TEXT, INTEGER);
+DROP FUNCTION IF EXISTS public.get_items_for_slot(TEXT, INTEGER, TEXT);
+DROP FUNCTION IF EXISTS public.get_items_for_slot(TEXT, INTEGER, TEXT, INTEGER, INTEGER);
+
 CREATE OR REPLACE FUNCTION public.get_items_for_slot(
   p_slot    TEXT,
   p_tier    INTEGER DEFAULT 8,
@@ -165,13 +166,14 @@ AS $$
   OFFSET GREATEST(p_offset, 0);
 $$;
 
-GRANT EXECUTE ON FUNCTION public.get_items_for_slot TO anon, authenticated;
+-- Informa explicitamente os tipos dos argumentos no GRANT para evitar ambiguidade
+GRANT EXECUTE ON FUNCTION public.get_items_for_slot(TEXT, INTEGER, TEXT, INTEGER, INTEGER) TO anon, authenticated;
 
 -- ---------------------------------------------------------------------
 -- 6) RPC: upsert_market_items_full
---    Upsert em lote com TODAS as colunas (incluindo skills e image_url).
---    Mantém a antiga upsert_market_items para retrocompatibilidade.
 -- ---------------------------------------------------------------------
+DROP FUNCTION IF EXISTS public.upsert_market_items_full(JSONB);
+
 CREATE OR REPLACE FUNCTION public.upsert_market_items_full(p_items JSONB)
 RETURNS INTEGER
 LANGUAGE plpgsql
@@ -223,8 +225,8 @@ BEGIN
 END;
 $$;
 
-GRANT EXECUTE ON FUNCTION public.upsert_market_items_full TO service_role;
-GRANT EXECUTE ON FUNCTION public.upsert_market_items_full TO authenticated;
+GRANT EXECUTE ON FUNCTION public.upsert_market_items_full(JSONB) TO service_role;
+GRANT EXECUTE ON FUNCTION public.upsert_market_items_full(JSONB) TO authenticated;
 
 -- ---------------------------------------------------------------------
 -- 7) Backfill de slot e image_url para itens que JÁ existem
@@ -249,9 +251,3 @@ UPDATE public.market_items
 UPDATE public.market_items
    SET image_url = 'https://render.albiononline.com/v1/item/' || item_id || '.png'
  WHERE image_url IS NULL;
-
--- =====================================================================
--- FIM DA ETAPA 1
--- Após aplicar este script, rode:
---   node scripts/seed-catalog.js
--- =====================================================================
