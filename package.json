@@ -9,6 +9,8 @@
     "celeste:pack": "node scripts/build-celeste-pack.mjs",
     "celeste": "node celeste/celeste.mjs",
     "celeste:once": "node celeste/celeste.mjs --once",
+    "celeste-d:register": "npm install --prefix celeste-d && node celeste-d/src/register-commands.js",
+    "celeste-d:start": "npm install --prefix celeste-d && node celeste-d/src/index.js",
     "preview": "node node_modules/vite/bin/vite.js preview",
     "setup": "node scripts/setup.mjs",
     "catalog:seed": "node scripts/seed-catalog.js",

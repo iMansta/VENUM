@@ -1,6 +1,7 @@
-import { execSync, existsSync, mkdirSync, copyFileSync, rmSync } from 'fs';
-import { dirname, join } from 'path';
-import { fileURLToPath } from 'url';
+import { existsSync, mkdirSync, copyFileSync, rmSync, readFileSync, writeFileSync } from 'node:fs';
+import { execSync } from 'node:child_process';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const clientDir = join(root, 'celeste-client');
@@ -8,31 +9,113 @@ const outDir = join(root, 'public', 'downloads');
 const outZip = join(outDir, 'celeste.zip');
 const outExe = join(outDir, 'celeste.exe');
 const builtExe = join(clientDir, 'celeste.exe');
+const installBat = join(clientDir, 'Instalar-Celeste.bat');
+
+const isCI = Boolean(
+  process.env.VERCEL ||
+  process.env.VERCEL_ENV ||
+  process.env.CI === 'true' ||
+  process.env.GITHUB_ACTIONS === 'true'
+);
+
+/** ZIP mínimo (store) — funciona em Linux/Vercel sem zip/powershell. */
+function createZip(files) {
+  const parts = [];
+  let offset = 0;
+  const central = [];
+
+  for (const { name, data } of files) {
+    const nameBuf = Buffer.from(name, 'utf8');
+    const crc = crc32(data);
+    const local = Buffer.alloc(30 + nameBuf.length);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt16LE(20, 4);
+    local.writeUInt16LE(0, 6);
+    local.writeUInt16LE(0, 8);
+    local.writeUInt16LE(0, 10);
+    local.writeUInt16LE(0, 12);
+    local.writeUInt32LE(crc, 14);
+    local.writeUInt32LE(data.length, 18);
+    local.writeUInt32LE(data.length, 22);
+    local.writeUInt16LE(nameBuf.length, 26);
+    local.writeUInt16LE(0, 28);
+    nameBuf.copy(local, 30);
+
+    parts.push(local, data);
+
+    const cd = Buffer.alloc(46 + nameBuf.length);
+    cd.writeUInt32LE(0x02014b50, 0);
+    cd.writeUInt16LE(20, 4);
+    cd.writeUInt16LE(20, 6);
+    cd.writeUInt16LE(0, 8);
+    cd.writeUInt16LE(0, 10);
+    cd.writeUInt16LE(0, 12);
+    cd.writeUInt16LE(0, 14);
+    cd.writeUInt32LE(crc, 16);
+    cd.writeUInt32LE(data.length, 20);
+    cd.writeUInt32LE(data.length, 24);
+    cd.writeUInt16LE(nameBuf.length, 28);
+    cd.writeUInt16LE(0, 30);
+    cd.writeUInt16LE(0, 32);
+    cd.writeUInt16LE(0, 34);
+    cd.writeUInt16LE(0, 36);
+    cd.writeUInt32LE(0, 38);
+    cd.writeUInt32LE(offset, 42);
+    nameBuf.copy(cd, 46);
+    central.push(cd);
+
+    offset += local.length + data.length;
+  }
+
+  const centralBuf = Buffer.concat(central);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(0, 4);
+  end.writeUInt16LE(0, 6);
+  end.writeUInt16LE(files.length, 8);
+  end.writeUInt16LE(files.length, 10);
+  end.writeUInt32LE(centralBuf.length, 12);
+  end.writeUInt32LE(offset, 16);
+  end.writeUInt16LE(0, 20);
+
+  writeFileSync(outZip, Buffer.concat([...parts, centralBuf, end]));
+}
+
+function crc32(buf) {
+  let c = ~0;
+  for (let i = 0; i < buf.length; i += 1) {
+    c ^= buf[i];
+    for (let k = 0; k < 8; k += 1) {
+      c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    }
+  }
+  return (~c) >>> 0;
+}
 
 mkdirSync(outDir, { recursive: true });
 
-let hasExe = false;
+let hasExe = existsSync(outExe);
 
-if (existsSync(join(clientDir, 'go.mod'))) {
+if (!hasExe && existsSync(join(clientDir, 'go.mod')) && !isCI) {
   try {
-    const isWin = process.platform === 'win32';
-    if (isWin) {
+    execSync('go version', { stdio: 'pipe' });
+    if (process.platform === 'win32') {
       execSync('powershell -NoProfile -ExecutionPolicy Bypass -File build.ps1', {
         cwd: clientDir,
         stdio: 'inherit',
       });
     } else {
-      execSync(
-        'go build -ldflags "-s -w" -o celeste.exe .',
-        { cwd: clientDir, stdio: 'inherit' }
-      );
+      execSync('go build -ldflags "-s -w" -o celeste.exe .', {
+        cwd: clientDir,
+        stdio: 'inherit',
+      });
     }
     if (existsSync(builtExe)) {
       copyFileSync(builtExe, outExe);
       hasExe = true;
     }
-  } catch (err) {
-    console.warn('[celeste:pack] Go build indisponível — empacotando só instalador se existir exe.');
+  } catch {
+    console.warn('[celeste:pack] Go build indisponível — usando artefatos existentes.');
   }
 }
 
@@ -41,28 +124,26 @@ if (!hasExe && existsSync(outExe)) {
 }
 
 if (!hasExe) {
-  console.error('[celeste:pack] celeste.exe não encontrado. Instale Go 1.22+ e rode celeste-client/build.ps1');
-  process.exit(1);
+  console.warn(
+    '[celeste:pack] celeste.exe ausente — build do app continua. ' +
+      'Gere localmente: celeste-client/build.ps1 && npm run celeste:pack'
+  );
+  process.exit(0);
 }
 
-copyFileSync(join(clientDir, 'Instalar-Celeste.bat'), join(outDir, 'Instalar-Celeste.bat'));
+if (existsSync(installBat)) {
+  copyFileSync(installBat, join(outDir, 'Instalar-Celeste.bat'));
+}
+
+const zipEntries = [{ name: 'celeste.exe', data: readFileSync(outExe) }];
+if (existsSync(join(outDir, 'Instalar-Celeste.bat'))) {
+  zipEntries.push({
+    name: 'Instalar-Celeste.bat',
+    data: readFileSync(join(outDir, 'Instalar-Celeste.bat')),
+  });
+}
 
 if (existsSync(outZip)) rmSync(outZip);
+createZip(zipEntries);
 
-const isWin = process.platform === 'win32';
-if (isWin) {
-  const files = ['celeste.exe', 'Instalar-Celeste.bat']
-    .map((f) => join(outDir, f).replace(/\\/g, '/'))
-    .join(',');
-  execSync(
-    `powershell -NoProfile -Command "Compress-Archive -Path '${files}' -DestinationPath '${outZip.replace(/\\/g, '/')}' -Force"`,
-    { stdio: 'inherit' }
-  );
-} else {
-  execSync(
-    `cd "${outDir}" && zip -j "${outZip}" celeste.exe Instalar-Celeste.bat`,
-    { stdio: 'inherit' }
-  );
-}
-
-console.log(`[celeste:pack] ${outZip}`);
+console.log(`[celeste:pack] ${outZip} (${zipEntries.length} arquivos)`);
