@@ -78,6 +78,24 @@ Arquivos principais:
 - schema: `supabase/UPDATE_CELESTE_INGESTION.sql`
 - agregação: `supabase/UPDATE_CELESTE_AGGREGATION.sql`
 
+## Endpoint de status operacional
+
+Com token da Celeste:
+
+```bash
+curl -X POST "https://venum-eight.vercel.app/api/celeste?action=status" \
+  -H "Authorization: Bearer <CELESTE_AGENT_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d "{}"
+```
+
+Retorna:
+- `supabaseHost` (para confirmar se está no projeto correto)
+- `onlineClients15m`
+- `observationsLast1h`
+- `pendingObservations`
+- último cliente visto
+
 ## SQL obrigatório para pipeline completo
 
 1. `supabase/QUICK_FIX_SCHEMA.sql`

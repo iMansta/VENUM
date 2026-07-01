@@ -28,6 +28,16 @@ function getSupabaseAdmin() {
   return createClient(url, key);
 }
 
+const safeCount = async (promiseFactory) => {
+  try {
+    const { count, error } = await promiseFactory();
+    if (error) return null;
+    return Number(count || 0);
+  } catch {
+    return null;
+  }
+};
+
 export function verifyCelesteAgent(req) {
   const expected = process.env.CELESTE_AGENT_TOKEN;
   if (!expected) {
@@ -260,6 +270,94 @@ export async function runFullServerSync() {
   results.events = await syncGameEvents();
   results.missions = await syncMissionNotifications();
   return results;
+}
+
+export async function getCelesteOperationalStatus() {
+  const supabase = getSupabaseAdmin();
+  const now = Date.now();
+  const since15m = new Date(now - 15 * 60 * 1000).toISOString();
+  const since1h = new Date(now - 60 * 60 * 1000).toISOString();
+  const since24h = new Date(now - 24 * 60 * 60 * 1000).toISOString();
+
+  const [online15m, obs1h, pendingObs, activeMissions, completedToday, reservations] =
+    await Promise.all([
+      safeCount(() =>
+        supabase
+          .from('celeste_clients')
+          .select('client_id', { count: 'exact', head: true })
+          .gte('last_seen_at', since15m)
+      ),
+      safeCount(() =>
+        supabase
+          .from('celeste_observations')
+          .select('id', { count: 'exact', head: true })
+          .gte('created_at', since1h)
+      ),
+      safeCount(() =>
+        supabase
+          .from('celeste_observations')
+          .select('id', { count: 'exact', head: true })
+          .is('processed_at', null)
+      ),
+      safeCount(() =>
+        supabase
+          .from('missions')
+          .select('id', { count: 'exact', head: true })
+          .eq('status', 'active')
+      ),
+      safeCount(() =>
+        supabase
+          .from('missions')
+          .select('id', { count: 'exact', head: true })
+          .eq('status', 'completed')
+          .gte('updated_at', since24h)
+      ),
+      safeCount(() =>
+        supabase
+          .from('transport_reservations')
+          .select('id', { count: 'exact', head: true })
+          .eq('status', 'reserved')
+      ),
+    ]);
+
+  let latestClient = null;
+  try {
+    const { data } = await supabase
+      .from('celeste_clients')
+      .select('client_id, host_name, app_version, last_seen_at')
+      .order('last_seen_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    latestClient = data || null;
+  } catch {
+    latestClient = null;
+  }
+
+  const supabaseHost = (() => {
+    try {
+      return new URL(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL).host;
+    } catch {
+      return null;
+    }
+  })();
+
+  return {
+    ok: true,
+    serverTime: new Date().toISOString(),
+    guild: GUILD_NAME,
+    supabaseHost,
+    telemetry: {
+      onlineClients15m: online15m,
+      observationsLast1h: obs1h,
+      pendingObservations: pendingObs,
+      latestClient,
+    },
+    app: {
+      activeMissions,
+      missionsCompleted24h: completedToday,
+      reservedTransports: reservations,
+    },
+  };
 }
 
 /**

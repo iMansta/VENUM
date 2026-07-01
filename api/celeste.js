@@ -4,6 +4,7 @@ import {
   getCatalogBundle,
   upsertMarketPrices,
   aggregateCelesteObservations,
+  getCelesteOperationalStatus,
   syncGuildMembers,
   syncGameEvents,
   syncMissionNotifications,
@@ -64,6 +65,10 @@ export default async function handler(req, res) {
       }
       case 'catalog': {
         res.status(200).json({ ok: true, ...(await getCatalogBundle()) });
+        break;
+      }
+      case 'status': {
+        res.status(200).json(await getCelesteOperationalStatus());
         break;
       }
       case 'prices': {
