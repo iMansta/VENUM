@@ -2,7 +2,6 @@ import { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   TrendingUp,
   RefreshCw,
-  Filter,
   ShoppingBag,
   ArrowRight,
   Lock,
@@ -11,7 +10,7 @@ import {
   MapPin,
 } from 'lucide-react';
 import { useMarketOpportunities } from '@/hooks/useMarketOpportunities';
-import AdvancedFilters from '@/components/market/filters/AdvancedFilters';
+import MarketFilters, { applyMarketFilters } from '@/components/market/MarketFilters';
 import ItemIcon from '@/components/market/ItemIcon';
 import { reserveTransportOpportunity } from '@/lib/supabase/transports';
 import { supabase } from '@/lib/supabase/client';
@@ -27,8 +26,15 @@ const formatPct = (v) => `${(Number(v || 0) * 100).toFixed(1)}%`;
  */
 const MarketHub = ({ userId }) => {
   const [tab, setTab] = useState('opportunities');
-  const [showFilters, setShowFilters] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [filters, setFilters] = useState({
+    tiers: [],
+    cities: [],
+    minProfit: 0,
+    minMargin: 0,
+    sort: 'profit',
+    search: '',
+  });
   const [myBag, setMyBag] = useState([]);
   const [reservingId, setReservingId] = useState(null);
   const [completingId, setCompletingId] = useState(null);
@@ -39,6 +45,11 @@ const MarketHub = ({ userId }) => {
     refresh,
     progress,
   } = useMarketOpportunities(60, refreshKey);
+
+  const filteredOpportunities = useMemo(
+    () => applyMarketFilters(opportunities, filters),
+    [opportunities, filters]
+  );
 
   const progressText =
     progress.total > 0
@@ -149,27 +160,20 @@ const MarketHub = ({ userId }) => {
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
             Atualizar
           </button>
-          <button
-            type="button"
-            onClick={() => setShowFilters(!showFilters)}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-sm"
-          >
-            <Filter className="w-4 h-4" />
-            Filtros
-          </button>
         </div>
       </div>
 
-      {showFilters && (
-        <div className="bg-slate-900 rounded-xl border border-slate-800 p-4">
-          <AdvancedFilters onApplyFilters={() => setRefreshKey((k) => k + 1)} />
-        </div>
-      )}
+      <MarketFilters
+        filters={filters}
+        onChange={setFilters}
+        resultCount={filteredOpportunities.length}
+        totalCount={opportunities.length}
+      />
 
       <div className="grid grid-cols-3 gap-3">
         <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
           <p className="text-xs text-gray-500 uppercase">Oportunidades</p>
-          <p className="text-2xl font-bold text-white mt-1">{opportunities.length}</p>
+          <p className="text-2xl font-bold text-white mt-1">{filteredOpportunities.length}</p>
         </div>
         <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
           <p className="text-xs text-gray-500 uppercase">Minha sacola</p>
@@ -220,7 +224,7 @@ const MarketHub = ({ userId }) => {
             <p className="text-center text-sm text-gray-500 py-8">{progressText}</p>
           )}
 
-          {!loading && opportunities.length === 0 && (
+          {!loading && filteredOpportunities.length === 0 && (
             <div className="text-center py-16 bg-slate-900 rounded-xl border border-slate-800">
               <p className="text-gray-400">Nenhuma oportunidade no momento.</p>
               <p className="text-xs text-gray-500 mt-2">
@@ -229,7 +233,7 @@ const MarketHub = ({ userId }) => {
             </div>
           )}
 
-          {opportunities.map((opp) => (
+          {filteredOpportunities.map((opp) => (
             <div
               key={`${opp.itemId}-${opp.lowestCity}`}
               className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col md:flex-row md:items-center gap-4 hover:border-red-500/30 transition-colors"

@@ -248,8 +248,8 @@ const Ranking = ({ userId }) => {
 
       {activeTab !== 'missions' && !loading && !error && (
         <p className="text-xs text-slate-500 mt-4 text-center">
-          Rankings PvP, PvE e Coleta usam fama mensal sincronizada pelo coletor (
-          <code className="text-slate-400">npm run collector</code>).
+          Rankings PvP, PvE e Coleta usam fama mensal sincronizada pela{' '}
+          <strong className="text-emerald-400/90">Celeste</strong> (Admin → Celeste).
         </p>
       )}
     </div>

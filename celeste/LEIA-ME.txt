@@ -1,0 +1,15 @@
+CELESTE — Serviço de dados VENUM (Guilda I V E N U M I)
+
+COMO INSTALAR (Windows):
+1. Extraia este ZIP em uma pasta (ex: C:\Celeste)
+2. Clique duplo em Instalar-Celeste.bat
+3. Informe URL e service_role do Supabase quando pedido
+4. Use o atalho "Iniciar Celeste" na área de trabalho
+
+O QUE PRECISO DO SUPABASE:
+- Project URL  →  https://SEU_PROJETO.supabase.co
+- service_role key (secret) — NÃO use a anon key!
+
+Onde achar: Supabase Dashboard → Project Settings → API
+
+REQUISITO: Node.js 18+ (nodejs.org)

@@ -2,7 +2,7 @@ import { Outlet, Link, useLocation } from 'react-router-dom';
 import { Home, TrendingUp, Target, Hammer, Wrench, Shield, LogOut, Store, ShoppingBag } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
 import VenumLogo from '@/components/common/VenumLogo';
-import CollectorDownload from '@/components/common/CollectorDownload';
+import CelesteDownload from '@/components/common/CelesteDownload';
 
 const DashboardLayout = ({ userId, userRole, profile }) => {
   const location = useLocation();
@@ -70,7 +70,7 @@ const DashboardLayout = ({ userId, userRole, profile }) => {
               </p>
             </div>
           </div>
-          <CollectorDownload compact />
+          <CelesteDownload compact />
           <button
             onClick={handleLogout}
             className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-gray-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"

@@ -1,0 +1,18 @@
+{
+  "name": "venum-celeste",
+  "version": "1.0.0",
+  "description": "Celeste — serviço de dados da guilda I V E N U M I",
+  "type": "module",
+  "main": "celeste.mjs",
+  "scripts": {
+    "start": "node celeste.mjs",
+    "once": "node celeste.mjs --once"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.108.1",
+    "dotenv": "^16.4.5"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
-import { Shield, Users, Target, Award, RefreshCw, Hammer, Store } from 'lucide-react';
+import { Shield, Users, Target, Award, RefreshCw, Hammer, Store, Sparkles } from 'lucide-react';
 import { getGuildMembers } from '@/lib/supabase/profiles';
 import UserManagement from './UserManagement';
 import MissionManagement from './MissionManagement';
 import PointsManagement from './PointsManagement';
 import BuildManagement from './BuildManagement';
 import ShopManagement from './ShopManagement';
-import CollectorDownload from '@/components/common/CollectorDownload';
+import CelesteDownload from '@/components/common/CelesteDownload';
 
 const AdminPanel = ({ userId, userRole }) => {
   const [activeTab, setActiveTab] = useState('users');
@@ -40,7 +40,7 @@ const AdminPanel = ({ userId, userRole }) => {
     { id: 'missions', label: 'Missões', icon: Target },
     { id: 'points', label: 'Pontos', icon: Award },
     { id: 'builds', label: 'Builds', icon: Hammer },
-    { id: 'collector', label: 'Coletor', icon: Shield },
+    { id: 'celeste', label: 'Celeste', icon: Sparkles },
   ];
 
   return (
@@ -114,7 +114,7 @@ const AdminPanel = ({ userId, userRole }) => {
         {activeTab === 'missions' && <MissionManagement userId={userId} userRole={userRole} />}
         {activeTab === 'points' && <PointsManagement userId={userId} userRole={userRole} />}
         {activeTab === 'builds' && <BuildManagement />}
-        {activeTab === 'collector' && <CollectorDownload />}
+        {activeTab === 'celeste' && <CelesteDownload />}
       </div>
     </div>
   );
