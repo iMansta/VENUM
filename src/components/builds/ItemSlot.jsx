@@ -79,6 +79,7 @@ const ItemSlot = ({
             src={iconUrl}
             alt={itemId}
             onError={() => setImgError(true)}
+            referrerPolicy="no-referrer"
             className="rounded-sm"
             style={{ width: size, height: size }}
             draggable={false}

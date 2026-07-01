@@ -82,6 +82,7 @@ const BuildCard = ({ build }) => {
               src={getAlbionIconUrl(itemId)}
               alt={itemId}
               className="w-full h-full object-contain"
+              referrerPolicy="no-referrer"
               onError={(e) => {
                 e.currentTarget.style.opacity = '0.2';
               }}
@@ -155,6 +156,7 @@ const BuildCard = ({ build }) => {
                       src={getAlbionIconUrl(mountId)}
                       alt={mountId}
                       className="w-full h-full object-contain"
+                      referrerPolicy="no-referrer"
                       onError={(e) => { e.currentTarget.style.opacity = '0.2'; }}
                     />
                   </div>

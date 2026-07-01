@@ -24,9 +24,9 @@ const DashboardLayout = ({ userId, userRole, profile }) => {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950">
+    <div className="min-h-screen bg-black">
       {/* Sidebar */}
-      <div className="fixed left-0 top-0 h-full w-64 bg-slate-900 border-r border-slate-800">
+      <div className="fixed left-0 top-0 h-full w-64 bg-black border-r border-slate-800">
         <div className="p-6">
           <h1 className="text-xl font-bold text-white">VENUM</h1>
           <p className="text-sm text-gray-400 mt-1">Albion Online Tools</p>
@@ -80,7 +80,7 @@ const DashboardLayout = ({ userId, userRole, profile }) => {
       </div>
 
       {/* Main Content */}
-      <div className="ml-64">
+      <div className="ml-64 min-h-screen bg-black">
         <Outlet />
       </div>
     </div>

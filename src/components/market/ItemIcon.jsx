@@ -1,44 +1,26 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Package } from 'lucide-react';
+import { getAlbionIconUrl } from '@/utils/albionIcon';
 
 /**
- * ItemIcon component - Fetches and displays item icons from Albion Online Data Project API
- * @param {string} itemId - The item ID to fetch icon for
- * @param {number} size - Icon size in pixels (default: 32)
- * @param {string} className - Additional CSS classes
+ * Exibe ícone oficial do Albion Online (render.albiononline.com).
+ * Usa URL com .png e encodeURIComponent — necessário para IDs com @.
  */
-
 const ItemIcon = ({ itemId, size = 32, className = '' }) => {
-  const [iconUrl, setIconUrl] = useState(null);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const iconUrl = itemId ? getAlbionIconUrl(itemId) : null;
 
-  useEffect(() => {
-    if (itemId) {
-      setIconUrl(`https://render.albiononline.com/v1/item/${itemId}`);
-      setLoading(false);
-    }
-  }, [itemId]);
+  const boxStyle = { width: size, height: size };
+  const iconSize = size * 0.5;
 
-  if (loading) {
+  if (!iconUrl || error) {
     return (
       <div
-        className={`bg-slate-800 rounded flex items-center justify-center ${className}`}
-        style={{ width: size, height: size }}
-      >
-        <Package className="text-gray-600" style={{ width: size * 0.5, height: size * 0.5 }} />
-      </div>
-    );
-  }
-
-  if (error || !iconUrl) {
-    return (
-      <div
-        className={`bg-slate-800 rounded flex items-center justify-center ${className}`}
-        style={{ width: size, height: size }}
+        className={`bg-slate-800 rounded flex items-center justify-center shrink-0 ${className}`}
+        style={boxStyle}
         title={itemId}
       >
-        <Package className="text-gray-600" style={{ width: size * 0.5, height: size * 0.5 }} />
+        <Package className="text-gray-600" style={{ width: iconSize, height: iconSize }} />
       </div>
     );
   }
@@ -47,8 +29,11 @@ const ItemIcon = ({ itemId, size = 32, className = '' }) => {
     <img
       src={iconUrl}
       alt={itemId}
-      className={`rounded ${className}`}
-      style={{ width: size, height: size }}
+      className={`rounded shrink-0 object-contain bg-slate-900/50 ${className}`}
+      style={boxStyle}
+      loading="lazy"
+      decoding="async"
+      referrerPolicy="no-referrer"
       onError={() => setError(true)}
       title={itemId}
     />

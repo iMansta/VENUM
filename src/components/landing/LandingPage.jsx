@@ -35,28 +35,12 @@ const LandingPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-black flex items-center justify-center p-4 relative">
-      {/* Background Image */}
-      <div className="absolute inset-0 overflow-hidden">
-        <img
-          src="/cobra-real.png"
-          alt="Background"
-          className="absolute inset-0 w-full h-full object-cover opacity-30"
-        />
-        <div className="absolute inset-0 bg-black/70" />
+    <div className="min-h-screen bg-black flex items-center justify-center p-4">
+      <div className="absolute top-8 left-8">
+        <span className="text-2xl font-bold text-white tracking-wider">VENUM</span>
       </div>
 
-      {/* Logo */}
-      <div className="absolute top-8 left-8 z-20">
-        <img
-          src="/venum-logo.png"
-          alt="VENUM MARKET"
-          className="h-16 w-auto"
-        />
-      </div>
-
-      {/* Content */}
-      <div className="relative z-10 w-full max-w-md">
+      <div className="w-full max-w-md">
         {/* Logo/Brand */}
         <div className="text-center mb-8 mt-16">
           <h1 className="text-4xl font-bold text-white mb-2">VENUM MARKET</h1>
