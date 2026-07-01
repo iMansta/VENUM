@@ -1,10 +1,9 @@
-import { Download, Sparkles, CheckCircle2, Server } from 'lucide-react';
+import { Download, Sparkles, CheckCircle2, Monitor } from 'lucide-react';
 
 const STEPS = [
-  'Baixe e extraia o arquivo celeste.zip',
-  'Execute Instalar-Celeste.bat (duplo clique)',
-  'Cole URL e chave service_role do Supabase',
-  'Use o atalho "Iniciar Celeste" na área de trabalho',
+  'Baixe o pacote Celeste (ZIP)',
+  'Extraia e execute Instalar-Celeste.bat',
+  'Abra "Iniciar Celeste" — pronto, sem chaves nem Node',
 ];
 
 const CelesteDownload = ({ compact = false }) => {
@@ -12,7 +11,7 @@ const CelesteDownload = ({ compact = false }) => {
     return (
       <a
         href="/downloads/celeste.zip"
-        download="celeste.zip"
+        download="celeste-venum.zip"
         className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-900/40 hover:bg-emerald-800/50 text-sm text-emerald-300 border border-emerald-700/50 w-full justify-center"
       >
         <Sparkles className="w-4 h-4" />
@@ -30,12 +29,12 @@ const CelesteDownload = ({ compact = false }) => {
         <div>
           <h3 className="text-xl font-bold text-white">Celeste</h3>
           <p className="text-sm text-emerald-200/80 mt-1">
-            A cobra do castelo — serviço que alimenta mercado, rankings e missões da guilda.
+            Roda em segundo plano como o Albion Data Client — ícone na bandeja, console com status.
           </p>
         </div>
       </div>
 
-      <div className="grid sm:grid-cols-2 gap-3 text-sm">
+      <div className="grid sm:grid-cols-3 gap-3 text-sm">
         {STEPS.map((step, i) => (
           <div key={step} className="flex gap-2 items-start text-gray-300">
             <CheckCircle2 className="w-4 h-4 text-emerald-500 flex-shrink-0 mt-0.5" />
@@ -46,22 +45,17 @@ const CelesteDownload = ({ compact = false }) => {
         ))}
       </div>
 
-      <div className="bg-slate-950/60 rounded-lg p-4 border border-slate-800">
-        <p className="text-xs text-gray-400 mb-2 flex items-center gap-2">
-          <Server className="w-4 h-4" />
-          Você precisa informar no instalador:
-        </p>
-        <ul className="text-xs text-gray-300 space-y-1 ml-6 list-disc">
-          <li>
-            <strong className="text-white">URL do projeto</strong> — ex: https://moglqrrmqokhuzjoigbr.supabase.co
-          </li>
-          <li>
-            <strong className="text-white">service_role key</strong> — chave secreta (não a anon!)
-          </li>
-        </ul>
-        <p className="text-[11px] text-amber-400/90 mt-2">
-          Supabase → Project Settings → API → service_role
-        </p>
+      <div className="bg-slate-950/60 rounded-lg p-4 border border-slate-800 flex gap-3">
+        <Monitor className="w-5 h-5 text-emerald-400 flex-shrink-0 mt-0.5" />
+        <div className="text-xs text-gray-300 space-y-1">
+          <p>
+            <strong className="text-white">Nenhuma chave</strong> — só instalar. A Celeste fala com o hub VENUM
+            automaticamente.
+          </p>
+          <p className="text-gray-500">
+            Bandeja do Windows: pausar, sincronizar agora ou sair. Inicia com o Windows após instalar.
+          </p>
+        </div>
       </div>
 
       <a
@@ -74,7 +68,7 @@ const CelesteDownload = ({ compact = false }) => {
       </a>
 
       <p className="text-[11px] text-gray-500">
-        Requisito: Node.js 18+ instalado no Windows. Deixe a janela aberta — Celeste roda em loop.
+        Windows 10/11 · executável único · sem Node.js · guilda I V E N U M I
       </p>
     </div>
   );
