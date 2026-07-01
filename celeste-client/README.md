@@ -76,3 +76,16 @@ Arquivos principais:
 - endpoint server: `api/celeste.js`
 - persistência server: `server/celesteService.mjs`
 - schema: `supabase/UPDATE_CELESTE_INGESTION.sql`
+- agregação: `supabase/UPDATE_CELESTE_AGGREGATION.sql`
+
+## SQL obrigatório para pipeline completo
+
+1. `supabase/QUICK_FIX_SCHEMA.sql`
+2. `supabase/UPDATE_CELESTE_INGESTION.sql`
+3. `supabase/UPDATE_CELESTE_AGGREGATION.sql`
+
+Com isso, cada observação da Celeste vira:
+- progresso de missão (`missions.current_quantity`)
+- participação automática (`mission_participants`)
+- fama por categoria (`profiles.albion_*_fame`)
+- conclusão automática + pontos para participantes

@@ -3,6 +3,7 @@ import {
   celestePing,
   getCatalogBundle,
   upsertMarketPrices,
+  aggregateCelesteObservations,
   syncGuildMembers,
   syncGameEvents,
   syncMissionNotifications,
@@ -88,12 +89,19 @@ export default async function handler(req, res) {
         res.status(200).json({ ok: true, ...result });
         break;
       }
+      case 'aggregate': {
+        const limit = Number(req.body?.limit || 500);
+        const result = await aggregateCelesteObservations(limit);
+        res.status(200).json({ ok: true, ...result });
+        break;
+      }
       case 'sync': {
         const prices = req.body?.rows || req.body?.prices;
         const result = { ok: true };
         if (prices?.length) {
           result.prices = await upsertMarketPrices(prices);
         }
+        result.aggregate = await aggregateCelesteObservations(1000);
         result.server = await runFullServerSync();
         res.status(200).json(result);
         break;

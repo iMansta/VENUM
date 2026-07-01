@@ -108,6 +108,26 @@ export async function upsertMarketPrices(rows) {
   return { rows: count };
 }
 
+export async function aggregateCelesteObservations(limit = 500) {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase.rpc('process_celeste_observations', {
+    p_limit: limit,
+  });
+
+  if (error) {
+    // Mantém compatibilidade enquanto SQL novo não for aplicado.
+    return { skipped: true, reason: error.message };
+  }
+
+  const row = Array.isArray(data) ? data[0] : data;
+  return {
+    processed: Number(row?.processed || 0),
+    missionUpdates: Number(row?.mission_updates || 0),
+    fameUpdates: Number(row?.fame_updates || 0),
+    missionsCompleted: Number(row?.missions_completed || 0),
+  };
+}
+
 export async function syncGuildMembers() {
   const supabase = getSupabaseAdmin();
 
@@ -286,5 +306,7 @@ export async function ingestCelesteTelemetry(payload = {}) {
   const { error } = await supabase.from('celeste_observations').insert(capped);
   if (error) throw error;
 
-  return { clientId, inserted: capped.length };
+  const aggregate = await aggregateCelesteObservations(800);
+
+  return { clientId, inserted: capped.length, aggregate };
 }
