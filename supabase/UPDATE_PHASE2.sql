@@ -1,6 +1,11 @@
 -- =====================================================================
 -- VENUM MARKET — Fase 2: Guilda, Catálogo, Discord, Coletor
--- Execute APÓS UPDATE_PRODUCTION.sql no Supabase SQL Editor
+-- =====================================================================
+-- ⚠️  PRÉ-REQUISITO: execute ANTES deste arquivo:
+--     1) supabase/00_SCHEMA_BASE.sql   ← cria profiles, missions, etc.
+--     2) supabase/UPDATE_PRODUCTION.sql
+--
+-- Se aparecer "relation public.profiles does not exist", rode o passo 1.
 -- =====================================================================
 
 -- ---------------------------------------------------------------------

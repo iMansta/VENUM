@@ -7,6 +7,9 @@
 -- Pré-requisito: schema base de DATABASE_SCHEMA.md já aplicado
 -- (profiles, guild_codes, missions, shop_items, etc.)
 --
+-- ⚠️  Se o banco está VAZIO, execute PRIMEIRO:
+--     supabase/00_SCHEMA_BASE.sql
+--
 -- O que este script garante:
 --   1) market_settings + RPC get_market_settings
 --   2) Cache de preços por localização + RPCs
