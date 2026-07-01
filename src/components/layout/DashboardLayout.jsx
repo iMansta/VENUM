@@ -1,7 +1,8 @@
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { Home, TrendingUp, Target, Hammer, Wrench, Shield, LogOut } from 'lucide-react';
+import { Home, TrendingUp, Target, Hammer, Wrench, Shield, LogOut, Store, ShoppingBag } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
 import VenumLogo from '@/components/common/VenumLogo';
+import CollectorDownload from '@/components/common/CollectorDownload';
 
 const DashboardLayout = ({ userId, userRole, profile }) => {
   const location = useLocation();
@@ -15,9 +16,10 @@ const DashboardLayout = ({ userId, userRole, profile }) => {
     { name: 'Dashboard', href: '/dashboard', icon: Home },
     { name: 'Ranking', href: '/ranking', icon: TrendingUp },
     { name: 'Missões', href: '/missions', icon: Target },
-    { name: 'Mercado', href: '/market', icon: Wrench },
+    { name: 'Black Market', href: '/market', icon: ShoppingBag },
+    { name: 'Loja', href: '/shop', icon: Store },
     { name: 'Produção', href: '/production', icon: Hammer },
-    { name: 'Builds', href: '/builds', icon: Shield },
+    { name: 'Builds', href: '/builds', icon: Wrench },
   ];
 
   if (userRole === 'admin') {
@@ -52,7 +54,7 @@ const DashboardLayout = ({ userId, userRole, profile }) => {
           })}
         </nav>
 
-        <div className="absolute bottom-0 left-0 right-0 p-6 border-t border-slate-800">
+        <div className="absolute bottom-0 left-0 right-0 p-6 border-t border-slate-800 space-y-3">
           <div className="flex items-center gap-3 mb-4">
             <div className="w-10 h-10 bg-slate-800 rounded-full flex items-center justify-center">
               <span className="text-white font-semibold">
@@ -68,6 +70,7 @@ const DashboardLayout = ({ userId, userRole, profile }) => {
               </p>
             </div>
           </div>
+          <CollectorDownload compact />
           <button
             onClick={handleLogout}
             className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-gray-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"

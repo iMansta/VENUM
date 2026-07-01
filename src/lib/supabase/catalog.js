@@ -22,7 +22,16 @@ export const getItemsForSlot = async ({
       `https://render.albiononline.com/v1/item/${encodeURIComponent(row.item_id)}.png`,
   });
 
-  // 1) RPC (assinatura usada pelo frontend)
+  // 1) Catálogo local (sempre válido — evita RPC 400 e ícones quebrados)
+  const local = getLocalItemsForSlot(slotKey, tier, search);
+  if (local.length > 0) {
+    return {
+      items: local.slice(offset, offset + limit),
+      source: 'local',
+    };
+  }
+
+  // 2) RPC Supabase
   try {
     const { data, error } = await supabase.rpc('get_items_for_slot', {
       p_slot: slotKey,
@@ -80,12 +89,8 @@ export const getItemsForSlot = async ({
     /* fallback */
   }
 
-  // 4) Catálogo local (sempre disponível)
-  const local = getLocalItemsForSlot(slotKey, tier, search);
-  return {
-    items: local.slice(offset, offset + limit),
-    source: 'local',
-  };
+  // 4) Fallback local vazio
+  return { items: [], source: 'empty' };
 };
 
 const applySearch = (items, search) => {

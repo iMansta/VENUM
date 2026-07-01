@@ -127,6 +127,7 @@ const Ranking = ({ userId }) => {
   const [ranking, setRanking] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [usingFallback, setUsingFallback] = useState(false);
 
   const tabConfig = RANKING_TABS.find((t) => t.id === activeTab) || RANKING_TABS[0];
   const TabIcon = TAB_ICONS[activeTab] || Target;
@@ -142,6 +143,7 @@ const Ranking = ({ userId }) => {
 
       if (result.success) {
         setRanking(result.data);
+        setUsingFallback(result.source === 'fallback');
       } else {
         setError(result.error || 'Não foi possível carregar o ranking');
         setRanking([]);
@@ -189,6 +191,12 @@ const Ranking = ({ userId }) => {
           );
         })}
       </div>
+
+      {usingFallback && !loading && !error && (
+        <p className="text-xs text-amber-500/80 mb-4 text-center">
+          Dados provisórios — execute <code className="text-amber-400">UPDATE_BUILDS_AND_RANKING.sql</code> no Supabase para ranking completo.
+        </p>
+      )}
 
       {loading ? (
         <div className="flex items-center justify-center h-64">

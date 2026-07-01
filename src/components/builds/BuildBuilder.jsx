@@ -5,6 +5,8 @@ import { ITEM_SLOTS, SLOT_LABELS_PT } from '@/constants/itemDefinitions';
 import { translateItem, parseItemId } from '@/utils/itemTranslator';
 import { getItemsForSlot } from '@/lib/supabase/catalog';
 import { supabase } from '@/lib/supabase/client';
+import { slotSupportsSkills } from '@/lib/albion/slotItems';
+import ItemIcon from '@/components/market/ItemIcon';
 
 // =============================================================================
 // Normalização: o grid sempre mostra os 10 slots oficiais na ordem:
@@ -42,7 +44,8 @@ const BuildBuilder = ({ value, onChange, readOnly = false }) => {
   }, [value]);
 
   const [items, setItems] = useState(initialItems);
-  const [openSlot, setOpenSlot] = useState(null); // chave do slot aberto
+  const [openSlot, setOpenSlot] = useState(null);
+  const [skillSlot, setSkillSlot] = useState(null);
 
   const emitChange = (newItems) => {
     setItems(newItems);
@@ -55,6 +58,9 @@ const BuildBuilder = ({ value, onChange, readOnly = false }) => {
       [slotKey]: { item_id: itemId, skills: items[slotKey]?.skills || {} },
     };
     emitChange(newItems);
+    if (slotSupportsSkills(slotKey)) {
+      setSkillSlot(slotKey);
+    }
   };
 
   const clearSlot = (slotKey) => {
@@ -75,6 +81,9 @@ const BuildBuilder = ({ value, onChange, readOnly = false }) => {
   const handleSlotClick = (slotKey) => {
     if (readOnly) return;
     setOpenSlot((cur) => (cur === slotKey ? null : slotKey));
+    if (items[slotKey]?.item_id && slotSupportsSkills(slotKey)) {
+      setSkillSlot(slotKey);
+    }
   };
 
   return (
@@ -113,11 +122,13 @@ const BuildBuilder = ({ value, onChange, readOnly = false }) => {
         />
       )}
 
-      {!readOnly && openSlot && items[openSlot]?.item_id && (
+      {!readOnly && skillSlot && items[skillSlot]?.item_id && slotSupportsSkills(skillSlot) && (
         <SkillSelectorDynamic
-          itemId={items[openSlot].item_id}
-          skills={items[openSlot]?.skills || {}}
-          onChange={(abilityKey, value) => setSlotSkill(openSlot, abilityKey, value)}
+          slotLabel={SLOT_LABELS_PT[skillSlot]}
+          itemId={items[skillSlot].item_id}
+          skills={items[skillSlot]?.skills || {}}
+          onChange={(abilityKey, value) => setSlotSkill(skillSlot, abilityKey, value)}
+          onClose={() => setSkillSlot(null)}
         />
       )}
     </div>
@@ -231,7 +242,6 @@ const ItemPickerLazy = ({ slotKey, slotLabel, currentItemId, onPick, onClose }) 
                   selected={it.item_id === currentItemId}
                   onPick={() => {
                     onPick(it.item_id);
-                    onClose();
                   }}
                 />
               ))}
@@ -269,19 +279,11 @@ const ItemPickerCard = ({ item, onPick, selected = false }) => (
         : 'border-zinc-800 bg-zinc-900 hover:bg-zinc-800 hover:border-amber-500/50',
     ].join(' ')}
   >
-    <img
-      src={item.image_url || `https://render.albiononline.com/v1/item/${encodeURIComponent(item.item_id)}.png`}
-      alt={item.item_id}
-      loading="lazy"
-      onError={(e) => { e.currentTarget.style.opacity = '0.3'; }}
-      className="w-12 h-12 object-contain"
-    />
+    <ItemIcon itemId={item.item_id} size={48} />
     <span className="text-[10px] text-zinc-300 text-center line-clamp-1 w-full">
       {item.name_pt || translateItem(item.item_id, { includeTier: false })}
     </span>
-    <span className="text-[9px] text-zinc-500 font-mono">
-      T{item.tier}
-    </span>
+    <span className="text-[9px] text-zinc-500 font-mono">T{item.tier}</span>
   </button>
 );
 
@@ -306,7 +308,7 @@ const COMMON_PASSIVES = [
   'Cura Aliada',
 ];
 
-const SkillSelectorDynamic = ({ itemId, skills, onChange }) => {
+const SkillSelectorDynamic = ({ slotLabel, itemId, skills, onChange, onClose }) => {
   const [itemData, setItemData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -415,15 +417,18 @@ const SkillSelectorDynamic = ({ itemId, skills, onChange }) => {
   const passiveSkills = itemData.passive_skills || [];
 
   return (
-    <div className="bg-zinc-900/60 rounded-lg border border-zinc-800 p-4">
+    <div className="bg-zinc-900/60 rounded-lg border border-amber-500/30 p-4">
       <div className="flex items-center gap-2 mb-3">
         <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
         <h4 className="text-sm font-semibold text-zinc-200">
-          Habilidades & Passivas
+          Habilidades — {slotLabel}
         </h4>
-        <span className="ml-auto text-[10px] text-zinc-500 font-mono">
-          {itemId}
-        </span>
+        <span className="ml-auto text-[10px] text-zinc-500 font-mono">{itemId}</span>
+        {onClose && (
+          <button type="button" onClick={onClose} className="text-zinc-500 hover:text-zinc-200 p-1">
+            <X className="w-4 h-4" />
+          </button>
+        )}
       </div>
 
       {activeSkills.length > 0 && (

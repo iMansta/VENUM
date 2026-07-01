@@ -10,6 +10,7 @@ import Missions from '@/pages/Missions';
 import Market from '@/pages/Market';
 import Builds from '@/pages/Builds';
 import Production from '@/pages/Production';
+import Shop from '@/pages/Shop';
 import AdminPanel from '@/components/guild/admin/AdminPanel';
 import { getSession, onAuthStateChange } from '@/lib/supabase/auth';
 import { getProfile } from '@/lib/supabase/profiles';
@@ -120,6 +121,16 @@ function App() {
           }
         >
           <Route index element={<Market userId={user?.id} />} />
+        </Route>
+        <Route
+          path="/shop"
+          element={
+            <ProtectedRoute>
+              <DashboardLayout userId={user?.id} userRole={profile?.role} profile={profile} />
+            </ProtectedRoute>
+          }
+        >
+          <Route index element={<Shop userId={user?.id} />} />
         </Route>
         <Route
           path="/production"
