@@ -1,9 +1,51 @@
 import { supabase } from './client';
 import { verifyGuildMembership } from '@/lib/albion/gameinfo';
 
+const PRIMARY_AUTH_DOMAIN =
+  String(import.meta.env.VITE_AUTH_EMAIL_DOMAIN || 'venum.gg')
+    .trim()
+    .toLowerCase();
+
+const LEGACY_AUTH_DOMAINS = String(
+  import.meta.env.VITE_AUTH_EMAIL_LEGACY_DOMAINS || 'venum.local'
+)
+  .split(',')
+  .map((d) => d.trim().toLowerCase())
+  .filter(Boolean);
+
+const AUTH_DOMAINS = Array.from(new Set([PRIMARY_AUTH_DOMAIN, ...LEGACY_AUTH_DOMAINS]));
+
 /** Converte nickname em e-mail interno (padrão VENUM). */
-const toEmail = (nickname) =>
-  `${String(nickname).trim().toLowerCase()}@venum.local`;
+const toEmail = (nickname, domain = PRIMARY_AUTH_DOMAIN) =>
+  `${String(nickname).trim().toLowerCase()}@${domain}`;
+
+const isInvalidCredentials = (error) =>
+  error?.message === 'Invalid login credentials';
+
+const isAlreadyRegistered = (error) =>
+  /already registered|already exists/i.test(String(error?.message || ''));
+
+const signInByEmailVariants = async (nickname, password) => {
+  let lastError = null;
+
+  for (const domain of AUTH_DOMAINS) {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: toEmail(nickname, domain),
+      password,
+    });
+
+    if (!error) {
+      return { success: true, data, email: toEmail(nickname, domain), domain };
+    }
+
+    lastError = error;
+    if (!isInvalidCredentials(error)) {
+      return { success: false, error, domain };
+    }
+  }
+
+  return { success: false, error: lastError };
+};
 
 const nicknameExists = async (nickname) => {
   const normalized = String(nickname).trim();
@@ -32,19 +74,25 @@ const autoProvisionFromNickname = async (nickname, password) => {
 
   const registerResult = await signUp(nickname, password);
   if (!registerResult.success) {
+    if (isAlreadyRegistered(registerResult.rawError)) {
+      const retried = await signInByEmailVariants(nickname, password);
+      if (retried.success) {
+        return { success: true, data: retried.data, autoProvisioned: false };
+      }
+    }
     return registerResult;
   }
 
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email: toEmail(nickname),
-    password,
-  });
-
-  if (error) {
-    return { success: false, error: error.message || 'Erro ao entrar após criar conta' };
+  const loginAfterCreate = await signInByEmailVariants(nickname, password);
+  if (!loginAfterCreate.success) {
+    return {
+      success: false,
+      error:
+        loginAfterCreate.error?.message || 'Erro ao entrar após criar conta',
+    };
   }
 
-  return { success: true, data, autoProvisioned: true };
+  return { success: true, data: loginAfterCreate.data, autoProvisioned: true };
 };
 
 /**
@@ -59,19 +107,16 @@ export const signIn = async (nickname, password) => {
 
     const normalized = nickname.trim();
 
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: toEmail(normalized),
-      password,
-    });
-
-    if (error) {
-      if (error.message === 'Invalid login credentials') {
+    const loginResult = await signInByEmailVariants(normalized, password);
+    if (!loginResult.success) {
+      if (isInvalidCredentials(loginResult.error)) {
         const fallback = await autoProvisionFromNickname(normalized, password);
         if (fallback.success) return fallback;
         return fallback;
       }
-      throw error;
+      throw loginResult.error;
     }
+    const data = loginResult.data;
 
     if (data.user) {
       const { data: profile } = await supabase
@@ -123,7 +168,7 @@ export const signUp = async (nickname, password) => {
     }
 
     const { data, error } = await supabase.auth.signUp({
-      email: toEmail(normalizedNickname),
+      email: toEmail(normalizedNickname, PRIMARY_AUTH_DOMAIN),
       password,
       options: {
         data: {
@@ -154,7 +199,11 @@ export const signUp = async (nickname, password) => {
     return { success: true, data };
   } catch (error) {
     console.error('Sign up error:', error);
-    return { success: false, error: error.message || 'Erro ao criar conta' };
+    return {
+      success: false,
+      rawError: error,
+      error: error.message || 'Erro ao criar conta',
+    };
   }
 };
 

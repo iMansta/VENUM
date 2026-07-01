@@ -71,6 +71,7 @@ const RegisterPage = () => {
                   type="text"
                   value={nickname}
                   onChange={(e) => setNickname(e.target.value)}
+                  autoComplete="username"
                   className="w-full bg-slate-800 border border-slate-700 rounded-lg pl-10 pr-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all"
                   placeholder="Exatamente como no jogo"
                   required
@@ -91,6 +92,7 @@ const RegisterPage = () => {
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
+                  autoComplete="new-password"
                   className="w-full bg-slate-800 border border-slate-700 rounded-lg pl-10 pr-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all"
                   placeholder="••••••••"
                   required
