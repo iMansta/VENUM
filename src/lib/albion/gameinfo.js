@@ -1,91 +1,34 @@
-import { GAMEINFO_BASE, GUILD_NAME } from '@/config/guild';
-
-const normalizeGuildName = (name) =>
-  String(name || '').replace(/\s+/g, '').toUpperCase();
+import { GUILD_NAME } from '@/config/guild';
 
 /**
- * Busca jogador pelo nickname exato no GameInfo API.
- */
-export const searchPlayer = async (nickname) => {
-  const q = encodeURIComponent(String(nickname).trim());
-  const res = await fetch(`${GAMEINFO_BASE}/search?q=${q}`);
-  if (!res.ok) throw new Error(`GameInfo search falhou (${res.status})`);
-  const data = await res.json();
-  const exact = (data.players || []).find(
-    (p) => p.Name?.toLowerCase() === String(nickname).trim().toLowerCase()
-  );
-  return exact || null;
-};
-
-/**
- * Verifica se o jogador pertence à guilda I V E N U M I.
+ * Valida membership na guilda via API server-side (evita CORS no browser).
  */
 export const verifyGuildMembership = async (nickname) => {
-  const player = await searchPlayer(nickname);
-  if (!player) {
-    return {
-      valid: false,
-      error: 'Personagem não encontrado. Use o nickname exato do jogo.',
-    };
+  const trimmed = String(nickname || '').trim();
+  if (!trimmed) {
+    return { valid: false, error: 'Nickname é obrigatório' };
   }
 
-  const playerGuild = normalizeGuildName(player.GuildName);
-  const targetGuild = normalizeGuildName(GUILD_NAME);
+  try {
+    const url = `/api/verify-guild?nickname=${encodeURIComponent(trimmed)}`;
+    const res = await fetch(url, { headers: { Accept: 'application/json' } });
 
-  if (playerGuild !== targetGuild) {
+    if (!res.ok) {
+      return {
+        valid: false,
+        error: `Validação indisponível (${res.status}). Tente novamente.`,
+      };
+    }
+
+    return await res.json();
+  } catch (err) {
+    console.error('[verifyGuildMembership]', err);
     return {
       valid: false,
-      error: `Você precisa estar na guilda ${GUILD_NAME} para acessar o sistema.`,
-      player,
+      error:
+        'Não foi possível validar seu personagem. Verifique sua conexão ou tente mais tarde.',
     };
   }
-
-  return {
-    valid: true,
-    player,
-    playerId: player.Id,
-    guildName: player.GuildName,
-    guildId: player.GuildId,
-  };
 };
 
-/**
- * Busca guilda pelo nome.
- */
-export const searchGuild = async (guildName = GUILD_NAME) => {
-  const q = encodeURIComponent(guildName);
-  const res = await fetch(`${GAMEINFO_BASE}/search?q=${q}`);
-  if (!res.ok) throw new Error(`GameInfo guild search falhou (${res.status})`);
-  const data = await res.json();
-  return (data.guilds || []).find(
-    (g) => normalizeGuildName(g.Name) === normalizeGuildName(guildName)
-  );
-};
-
-/**
- * Lista membros da guilda (para sync diário no coletor).
- */
-export const getGuildMembers = async (guildId) => {
-  const res = await fetch(`${GAMEINFO_BASE}/guilds/${guildId}/members`);
-  if (!res.ok) throw new Error(`GameInfo members falhou (${res.status})`);
-  return res.json();
-};
-
-/**
- * Eventos recentes do killboard (PvP/PvE inferido).
- */
-export const getRecentEvents = async (limit = 51, offset = 0) => {
-  const res = await fetch(
-    `${GAMEINFO_BASE}/events?limit=${limit}&offset=${offset}`
-  );
-  if (!res.ok) throw new Error(`GameInfo events falhou (${res.status})`);
-  return res.json();
-};
-
-export default {
-  searchPlayer,
-  verifyGuildMembership,
-  searchGuild,
-  getGuildMembers,
-  getRecentEvents,
-};
+export default { verifyGuildMembership, GUILD_NAME };

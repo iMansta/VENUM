@@ -3,7 +3,7 @@ import { Search, X } from 'lucide-react';
 import ItemSlot from './ItemSlot';
 import { ITEM_SLOTS, SLOT_LABELS_PT } from '@/constants/itemDefinitions';
 import { translateItem, parseItemId } from '@/utils/itemTranslator';
-import { supabase } from '@/lib/supabase/client';
+import { getItemsForSlot } from '@/lib/supabase/catalog';
 
 // =============================================================================
 // Normalização: o grid sempre mostra os 10 slots oficiais na ordem:
@@ -141,24 +141,21 @@ const ItemPickerLazy = ({ slotKey, slotLabel, currentItemId, onPick, onClose }) 
     setError(null);
 
     try {
-      const { data, error } = await supabase.rpc('get_items_for_slot', {
-        p_slot: slotKey,
-        p_tier: TIER_DEFAULT,
-        p_search: search || null,
-        p_limit: limit,
-        p_offset: currentOffset,
+      const { items: list } = await getItemsForSlot({
+        slotKey,
+        tier: TIER_DEFAULT,
+        search: search || '',
+        limit,
+        offset: currentOffset,
       });
 
-      if (error) throw error;
-
-      const list = Array.isArray(data) ? data : [];
       setHasMore(list.length === limit);
 
       if (reset) {
         setItems(list);
         setOffset(limit);
       } else {
-        setItems(prev => [...prev, ...list]);
+        setItems((prev) => [...prev, ...list]);
         setOffset(currentOffset + limit);
       }
     } catch (e) {
@@ -272,7 +269,7 @@ const ItemPickerCard = ({ item, onPick, selected = false }) => (
     ].join(' ')}
   >
     <img
-      src={item.image_url || `https://render.albionorganic.com/v1/item/${encodeURIComponent(item.item_id)}.png`}
+      src={item.image_url || `https://render.albiononline.com/v1/item/${encodeURIComponent(item.item_id)}.png`}
       alt={item.item_id}
       loading="lazy"
       onError={(e) => { e.currentTarget.style.opacity = '0.3'; }}

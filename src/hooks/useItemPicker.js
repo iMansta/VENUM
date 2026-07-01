@@ -1,17 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
-import { supabase } from '@/lib/supabase/client';
+import { getItemsForSlot } from '@/lib/supabase/catalog';
 
 /**
- * useItemPicker - hook de lazy loading paginado para o seletor de itens.
- *
- * Refatoração (Single Source of Truth):
- *   - Usa RPC get_items_for_slot do Supabase com paginação (50 itens)
- *   - Cache em memória (Map) para não refazer a mesma consulta
- *   - Suporta busca textual via parâmetro p_search
- *   - Carrega mais itens sob demanda (offset)
- *
- * Retorna:
- *   { items, loading, error, refresh, loadMore, hasMore }
+ * useItemPicker - lazy loading paginado para o seletor de itens.
+ * Usa getItemsForSlot (RPC → market_items → catálogo local).
  */
 
 const cache = new Map();
@@ -24,8 +16,6 @@ export const useItemPicker = (slotKey = null, tier = 8, search = '') => {
   const [hasMore, setHasMore] = useState(true);
   const inflight = useRef(false);
   const limit = 50;
-
-  const cacheKey = `${tier}::${slotKey || 'ALL'}::${search}::${offset}`;
 
   const loadItems = async (reset = false) => {
     const currentOffset = reset ? 0 : offset;
@@ -43,24 +33,21 @@ export const useItemPicker = (slotKey = null, tier = 8, search = '') => {
     setError(null);
 
     try {
-      const { data, error } = await supabase.rpc('get_items_for_slot', {
-        p_slot: slotKey,
-        p_tier: tier,
-        p_search: search || null,
-        p_limit: limit,
-        p_offset: currentOffset,
+      const { items: list } = await getItemsForSlot({
+        slotKey,
+        tier,
+        search,
+        limit,
+        offset: currentOffset,
       });
 
-      if (error) throw error;
-
-      const list = Array.isArray(data) ? data : [];
       setHasMore(list.length === limit);
 
       if (reset) {
         setItems(list);
         setOffset(limit);
       } else {
-        setItems(prev => [...prev, ...list]);
+        setItems((prev) => [...prev, ...list]);
         setOffset(currentOffset + limit);
       }
 
