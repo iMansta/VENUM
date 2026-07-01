@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Package,
   Lock,
@@ -150,8 +150,6 @@ const TransportList = ({
   };
 
   const handleComplete = async (transportId) => {
-    if (!window.confirm('Tem certeza que deseja concluir este transporte?')) return;
-
     setCompletingId(transportId);
     try {
       const { error } = await supabase
@@ -171,6 +169,22 @@ const TransportList = ({
 
   const formatSilver = (value) =>
     new Intl.NumberFormat('pt-BR').format(Math.round(value || 0));
+
+  const transportTotals = useMemo(() => {
+    return myTransports.reduce(
+      (acc, t) => {
+        const qty = Number(t.quantity) || 1;
+        const buy = Number(t.buy_price) || 0;
+        const sell = Number(t.sell_price) || 0;
+        return {
+          investment: acc.investment + buy * qty,
+          grossProfit: acc.grossProfit + sell * qty,
+          netProfit: acc.netProfit + (Number(t.profit) || 0) * qty,
+        };
+      },
+      { investment: 0, grossProfit: 0, netProfit: 0 }
+    );
+  }, [myTransports]);
 
   const loadingText = loadingProgress?.total > 0
     ? `Carregando ${Math.min(loadingProgress.loaded, loadingProgress.total)} de ${loadingProgress.total} itens...`
@@ -328,6 +342,21 @@ const TransportList = ({
                   </button>
                 </div>
               ))}
+            </div>
+
+            <div className="mt-6 pt-4 border-t border-slate-700 flex flex-wrap items-center justify-between gap-4 bg-slate-800/30 rounded-lg px-4 py-3">
+              <div>
+                <p className="text-xs text-gray-500 uppercase tracking-wide">Investimento (compra)</p>
+                <p className="text-lg font-bold text-blue-400">{formatSilver(transportTotals.investment)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 uppercase tracking-wide">Lucro bruto (venda BM)</p>
+                <p className="text-lg font-bold text-amber-400">{formatSilver(transportTotals.grossProfit)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 uppercase tracking-wide">Lucro líquido estimado</p>
+                <p className="text-lg font-bold text-green-400">{formatSilver(transportTotals.netProfit)}</p>
+              </div>
             </div>
           </div>
         </div>

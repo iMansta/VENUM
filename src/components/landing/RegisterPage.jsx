@@ -2,15 +2,12 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { User, Lock, ArrowLeft, ArrowRight } from 'lucide-react';
 import { signUp } from '@/lib/supabase/auth';
-
-/**
- * RegisterPage component - Registration page with guild code validation
- */
+import VenumLogo from '@/components/common/VenumLogo';
+import { GUILD_NAME } from '@/config/guild';
 
 const RegisterPage = () => {
-  const [username, setUsername] = useState('');
+  const [nickname, setNickname] = useState('');
   const [password, setPassword] = useState('');
-  const [guildCode, setGuildCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const navigate = useNavigate();
@@ -20,26 +17,26 @@ const RegisterPage = () => {
     setLoading(true);
     setError('');
 
-    const result = await signUp(username, password, guildCode);
-    
+    const result = await signUp(nickname, password);
+
     if (result.success) {
       navigate('/dashboard');
     } else {
       setError(result.error || 'Erro ao fazer cadastro');
     }
-    
+
     setLoading(false);
   };
 
   return (
     <div className="min-h-screen bg-black flex items-center justify-center p-4">
       <div className="absolute top-8 left-8">
-        <span className="text-2xl font-bold text-white tracking-wider">VENUM</span>
+        <VenumLogo className="h-14 w-auto" />
       </div>
 
       <div className="w-full max-w-md">
-        {/* Back Button */}
         <button
+          type="button"
           onClick={() => navigate('/')}
           className="flex items-center gap-2 text-gray-400 hover:text-white mb-6 transition-colors"
         >
@@ -47,13 +44,11 @@ const RegisterPage = () => {
           Voltar
         </button>
 
-        {/* Logo/Brand */}
-        <div className="text-center mb-8 mt-16">
-          <h1 className="text-4xl font-bold text-white mb-2">VENUM MARKET</h1>
-          <p className="text-gray-400">Crie sua conta para acessar o sistema</p>
+        <div className="text-center mb-8 mt-8 flex flex-col items-center gap-2">
+          <VenumLogo className="h-16 w-auto" />
+          <p className="text-gray-400 text-sm">Cadastro para membros da {GUILD_NAME}</p>
         </div>
 
-        {/* Register Card */}
         <div className="bg-slate-900/80 backdrop-blur-xl rounded-2xl border border-slate-800 p-8 shadow-2xl">
           <div className="flex items-center gap-3 mb-6">
             <div className="w-12 h-12 bg-red-500/20 rounded-lg flex items-center justify-center">
@@ -61,31 +56,31 @@ const RegisterPage = () => {
             </div>
             <div>
               <h2 className="text-xl font-bold text-white">Criar Conta</h2>
-              <p className="text-sm text-gray-400">Preencha seus dados</p>
+              <p className="text-sm text-gray-400">Nickname = login no site</p>
             </div>
           </div>
 
-          {/* Register Form */}
           <form onSubmit={handleRegister} className="space-y-4">
-            {/* Username */}
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">
-                Nome de Usuário
+                Nickname (Albion)
               </label>
               <div className="relative">
                 <User className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-500" />
                 <input
                   type="text"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
+                  value={nickname}
+                  onChange={(e) => setNickname(e.target.value)}
                   className="w-full bg-slate-800 border border-slate-700 rounded-lg pl-10 pr-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all"
-                  placeholder="Seu nome de usuário"
+                  placeholder="Exatamente como no jogo"
                   required
                 />
               </div>
+              <p className="text-xs text-gray-500 mt-1">
+                Validamos automaticamente se você está na guilda {GUILD_NAME}
+              </p>
             </div>
 
-            {/* Password */}
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">
                 Senha
@@ -104,35 +99,12 @@ const RegisterPage = () => {
               </div>
             </div>
 
-            {/* Guild Code */}
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Código da Guilda
-              </label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-500" />
-                <input
-                  type="text"
-                  value={guildCode}
-                  onChange={(e) => setGuildCode(e.target.value.toUpperCase())}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-lg pl-10 pr-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all"
-                  placeholder="CÓDIGO"
-                  required
-                />
-              </div>
-              <p className="text-xs text-gray-500 mt-1">
-                Entre em contato com a guilda para obter o código
-              </p>
-            </div>
-
-            {/* Error Message */}
             {error && (
               <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-red-400 text-sm">
                 {error}
               </div>
             )}
 
-            {/* Register Button */}
             <button
               type="submit"
               disabled={loading}
@@ -149,11 +121,11 @@ const RegisterPage = () => {
             </button>
           </form>
 
-          {/* Login Link */}
           <div className="mt-6 text-center">
             <p className="text-gray-400 text-sm">
-              Já tem uma conta?{' '}
+              Já tem conta?{' '}
               <button
+                type="button"
                 onClick={() => navigate('/')}
                 className="text-red-500 hover:text-red-400 font-medium transition-colors"
               >
@@ -163,9 +135,8 @@ const RegisterPage = () => {
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="mt-8 text-center text-gray-500 text-sm">
-          <p>© 2024 VENUM MARKET. Todos os direitos reservados.</p>
+        <div className="mt-8 text-center text-gray-600 text-xs">
+          <p>© {new Date().getFullYear()} Guilda {GUILD_NAME}</p>
         </div>
       </div>
     </div>

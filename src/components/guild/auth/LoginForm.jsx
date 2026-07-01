@@ -34,7 +34,7 @@ const LoginForm = ({ onSuccess, onSwitchToRegister }) => {
     <div className="bg-slate-900 rounded-lg border border-slate-800 p-6 max-w-md mx-auto">
       <div className="text-center mb-6">
         <h2 className="text-2xl font-bold text-white mb-2">Entrar na Guilda</h2>
-        <p className="text-gray-400 text-sm">Acesse o VENUM MARKET Guild Hub</p>
+        <p className="text-gray-400 text-sm">Hub exclusivo — Guilda {GUILD_NAME}</p>
       </div>
 
       {error && (

@@ -67,7 +67,7 @@ const Market = ({ userId }) => {
             <TrendingUp className="w-6 h-6 text-red-500" />
             Inteligência de Mercado
           </h1>
-          <p className="text-gray-400 text-sm mt-1">Análise de arbitragem Albion Online</p>
+          <p className="text-gray-400 text-sm mt-1">Arbitragem e transporte — Guilda I V E N U M I</p>
         </div>
         <div className="flex items-center gap-2">
           <button

@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { Lock, User, AlertCircle } from 'lucide-react';
 import { signUp } from '@/lib/supabase/auth';
+import { GUILD_NAME } from '@/config/guild';
 
 const RegisterForm = ({ onSuccess, onSwitchToLogin }) => {
-  const [username, setUsername] = useState('');
+  const [nickname, setNickname] = useState('');
   const [password, setPassword] = useState('');
-  const [guildCode, setGuildCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -14,7 +14,7 @@ const RegisterForm = ({ onSuccess, onSwitchToLogin }) => {
     setLoading(true);
     setError('');
 
-    const result = await signUp(username, password, guildCode);
+    const result = await signUp(nickname, password);
     if (result.success) {
       onSuccess(result.data);
     } else {
@@ -27,7 +27,7 @@ const RegisterForm = ({ onSuccess, onSwitchToLogin }) => {
     <div className="bg-slate-900 rounded-lg border border-slate-800 p-6 max-w-md mx-auto">
       <div className="text-center mb-6">
         <h2 className="text-2xl font-bold text-white mb-2">Cadastro</h2>
-        <p className="text-gray-400 text-sm">Código de guilda obrigatório</p>
+        <p className="text-gray-400 text-sm">Membros da {GUILD_NAME} apenas</p>
       </div>
 
       {error && (
@@ -39,13 +39,13 @@ const RegisterForm = ({ onSuccess, onSwitchToLogin }) => {
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label className="block text-sm font-medium text-gray-300 mb-2">Usuário</label>
+          <label className="block text-sm font-medium text-gray-300 mb-2">Nickname (Albion)</label>
           <div className="relative">
             <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
             <input
               type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
+              value={nickname}
+              onChange={(e) => setNickname(e.target.value)}
               className="w-full bg-slate-800 border border-slate-700 rounded-lg pl-10 pr-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
               required
             />
@@ -61,19 +61,6 @@ const RegisterForm = ({ onSuccess, onSwitchToLogin }) => {
               onChange={(e) => setPassword(e.target.value)}
               className="w-full bg-slate-800 border border-slate-700 rounded-lg pl-10 pr-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
               minLength={6}
-              required
-            />
-          </div>
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-300 mb-2">Código da Guilda</label>
-          <div className="relative">
-            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
-            <input
-              type="text"
-              value={guildCode}
-              onChange={(e) => setGuildCode(e.target.value.toUpperCase())}
-              className="w-full bg-slate-800 border border-slate-700 rounded-lg pl-10 pr-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
               required
             />
           </div>

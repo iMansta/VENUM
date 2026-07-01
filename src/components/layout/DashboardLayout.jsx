@@ -1,6 +1,7 @@
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { Home, TrendingUp, Target, Hammer, Wrench, Shield, LogOut } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
+import VenumLogo from '@/components/common/VenumLogo';
 
 const DashboardLayout = ({ userId, userRole, profile }) => {
   const location = useLocation();
@@ -25,11 +26,9 @@ const DashboardLayout = ({ userId, userRole, profile }) => {
 
   return (
     <div className="min-h-screen bg-black">
-      {/* Sidebar */}
       <div className="fixed left-0 top-0 h-full w-64 bg-black border-r border-slate-800">
         <div className="p-6">
-          <h1 className="text-xl font-bold text-white">VENUM</h1>
-          <p className="text-sm text-gray-400 mt-1">Albion Online Tools</p>
+          <VenumLogo className="h-12 w-auto" showCredit />
         </div>
 
         <nav className="mt-6">
@@ -64,8 +63,8 @@ const DashboardLayout = ({ userId, userRole, profile }) => {
               <p className="text-sm font-medium text-white truncate">
                 {profile?.username || 'User'}
               </p>
-              <p className="text-xs text-gray-400 truncate">
-                {userRole || 'Member'}
+              <p className="text-xs text-gray-400 truncate capitalize">
+                {userRole || 'member'}
               </p>
             </div>
           </div>
@@ -79,7 +78,6 @@ const DashboardLayout = ({ userId, userRole, profile }) => {
         </div>
       </div>
 
-      {/* Main Content */}
       <div className="ml-64 min-h-screen bg-black">
         <Outlet />
       </div>

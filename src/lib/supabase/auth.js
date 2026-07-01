@@ -1,72 +1,86 @@
 import { supabase } from './client';
+import { verifyGuildMembership } from '@/lib/albion/gameinfo';
 
-/** Converte username em e-mail interno (padrão VENUM). */
-const toEmail = (username) => `${String(username).trim().toLowerCase()}@venum.local`;
+/** Converte nickname em e-mail interno (padrão VENUM). */
+const toEmail = (nickname) =>
+  `${String(nickname).trim().toLowerCase()}@venum.local`;
 
 /**
- * Login com username + senha.
- * @returns {{ success: boolean, data?: object, error?: string }}
+ * Login com nickname do Albion + senha.
+ * Só permite acesso se o perfil estiver ativo (validado na guilda).
  */
-export const signIn = async (username, password) => {
+export const signIn = async (nickname, password) => {
   try {
-    if (!username?.trim() || !password) {
-      return { success: false, error: 'Usuário e senha são obrigatórios' };
+    if (!nickname?.trim() || !password) {
+      return { success: false, error: 'Nickname e senha são obrigatórios' };
     }
 
+    const normalized = nickname.trim();
+
     const { data, error } = await supabase.auth.signInWithPassword({
-      email: toEmail(username),
+      email: toEmail(normalized),
       password,
     });
 
     if (error) throw error;
+
+    if (data.user) {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('is_active, username')
+        .eq('id', data.user.id)
+        .single();
+
+      if (profile && profile.is_active === false) {
+        await supabase.auth.signOut();
+        return {
+          success: false,
+          error:
+            'Conta inativa. Você precisa estar na guilda I V E N U M I. Entre em contato com um oficial.',
+        };
+      }
+    }
+
     return { success: true, data };
   } catch (error) {
     console.error('Sign in error:', error);
     return {
       success: false,
       error: error.message === 'Invalid login credentials'
-        ? 'Usuário ou senha inválidos'
+        ? 'Nickname ou senha inválidos'
         : error.message || 'Erro ao fazer login',
     };
   }
 };
 
 /**
- * Cadastro com validação de código de guilda.
- * @returns {{ success: boolean, data?: object, error?: string }}
+ * Cadastro: nickname = personagem Albion, validado na guilda I V E N U M I.
  */
-export const signUp = async (username, password, guildCode) => {
+export const signUp = async (nickname, password) => {
   try {
-    if (!username?.trim() || !password || !guildCode?.trim()) {
-      return { success: false, error: 'Preencha todos os campos' };
+    if (!nickname?.trim() || !password) {
+      return { success: false, error: 'Preencha nickname e senha' };
     }
 
     if (password.length < 6) {
       return { success: false, error: 'A senha deve ter pelo menos 6 caracteres' };
     }
 
-    const { data: validation, error: codeError } = await supabase.rpc('validate_guild_code', {
-      p_code: guildCode.trim().toUpperCase(),
-    });
+    const normalizedNickname = nickname.trim();
 
-    if (codeError) {
-      console.error('Guild code validation error:', codeError);
-      return { success: false, error: 'Erro ao validar código da guilda' };
+    const guildCheck = await verifyGuildMembership(normalizedNickname);
+    if (!guildCheck.valid) {
+      return { success: false, error: guildCheck.error };
     }
 
-    const result = typeof validation === 'string' ? JSON.parse(validation) : validation;
-    if (!result?.success) {
-      return { success: false, error: result?.message || 'Código de guilda inválido' };
-    }
-
-    const normalizedUsername = username.trim();
     const { data, error } = await supabase.auth.signUp({
-      email: toEmail(normalizedUsername),
+      email: toEmail(normalizedNickname),
       password,
       options: {
         data: {
-          username: normalizedUsername,
-          full_name: normalizedUsername,
+          username: normalizedNickname,
+          full_name: normalizedNickname,
+          albion_player_id: guildCheck.playerId,
         },
       },
     });
@@ -76,7 +90,15 @@ export const signUp = async (username, password, guildCode) => {
     if (data.user) {
       await supabase
         .from('profiles')
-        .update({ username: normalizedUsername })
+        .update({
+          username: normalizedNickname,
+          full_name: normalizedNickname,
+          albion_character_name: normalizedNickname,
+          albion_player_id: guildCheck.playerId,
+          guild_verified: true,
+          last_guild_verified_at: new Date().toISOString(),
+          is_active: true,
+        })
         .eq('id', data.user.id);
     }
 
@@ -87,7 +109,6 @@ export const signUp = async (username, password, guildCode) => {
   }
 };
 
-/** Retorna sessão atual. */
 export const getSession = async () => {
   try {
     const { data, error } = await supabase.auth.getSession();
@@ -99,7 +120,6 @@ export const getSession = async () => {
   }
 };
 
-/** Listener de mudanças de auth (retorna objeto compatível com ProtectedRoute). */
 export const onAuthStateChange = (callback) => {
   return supabase.auth.onAuthStateChange(callback);
 };

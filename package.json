@@ -6,10 +6,15 @@
   "scripts": {
     "dev": "vite",
     "build": "node node_modules/vite/bin/vite.js build",
-    "preview": "node node_modules/vite/bin/vite.js preview"
+    "preview": "node node_modules/vite/bin/vite.js preview",
+    "setup": "node scripts/setup.mjs",
+    "catalog:seed": "node scripts/seed-catalog.js",
+    "collector": "node scripts/collector/index.mjs",
+    "collector:once": "node scripts/collector/index.mjs --once"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.108.1",
+    "dotenv": "^16.4.5",
     "lucide-react": "^0.294.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",

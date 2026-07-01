@@ -4,6 +4,7 @@ import {
   isCacheValid,
 } from '@/lib/supabase/marketCacheByLocation';
 import { getMarketSettings } from '@/lib/supabase/marketSettings';
+import { getArbitrageCatalogItemIds } from '@/lib/supabase/catalog';
 import {
   getRouteRisk,
   calculateExpectedProfit,
@@ -167,6 +168,9 @@ export const fetchTopOpportunities = async (
   } = options;
 
   let ids = [...(itemIds || [])];
+  if (ids.length === 0) {
+    ids = await getArbitrageCatalogItemIds({ minTier: 4, maxTier: 8, limit: 500 });
+  }
   if (!includeAllTiers) {
     ids = ids.filter((id) => {
       const { tier } = parseItemId(id);

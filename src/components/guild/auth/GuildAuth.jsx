@@ -1,7 +1,9 @@
 import { useState } from 'react';
-import { Shield, Users } from 'lucide-react';
+import { Users } from 'lucide-react';
 import LoginForm from './LoginForm';
 import RegisterForm from './RegisterForm';
+import VenumLogo from '@/components/common/VenumLogo';
+import { GUILD_NAME } from '@/config/guild';
 
 /**
  * GuildAuth component - Main authentication container for Guild Hub
@@ -24,11 +26,10 @@ const GuildAuth = ({ onAuthSuccess }) => {
       <div className="w-full max-w-2xl">
         {/* Header */}
         <div className="text-center mb-8">
-          <div className="flex items-center justify-center gap-3 mb-4">
-            <Shield className="w-12 h-12 text-amber-500" />
-            <h1 className="text-4xl font-bold text-white">I V E N U M I</h1>
+          <div className="flex justify-center mb-4">
+            <VenumLogo className="h-16 w-auto" />
           </div>
-          <p className="text-gray-400 text-lg">Guild Hub - VENUM MARKET</p>
+          <p className="text-gray-400 text-lg">Hub da Guilda {GUILD_NAME}</p>
           <div className="flex items-center justify-center gap-2 mt-2 text-sm text-gray-500">
             <Users className="w-4 h-4" />
             <span>Área Exclusiva para Membros</span>
@@ -50,8 +51,7 @@ const GuildAuth = ({ onAuthSuccess }) => {
 
         {/* Footer Info */}
         <div className="mt-6 text-center text-sm text-gray-500">
-          <p>Área restrita. Acesso mediante código de recrutamento válido.</p>
-          <p className="mt-1">Entre em contato com os oficiais da guilda para obter seu código.</p>
+          <p>Área restrita a membros da guilda {GUILD_NAME}.</p>
         </div>
       </div>
     </div>
