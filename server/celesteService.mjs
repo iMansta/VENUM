@@ -241,3 +241,50 @@ export async function runFullServerSync() {
   results.missions = await syncMissionNotifications();
   return results;
 }
+
+/**
+ * Coleta de telemetria local do cliente Celeste (logs do jogo).
+ * Mantém payload bruto para evoluir regras sem perder histórico.
+ */
+export async function ingestCelesteTelemetry(payload = {}) {
+  const supabase = getSupabaseAdmin();
+  const clientId = String(payload.clientId || '').trim();
+  const observations = Array.isArray(payload.observations) ? payload.observations : [];
+  const meta = payload.meta && typeof payload.meta === 'object' ? payload.meta : {};
+
+  if (!clientId) {
+    throw new Error('clientId obrigatório');
+  }
+
+  const now = new Date().toISOString();
+
+  await supabase.from('celeste_clients').upsert(
+    {
+      client_id: clientId,
+      last_seen_at: now,
+      app_version: String(meta.version || ''),
+      host_name: String(meta.hostName || ''),
+      game_log_path: String(meta.gameLogPath || ''),
+      guild_name: GUILD_NAME,
+    },
+    { onConflict: 'client_id' }
+  );
+
+  if (observations.length === 0) {
+    return { clientId, inserted: 0 };
+  }
+
+  const capped = observations.slice(0, 200).map((obs) => ({
+    client_id: clientId,
+    observed_at: obs.observedAt || now,
+    type: String(obs.type || 'raw'),
+    value_numeric:
+      Number.isFinite(Number(obs.valueNumeric)) ? Number(obs.valueNumeric) : null,
+    payload: obs.payload && typeof obs.payload === 'object' ? obs.payload : { raw: String(obs.raw || '') },
+  }));
+
+  const { error } = await supabase.from('celeste_observations').insert(capped);
+  if (error) throw error;
+
+  return { clientId, inserted: capped.length };
+}

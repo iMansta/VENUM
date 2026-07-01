@@ -6,6 +6,7 @@ import {
   syncGuildMembers,
   syncGameEvents,
   syncMissionNotifications,
+  ingestCelesteTelemetry,
   runFullServerSync,
 } from '../server/celesteService.mjs';
 
@@ -80,6 +81,11 @@ export default async function handler(req, res) {
       }
       case 'missions': {
         res.status(200).json({ ok: true, ...(await syncMissionNotifications()) });
+        break;
+      }
+      case 'telemetry': {
+        const result = await ingestCelesteTelemetry(req.body || {});
+        res.status(200).json({ ok: true, ...result });
         break;
       }
       case 'sync': {

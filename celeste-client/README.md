@@ -1,10 +1,11 @@
 # Celeste Client (Windows)
 
 Executável estilo Albion Data Client — console + bandeja do sistema.
+Foco: rodar em massa nos desktops da guilda e alimentar o hub com dados locais + mercado.
 
 ## Build (admin, uma vez)
 
-Requisito: [Go 1.22+](https://go.dev/dl/)
+Requisito: [Go 1.22+](https://go.dev/dl/) (somente para quem compila)
 
 ```powershell
 cd celeste-client
@@ -17,7 +18,19 @@ Gera `celeste.exe`. Depois, na raiz do projeto:
 npm run celeste:pack
 ```
 
-Isso cria `public/downloads/celeste.zip` (exe + Instalar-Celeste.bat).
+Isso cria `public/downloads/celeste.zip` (exe + instalador BAT).
+
+## Setup .exe (instalador amigável)
+
+Requisito: [Inno Setup 6](https://jrsoftware.org/isinfo.php)
+
+```powershell
+cd celeste-client
+.\build-installer.ps1
+```
+
+Gera `public/downloads/Celeste-Setup.exe`.
+Para MSI, recomendo etapa futura com WiX Toolset; o `.exe` já cobre 100% da instalação para jogador leigo.
 
 ## O que o .exe contém (embutido)
 
@@ -36,6 +49,7 @@ Isso cria `public/downloads/celeste.zip` (exe + Instalar-Celeste.bat).
 | `GUILD_NAME` | `I V E N U M I` |
 
 Depois de alterar env vars na Vercel, faça **Redeploy**.
+Se o frontend continuar chamando `moglqrrmqokhuzjoigbr`, a Vercel ainda está com URL antiga.
 
 ## Instalação (membro da guilda)
 
@@ -44,3 +58,21 @@ Depois de alterar env vars na Vercel, faça **Redeploy**.
 3. Desktop → **Iniciar Celeste**
 
 Sem Node, sem chaves, sem configuração.
+
+## Como alimenta o sistema (modelo fan-in)
+
+Mesmo conceito do Albion Data Client:
+
+1. **Muitos clientes desktop** (cada player) coletam dados locais.
+2. **Envio assíncrono para API central** (`/api/celeste?action=telemetry`).
+3. **Servidor normaliza e grava no Supabase**:
+   - `celeste_clients` (heartbeat por máquina)
+   - `celeste_observations` (fama, gathering, mob_kill, mission)
+4. Hub usa isso para evoluir ranking, missões dinâmicas e economia.
+
+Arquivos principais:
+- watcher local: `celeste-client/collector/logs.go`
+- loop de envio: `celeste-client/syncer/run.go`
+- endpoint server: `api/celeste.js`
+- persistência server: `server/celesteService.mjs`
+- schema: `supabase/UPDATE_CELESTE_INGESTION.sql`

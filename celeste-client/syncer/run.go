@@ -4,11 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"sync/atomic"
 	"time"
 
 	"github.com/venum-i/celeste/api"
+	"github.com/venum-i/celeste/collector"
 	"github.com/venum-i/celeste/config"
 	"github.com/venum-i/celeste/logger"
 )
@@ -32,10 +34,13 @@ func SetPaused(v bool) { paused.Store(v) }
 
 func RunLoop(stop <-chan struct{}) {
 	client := api.New()
+	clientID := collector.EnsureClientID()
+	watcher := collector.NewWatcher()
 	lastGuild := time.Time{}
 
 	logger.Info("Celeste — guilda %s", config.GuildName)
 	logger.Info("Hub: %s", config.APIBase)
+	logger.Info("Client ID: %s", clientID)
 
 	if err := client.Ping(); err != nil {
 		logger.Error("Falha ao conectar ao hub: %v", err)
@@ -44,7 +49,7 @@ func RunLoop(stop <-chan struct{}) {
 		logger.Info("Conectado ao hub VENUM")
 	}
 
-	runCycle(client, &lastGuild)
+	runCycle(client, clientID, watcher, &lastGuild)
 
 	ticker := time.NewTicker(config.SyncInterval)
 	defer ticker.Stop()
@@ -55,13 +60,13 @@ func RunLoop(stop <-chan struct{}) {
 			return
 		case <-ticker.C:
 			if !paused.Load() {
-				runCycle(client, &lastGuild)
+				runCycle(client, clientID, watcher, &lastGuild)
 			}
 		}
 	}
 }
 
-func runCycle(client *api.Client, lastGuild *time.Time) {
+func runCycle(client *api.Client, clientID string, watcher *collector.Watcher, lastGuild *time.Time) {
 	if !running.CompareAndSwap(false, true) {
 		return
 	}
@@ -76,6 +81,26 @@ func runCycle(client *api.Client, lastGuild *time.Time) {
 
 	if err := syncPrices(client); err != nil {
 		logger.Error("Preços: %v", err)
+	}
+
+	observations, err := watcher.ReadObservations(100)
+	if err != nil {
+		logger.Warn("Logs Albion: %v", err)
+	} else if len(observations) > 0 {
+		inserted, telErr := client.SendTelemetry(api.TelemetryPayload{
+			ClientID:     clientID,
+			Observations: observations,
+			Meta: map[string]any{
+				"version":     config.Version,
+				"hostName":    os.Getenv("COMPUTERNAME"),
+				"gameLogPath": watcher.Path(),
+			},
+		})
+		if telErr != nil {
+			logger.Warn("Telemetria: %v", telErr)
+		} else {
+			logger.Info("%d observações locais enviadas", inserted)
+		}
 	}
 
 	if time.Since(*lastGuild) >= config.GuildEvery {
@@ -167,7 +192,9 @@ func syncPrices(client *api.Client) error {
 func TriggerNow() {
 	go func() {
 		client := api.New()
+		clientID := collector.EnsureClientID()
+		watcher := collector.NewWatcher()
 		last := time.Time{}.Add(-config.GuildEvery)
-		runCycle(client, &last)
+		runCycle(client, clientID, watcher, &last)
 	}()
 }

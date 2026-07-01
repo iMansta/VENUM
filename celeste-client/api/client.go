@@ -121,3 +121,28 @@ func (c *Client) SyncEvents() error {
 func (c *Client) SyncMissions() error {
 	return c.do(http.MethodPost, "missions", map[string]string{"action": "missions"}, nil)
 }
+
+type Observation struct {
+	Type         string         `json:"type"`
+	ObservedAt   string         `json:"observedAt,omitempty"`
+	ValueNumeric float64        `json:"valueNumeric,omitempty"`
+	Payload      map[string]any `json:"payload,omitempty"`
+	Raw          string         `json:"raw,omitempty"`
+}
+
+type TelemetryPayload struct {
+	ClientID     string        `json:"clientId"`
+	Observations []Observation `json:"observations"`
+	Meta         map[string]any `json:"meta,omitempty"`
+}
+
+func (c *Client) SendTelemetry(payload TelemetryPayload) (int, error) {
+	var out struct {
+		OK       bool `json:"ok"`
+		Inserted int  `json:"inserted"`
+	}
+	if err := c.do(http.MethodPost, "telemetry", payload, &out); err != nil {
+		return 0, err
+	}
+	return out.Inserted, nil
+}
