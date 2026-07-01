@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Lock, User, AlertCircle } from 'lucide-react';
 import { signIn } from '../../../lib/supabase/auth';
+import { GUILD_NAME } from '@/config/guild';
 
 /**
  * LoginForm component - User login with username and password
@@ -55,6 +56,7 @@ const LoginForm = ({ onSuccess, onSwitchToRegister }) => {
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
+              autoComplete="username"
               className="w-full bg-slate-800 border border-slate-700 rounded-lg pl-10 pr-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
               placeholder="seu_usuario"
               required
@@ -72,6 +74,7 @@ const LoginForm = ({ onSuccess, onSwitchToRegister }) => {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
               className="w-full bg-slate-800 border border-slate-700 rounded-lg pl-10 pr-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
               placeholder="••••••••"
               required

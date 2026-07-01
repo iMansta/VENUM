@@ -46,6 +46,7 @@ const RegisterForm = ({ onSuccess, onSwitchToLogin }) => {
               type="text"
               value={nickname}
               onChange={(e) => setNickname(e.target.value)}
+              autoComplete="username"
               className="w-full bg-slate-800 border border-slate-700 rounded-lg pl-10 pr-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
               required
             />
@@ -59,6 +60,7 @@ const RegisterForm = ({ onSuccess, onSwitchToLogin }) => {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              autoComplete="new-password"
               className="w-full bg-slate-800 border border-slate-700 rounded-lg pl-10 pr-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
               minLength={6}
               required

@@ -5,6 +5,48 @@ import { verifyGuildMembership } from '@/lib/albion/gameinfo';
 const toEmail = (nickname) =>
   `${String(nickname).trim().toLowerCase()}@venum.local`;
 
+const nicknameExists = async (nickname) => {
+  const normalized = String(nickname).trim();
+  const lower = normalized.toLowerCase();
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id, username, albion_character_name')
+    .or(`username.ilike.${normalized},username.ilike.${lower},albion_character_name.ilike.${normalized},albion_character_name.ilike.${lower}`)
+    .limit(1);
+
+  if (error) return false;
+  return Boolean(data?.length);
+};
+
+/**
+ * Fallback de migração:
+ * se o projeto Supabase foi trocado e o usuário ainda não existe,
+ * cria conta automaticamente usando nickname+senha.
+ */
+const autoProvisionFromNickname = async (nickname, password) => {
+  const exists = await nicknameExists(nickname);
+  if (exists) {
+    return { success: false, error: 'Nickname ou senha inválidos' };
+  }
+
+  const registerResult = await signUp(nickname, password);
+  if (!registerResult.success) {
+    return registerResult;
+  }
+
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email: toEmail(nickname),
+    password,
+  });
+
+  if (error) {
+    return { success: false, error: error.message || 'Erro ao entrar após criar conta' };
+  }
+
+  return { success: true, data, autoProvisioned: true };
+};
+
 /**
  * Login com nickname do Albion + senha.
  * Só permite acesso se o perfil estiver ativo (validado na guilda).
@@ -22,7 +64,14 @@ export const signIn = async (nickname, password) => {
       password,
     });
 
-    if (error) throw error;
+    if (error) {
+      if (error.message === 'Invalid login credentials') {
+        const fallback = await autoProvisionFromNickname(normalized, password);
+        if (fallback.success) return fallback;
+        return fallback;
+      }
+      throw error;
+    }
 
     if (data.user) {
       const { data: profile } = await supabase
