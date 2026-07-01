@@ -15,81 +15,22 @@ import {
   ChevronDown,
 } from 'lucide-react';
 import { getCachedMarketPricesByLocation } from '@/lib/supabase/marketCacheByLocation';
-import { MARKET_ITEMS } from '@/constants/marketItems';
 import { buildItemId } from '@/constants/marketItems';
+import {
+  TIERS,
+  CITIES,
+  RESOURCE_TYPES,
+  calcRefining,
+  calcCrafting,
+  refineInputsPerUnit,
+} from '@/lib/production/calculator';
 
 /**
- * Production Calculator — Módulo de Craft & Refino para Albion Online.
- *
- * Unifica o cálculo de duas operações de produção:
- *   1) Refino de recursos (Wood→Planks, Ore→Metalbar, etc.)
- *   2) Craft de equipamento (consumindo recursos refinados)
- *
- * Integra-se com a API/cache de preços já existente no projeto.
- * As taxas oficiais do jogo são aplicadas por cidade (RRR base) e
- * pelo bônus de foco.
+ * Production Calculator — Craft & Refino Albion Online.
  */
 
-// =============================================================================
-// Constantes oficiais do Albion Online
-// =============================================================================
+const TIER_PREFIX = { 4: 'T4', 5: 'T5', 6: 'T6', 7: 'T7', 8: 'T8' };
 
-const TIERS = [4, 5, 6, 7, 8];
-
-// Cidades reais do jogo + Caerleon (royals) + Brecilien.
-const CITIES = [
-  { id: 'Martlock',      name: 'Martlock',     rrBonus: 18, focusBonus: 30, hasFocus: true  },
-  { id: 'Bridgewatch',   name: 'Bridgewatch',  rrBonus: 18, focusBonus: 30, hasFocus: true  },
-  { id: 'Lymhurst',      name: 'Lymhurst',     rrBonus: 18, focusBonus: 30, hasFocus: true  },
-  { id: 'Fort Sterling', name: 'Fort Sterling',rrBonus: 18, focusBonus: 30, hasFocus: true  },
-  { id: 'Thetford',      name: 'Thetford',     rrBonus: 18, focusBonus: 30, hasFocus: true  },
-  { id: 'Caerleon',      name: 'Caerleon',     rrBonus: 0,  focusBonus: 0,  hasFocus: false },
-  { id: 'Brecilien',     name: 'Brecilien',    rrBonus: 0,  focusBonus: 0,  hasFocus: false },
-];
-
-// Famílias de recursos crus e refinados.
-const RESOURCE_TYPES = [
-  { id: 'wood',   name: 'Madeira',   raw: 'WOOD',        refined: 'PLANKS'        },
-  { id: 'ore',    name: 'Minério',   raw: 'ORE',         refined: 'METALBAR'      },
-  { id: 'fiber',  name: 'Fibra',     raw: 'FIBER',       refined: 'CLOTH'         },
-  { id: 'hide',   name: 'Couro',     raw: 'HIDE',        refined: 'LEATHER'       },
-  { id: 'rock',   name: 'Pedra',     raw: 'ROCK',        refined: 'STONEBLOCK'    },
-];
-
-// RRR base (sem bônus) por tier — valores médios oficiais do jogo.
-const BASE_RRR = {
-  2: 24.5,
-  3: 35.4,
-  4: 43.1,
-  5: 47.8,
-  6: 53.6,
-  7: 58.5,
-  8: 64.7,
-};
-
-// Foco: +43% na RRR (número médio oficial usado pelos calculadores da
-// comunidade; corresponde ao foco base sem premium).
-const FOCUS_RRR_BONUS = 43;
-
-// Custo de foco por item (varia por tier). Valores médios da wiki.
-const FOCUS_COST = {
-  4: 144,
-  5: 216,
-  6: 288,
-  7: 432,
-  8: 756,
-};
-
-// Imposto de venda: 4% com premium, 8% sem. Setup fee: 2.5% (Caerleon/BM).
-const MARKET_TAX_PREMIUM = 0.04;
-const MARKET_TAX_NORMAL = 0.08;
-const SETUP_FEE = 0.025;
-
-// =============================================================================
-// Receitas de craft (oficiais do Albion Online — fonte: wiki)
-// =============================================================================
-// Apenas equipamentos aceitos no Black Market. Cada receita lista os
-// recursos refinados necessários para craftar UMA unidade.
 const CRAFT_RECIPES = [
   {
     id: 'BAG',
@@ -118,7 +59,7 @@ const CRAFT_RECIPES = [
   {
     id: 'OFF_SHIELD',
     name: 'Escudo (Off Hand)',
-    icon: 'T4_SHIELD',
+    icon: 'T4_OFF_SHIELD',
     materials: { T4: { METALBAR: 12, PLANKS: 8 }, T5: { METALBAR: 16, PLANKS: 12 }, T6: { METALBAR: 20, PLANKS: 16 }, T7: { METALBAR: 24, PLANKS: 20 }, T8: { METALBAR: 28, PLANKS: 24 } },
   },
   {
@@ -141,8 +82,6 @@ const CRAFT_RECIPES = [
   },
 ];
 
-const TIER_PREFIX = { 4: 'T4', 5: 'T5', 6: 'T6', 7: 'T7', 8: 'T8' };
-
 // =============================================================================
 // Componente principal
 // =============================================================================
@@ -161,6 +100,7 @@ const Production = () => {
   const [refStationFee, setRefStationFee] = useState(0);
   const [refPremium, setRefPremium] = useState(false);
   const [refQuantity, setRefQuantity] = useState(100);
+  const [refLowerRefinedPrice, setRefLowerRefinedPrice] = useState(0);
 
   // --- Craft ---
   const [crRecipe, setCrRecipe] = useState(CRAFT_RECIPES[0]);
@@ -239,175 +179,87 @@ const Production = () => {
     };
   }, []);
 
-  // =========================================================================
-  // Cálculos de Refino
-  // =========================================================================
-  const refiningResult = useMemo(() => {
-    const city = CITIES.find((c) => c.id === refCity) || CITIES[0];
-    const useFocus = refUseFocus && city.hasFocus;
+  const refResObj = RESOURCE_TYPES.find((r) => r.id === refResource) || RESOURCE_TYPES[0];
+  const refCityObj = CITIES.find((c) => c.id === refCity) || CITIES[0];
+  const crCityObj = CITIES.find((c) => c.id === crCity) || CITIES[0];
 
-    // RRR efetiva: base + bônus de cidade + bônus de foco
-    const baseRrr = BASE_RRR[refTier] || 43.1;
-    const rrrEffective = useFocus
-      ? baseRrr + city.rrBonus + FOCUS_RRR_BONUS
-      : baseRrr + city.rrBonus;
+  // Preenche preços do cache quando tier/recurso/receita mudam
+  useEffect(() => {
+    if (!Object.keys(pricesByItem).length) return;
 
-    const taxRate = refPremium ? MARKET_TAX_PREMIUM : MARKET_TAX_NORMAL;
+    const rawId = buildItemId(refTier, refResObj.raw, 0);
+    const refinedId = buildItemId(refTier, refResObj.refined, 0);
+    const inputs = refineInputsPerUnit(refTier);
+    const lowerId = inputs.lowerTier
+      ? buildItemId(inputs.lowerTier, refResObj.refined, 0)
+      : null;
 
-    const rawCostTotal = refRawPrice * refQuantity;
-    const refinedValueTotal = refRefinedPrice * refQuantity;
-
-    // Recursos retornados (vendidos pelo preço do cru)
-    const returnedQty = (refQuantity * rrrEffective) / 100;
-    const returnedValue = returnedQty * refRawPrice;
-
-    // Taxa da estação de nutrição: cobre 100 de nutrição com `fee` prata.
-    // Cada craft/refino consome ~100 nut por tier 4; valores médios.
-    const stationFeeTotal = (refStationFee / 100) * refQuantity;
-
-    // Custo real = custo bruto − retorno + taxa da estação
-    const realCost = Math.max(0, rawCostTotal - returnedValue + stationFeeTotal);
-
-    // Valor bruto de venda (antes dos impostos)
-    const grossSellValue = refinedValueTotal;
-
-    // Impostos de mercado
-    const marketTax = grossSellValue * taxRate;
-    const setupFee = grossSellValue * SETUP_FEE;
-
-    // Líquido: Venda − Impostos
-    const netSellValue = grossSellValue - marketTax - setupFee;
-
-    // Lucro líquido real
-    const netProfit = netSellValue - realCost;
-
-    // Margem sobre o custo
-    const margin = realCost > 0 ? (netProfit / realCost) * 100 : 0;
-
-    return {
-      baseRrr,
-      rrrEffective,
-      rawCostTotal,
-      refinedValueTotal,
-      returnedQty,
-      returnedValue,
-      stationFeeTotal,
-      realCost,
-      grossSellValue,
-      marketTax,
-      setupFee,
-      netSellValue,
-      netProfit,
-      margin,
-      taxRate,
-      useFocus,
-    };
-  }, [
-    refCity, refTier, refUseFocus, refRawPrice, refRefinedPrice,
-    refStationFee, refPremium, refQuantity,
-  ]);
-
-  // =========================================================================
-  // Cálculos de Craft
-  // =========================================================================
-  const craftingResult = useMemo(() => {
-    const city = CITIES.find((c) => c.id === crCity) || CITIES[0];
-    const useFocus = crUseFocus && city.hasFocus;
-    const taxRate = crPremium ? MARKET_TAX_PREMIUM : MARKET_TAX_NORMAL;
+    if (pricesByItem[rawId]) setRefRawPrice(pricesByItem[rawId]);
+    if (pricesByItem[refinedId]) setRefRefinedPrice(pricesByItem[refinedId]);
+    if (lowerId && pricesByItem[lowerId]) {
+      /* lower refined price used inside calcRefining via refLowerRefinedPrice state */
+    }
 
     const tierKey = `T${crTier}`;
-    const recipe = crRecipe.materials[tierKey] || {};
-    const recipeNames = Object.keys(recipe);
-    const totalMaterialUnits = Object.values(recipe).reduce((s, n) => s + n, 0);
+    const recipeMats = crRecipe.materials[tierKey] || {};
+    const sellId = buildItemId(crTier, crRecipe.id, 0);
+    if (pricesByItem[sellId]) setCrSellPrice(pricesByItem[sellId]);
+  }, [pricesByItem, refTier, refResource, crTier, crRecipe.id]);
 
-    // Pega preço de mercado de cada material (cache) ou usa preço
-    // manual (vindo de preços carregados).
-    const materialBreakdown = recipeNames.map((resourceId) => {
-      const itemId = buildItemId(crTier, resourceId, 0);
-      const marketPrice = pricesByItem[itemId] || 0;
-      return {
-        resourceId,
-        itemId,
-        quantity: recipe[resourceId],
-        marketPrice,
-      };
+  useEffect(() => {
+    const inputs = refineInputsPerUnit(refTier);
+    if (!inputs.lowerTier || !Object.keys(pricesByItem).length) return;
+    const lowerId = buildItemId(inputs.lowerTier, refResObj.refined, 0);
+    if (pricesByItem[lowerId]) setRefLowerRefinedPrice(pricesByItem[lowerId]);
+  }, [pricesByItem, refTier, refResource]);
+
+  const refiningResult = useMemo(() => {
+    return calcRefining({
+      tier: refTier,
+      city: refCityObj,
+      useFocus: refUseFocus,
+      rawPrice: refRawPrice,
+      lowerRefinedPrice: refLowerRefinedPrice,
+      refinedPrice: refRefinedPrice,
+      stationFeePer100: refStationFee,
+      premium: refPremium,
+      quantity: refQuantity,
+    });
+  }, [
+    refTier, refCityObj, refUseFocus, refRawPrice, refLowerRefinedPrice,
+    refRefinedPrice, refStationFee, refPremium, refQuantity,
+  ]);
+
+  const craftingResult = useMemo(() => {
+    const tierKey = `T${crTier}`;
+    const recipe = crRecipe.materials[tierKey] || {};
+    const materialPrices = {};
+    Object.keys(recipe).forEach((resourceId) => {
+      materialPrices[resourceId] = pricesByItem[buildItemId(crTier, resourceId, 0)] || 0;
     });
 
-    // Custo base de materiais
-    const materialCost = materialBreakdown.reduce(
-      (sum, m) => sum + (m.marketPrice * m.quantity),
-      0
-    );
-    const totalMaterialCost = materialCost * crQuantity;
+    const result = calcCrafting({
+      tier: crTier,
+      city: crCityObj,
+      useFocus: crUseFocus,
+      materials: recipe,
+      materialPrices,
+      sellPrice: crSellPrice,
+      stationFeePer100: crStationFee,
+      premium: crPremium,
+      quantity: crQuantity,
+    });
 
-    // RRR por material refinado: assumimos a RRR do refino da cidade
-    // para o tier correspondente (simplificação razoável).
-    const baseRrr = BASE_RRR[crTier] || 43.1;
-    const rrrEffective = useFocus
-      ? baseRrr + city.rrBonus + FOCUS_RRR_BONUS
-      : baseRrr + city.rrBonus;
+    const materialBreakdown = result.breakdown.map((m) => ({
+      resourceId: m.resourceId,
+      itemId: buildItemId(crTier, m.resourceId, 0),
+      quantity: m.qtyPerUnit,
+      marketPrice: m.unitPrice,
+    }));
 
-    const returnedMaterialUnits = (totalMaterialUnits * rrrEffective) / 100;
-    const returnedMaterialValue = (returnedMaterialUnits / totalMaterialUnits) * totalMaterialCost;
-
-    // Custo de foco
-    const focusCostPerItem = FOCUS_COST[crTier] || 144;
-    const focusCostTotal = useFocus ? focusCostPerItem * crQuantity : 0;
-    // Cada ponto de foco custa aproximadamente 2.5 silver (sem premium)
-    // ou 1.5 silver (com premium). Usamos 2.5 como valor conservador.
-    const focusValue = focusCostTotal * 2.5;
-
-    // Taxa da estação de nutrição: por unidade craftada.
-    const stationFeeTotal = (crStationFee / 100) * crQuantity;
-
-    // Custo real de produção
-    const realCost = Math.max(
-      0,
-      totalMaterialCost - returnedMaterialValue + focusValue + stationFeeTotal
-    );
-
-    // Receita bruta de venda
-    const grossSellValue = crSellPrice * crQuantity;
-
-    // Impostos
-    const marketTax = grossSellValue * taxRate;
-    const setupFee = grossSellValue * SETUP_FEE;
-    const netSellValue = grossSellValue - marketTax - setupFee;
-
-    // Lucro líquido real
-    const netProfit = netSellValue - realCost;
-
-    // Margem
-    const margin = realCost > 0 ? (netProfit / realCost) * 100 : 0;
-
-    // Lucro por ponto de foco
-    const profitPerFocusPoint = focusCostTotal > 0 ? netProfit / focusCostTotal : 0;
-
-    return {
-      baseRrr,
-      rrrEffective,
-      totalMaterialUnits,
-      materialBreakdown,
-      materialCost,
-      totalMaterialCost,
-      returnedMaterialUnits,
-      returnedMaterialValue,
-      focusCostTotal,
-      focusValue,
-      stationFeeTotal,
-      realCost,
-      grossSellValue,
-      marketTax,
-      setupFee,
-      netSellValue,
-      netProfit,
-      margin,
-      profitPerFocusPoint,
-      useFocus,
-      taxRate,
-    };
+    return { ...result, materialBreakdown, rrrEffective: result.rrr };
   }, [
-    crCity, crTier, crUseFocus, crRecipe, crSellPrice, crStationFee,
+    crCityObj, crTier, crUseFocus, crRecipe, crSellPrice, crStationFee,
     crPremium, crQuantity, pricesByItem,
   ]);
 
@@ -503,6 +355,8 @@ const Production = () => {
           quantity={refQuantity}
           setQuantity={setRefQuantity}
           result={refiningResult}
+          lowerRefinedPrice={refLowerRefinedPrice}
+          setLowerRefinedPrice={setRefLowerRefinedPrice}
           formatSilver={formatSilver}
         />
       )}
@@ -634,36 +488,34 @@ const CraftCalculator = ({
           title="Custo Total Real de Produção"
           items={[
             { label: 'Custo base dos materiais', value: formatSilver(result.totalMaterialCost) },
-            { label: `(-) Valor dos recursos retornados (${result.rrrEffective.toFixed(1)}% RRR)`, value: `−${formatSilver(result.returnedMaterialValue)}`, color: 'text-emerald-400' },
-            { label: '(+) Custo do foco (pontos × 2.5 prata/pt)', value: `+${formatSilver(result.focusValue)}`, color: 'text-amber-400', visible: result.useFocus },
-            { label: '(+) Station fee de nutrição', value: `+${formatSilver(result.stationFeeTotal)}`, color: 'text-amber-400' },
+            { label: `(-) Materiais devolvidos (${result.rrrEffective.toFixed(1)}% RRR)`, value: `−${formatSilver(result.returnedValueTotal)}`, color: 'text-emerald-400' },
+            { label: '(+) Taxa da estação (nutrição)', value: `+${formatSilver(result.stationFeeTotal)}`, color: 'text-amber-400' },
           ]}
           total={{ label: 'CUSTO REAL', value: formatSilver(result.realCost) }}
         />
 
         <ResultCard
           icon={<TrendingUp className="w-5 h-5 text-emerald-400" />}
-          title="Receita Bruta de Venda"
+          title="Receita de Venda"
           items={[
-            { label: 'Venda bruta no mercado', value: formatSilver(result.grossSellValue) },
-            { label: `(−) Imposto de mercado (${(result.taxRate * 100).toFixed(0)}%)`, value: `−${formatSilver(result.marketTax)}`, color: 'text-red-400' },
+            { label: 'Venda bruta no mercado', value: formatSilver(result.grossSell) },
+            { label: `(−) Imposto (${(result.taxRate * 100).toFixed(0)}%)`, value: `−${formatSilver(result.marketTax)}`, color: 'text-red-400' },
             { label: '(−) Setup fee (2.5%)', value: `−${formatSilver(result.setupFee)}`, color: 'text-red-400' },
           ]}
-          total={{ label: 'RECEITA LÍQUIDA', value: formatSilver(result.netSellValue) }}
+          total={{ label: 'RECEITA LÍQUIDA', value: formatSilver(result.netSell) }}
         />
 
         <ResultCard
           icon={result.netProfit >= 0
             ? <Check className="w-5 h-5 text-emerald-400" />
             : <AlertCircle className="w-5 h-5 text-red-400" />}
-          title="Lucro Líquido Real"
+          title="Resultado Final"
           items={[
-            { label: 'Receita Líquida − Custo Real', value: formatSilver(result.netProfit), big: true,
+            { label: 'Lucro líquido (venda − custo)', value: formatSilver(result.netProfit), big: true,
               color: result.netProfit >= 0 ? 'text-emerald-400' : 'text-red-400' },
-            { label: 'Margem de Lucro', value: `${result.margin.toFixed(2)}%`,
+            { label: 'Margem sobre custo', value: `${result.margin.toFixed(2)}%`,
               color: result.margin >= 0 ? 'text-emerald-400' : 'text-red-400' },
-            { label: 'Lucro por ponto de foco', value: formatSilver(result.profitPerFocusPoint),
-              visible: result.useFocus },
+            { label: 'Lucro por unidade', value: formatSilver(result.netProfit / Math.max(quantity, 1)) },
           ]}
           footer={result.netProfit >= 0
             ? <span className="text-emerald-400 font-semibold flex items-center gap-2">
@@ -713,6 +565,7 @@ const CraftCalculator = ({
 const RefineCalculator = ({
   resource, setResource, tier, setTier, city, setCity,
   useFocus, setUseFocus, rawPrice, setRawPrice, refinedPrice, setRefinedPrice,
+  lowerRefinedPrice, setLowerRefinedPrice,
   stationFee, setStationFee, premium, setPremium, quantity, setQuantity,
   result, formatSilver,
 }) => {
@@ -773,13 +626,19 @@ const RefineCalculator = ({
         </FieldGroup>
 
         <div className="grid grid-cols-2 gap-3">
-          <FieldGroup label="Preço do recurso cru">
+          <FieldGroup label={`Preço T${tier} cru`}>
             <NumberInput value={rawPrice} onChange={setRawPrice} min={0} step={1} />
           </FieldGroup>
-          <FieldGroup label="Preço do refinado">
+          <FieldGroup label={`Preço T${tier} refinado`}>
             <NumberInput value={refinedPrice} onChange={setRefinedPrice} min={0} step={1} />
           </FieldGroup>
         </div>
+
+        {tier > 2 && (
+          <FieldGroup label={`Preço T${tier - 1} refinado (insumo)`}>
+            <NumberInput value={lowerRefinedPrice} onChange={setLowerRefinedPrice} min={0} step={1} />
+          </FieldGroup>
+        )}
 
         <Toggle
           label="Usar Foco no refino"
@@ -806,14 +665,12 @@ const RefineCalculator = ({
         <div className="bg-zinc-900 rounded-lg border border-zinc-800 p-4 text-xs text-zinc-400 flex items-start gap-2">
           <Info className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
           <div>
-            Refino no Albion Online:{' '}
-            <span className="font-mono text-zinc-300">
-              T{tier}_{resObj.raw} → T{tier}_{resObj.refined}
+            Refino: <span className="font-mono text-zinc-300">
+              {tier > 2 ? `1× T${tier}_${resObj.raw} + 1× T${tier - 1}_${resObj.refined} → 1× T${tier}_${resObj.refined}` : `1× T${tier}_${resObj.raw} → 1× T${tier}_${resObj.refined}`}
             </span>
-            . RRR base T{tier}: {(result.baseRrr).toFixed(1)}%. Bônus de {cityObj.name}:{' '}
-            +{cityObj.rrBonus}%. Total efetivo: <span className="font-bold text-amber-400">
-              {result.rrrEffective.toFixed(1)}%
-            </span>.
+            . RRR efetiva em {cityObj.name}:{' '}
+            <span className="font-bold text-amber-400">{result.rrr.toFixed(1)}%</span>
+            {result.focusActive && ' (com foco)'}.
           </div>
         </div>
 
@@ -821,33 +678,33 @@ const RefineCalculator = ({
           icon={<Coins className="w-5 h-5 text-amber-500" />}
           title="Custo Total Real"
           items={[
-            { label: 'Custo do recurso cru', value: formatSilver(result.rawCostTotal) },
-            { label: `(−) Valor dos recursos retornados`, value: `−${formatSilver(result.returnedValue)}`, color: 'text-emerald-400' },
-            { label: '(+) Station fee de nutrição', value: `+${formatSilver(result.stationFeeTotal)}`, color: 'text-amber-400' },
+            { label: 'Custo dos materiais (cru + T-1 refinado)', value: formatSilver(result.grossMaterialCost) },
+            { label: `(−) Cru devolvido (${result.rrr.toFixed(1)}% RRR)`, value: `−${formatSilver(result.returnedValue)}`, color: 'text-emerald-400' },
+            { label: '(+) Taxa da estação', value: `+${formatSilver(result.stationFeeTotal)}`, color: 'text-amber-400' },
           ]}
           total={{ label: 'CUSTO REAL', value: formatSilver(result.realCost) }}
         />
 
         <ResultCard
           icon={<TrendingUp className="w-5 h-5 text-emerald-400" />}
-          title="Receita Bruta de Venda"
+          title="Receita de Venda"
           items={[
-            { label: 'Venda bruta no mercado', value: formatSilver(result.grossSellValue) },
-            { label: `(−) Imposto de mercado (${(result.taxRate * 100).toFixed(0)}%)`, value: `−${formatSilver(result.marketTax)}`, color: 'text-red-400' },
+            { label: 'Venda bruta no mercado', value: formatSilver(result.grossSell) },
+            { label: `(−) Imposto (${(result.taxRate * 100).toFixed(0)}%)`, value: `−${formatSilver(result.marketTax)}`, color: 'text-red-400' },
             { label: '(−) Setup fee (2.5%)', value: `−${formatSilver(result.setupFee)}`, color: 'text-red-400' },
           ]}
-          total={{ label: 'RECEITA LÍQUIDA', value: formatSilver(result.netSellValue) }}
+          total={{ label: 'RECEITA LÍQUIDA', value: formatSilver(result.netSell) }}
         />
 
         <ResultCard
           icon={result.netProfit >= 0
             ? <Check className="w-5 h-5 text-emerald-400" />
             : <AlertCircle className="w-5 h-5 text-red-400" />}
-          title="Lucro Líquido Real"
+          title="Resultado Final"
           items={[
-            { label: 'Receita Líquida − Custo Real', value: formatSilver(result.netProfit), big: true,
+            { label: 'Lucro líquido', value: formatSilver(result.netProfit), big: true,
               color: result.netProfit >= 0 ? 'text-emerald-400' : 'text-red-400' },
-            { label: 'Margem de Lucro', value: `${result.margin.toFixed(2)}%`,
+            { label: 'Margem sobre custo', value: `${result.margin.toFixed(2)}%`,
               color: result.margin >= 0 ? 'text-emerald-400' : 'text-red-400' },
             { label: 'Lucro por unidade refinada', value: formatSilver(
               result.netProfit / Math.max(quantity, 1)

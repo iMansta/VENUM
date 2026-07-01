@@ -4,6 +4,7 @@ import ItemSlot from './ItemSlot';
 import { ITEM_SLOTS, SLOT_LABELS_PT } from '@/constants/itemDefinitions';
 import { translateItem, parseItemId } from '@/utils/itemTranslator';
 import { getItemsForSlot } from '@/lib/supabase/catalog';
+import { supabase } from '@/lib/supabase/client';
 
 // =============================================================================
 // Normalização: o grid sempre mostra os 10 slots oficiais na ordem:
@@ -356,35 +357,56 @@ const SkillSelectorDynamic = ({ itemId, skills, onChange }) => {
     );
   }
 
-  if (error) {
+  if (error || !itemData || (
+    (!itemData.active_skills || itemData.active_skills.length === 0) &&
+    (!itemData.passive_skills || itemData.passive_skills.length === 0)
+  )) {
     return (
       <div className="bg-zinc-900/60 rounded-lg border border-zinc-800 p-4">
-        <div className="flex items-center gap-2 mb-2">
+        <div className="flex items-center gap-2 mb-3">
           <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
           <h4 className="text-sm font-semibold text-zinc-200">
             Habilidades & Passivas
           </h4>
+          <span className="ml-auto text-[10px] text-zinc-500 font-mono">{itemId}</span>
         </div>
-        <p className="text-xs text-red-400">
-          Erro ao carregar habilidades. Use o campo de táticas na descrição.
+        <p className="text-xs text-zinc-500 mb-3">
+          Catálogo sem skills para este item — selecione manualmente:
         </p>
-      </div>
-    );
-  }
-
-  if (!itemData || (!itemData.active_skills || itemData.active_skills.length === 0) && (!itemData.passive_skills || itemData.passive_skills.length === 0)) {
-    return (
-      <div className="bg-zinc-900/60 rounded-lg border border-zinc-800 p-4">
-        <div className="flex items-center gap-2 mb-2">
-          <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-          <h4 className="text-sm font-semibold text-zinc-200">
-            Habilidades & Passivas
-          </h4>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {['Q', 'W', 'E'].map((key) => (
+            <div key={key}>
+              <label className="block text-xs font-medium text-zinc-400 mb-1">
+                <span className="inline-block px-1.5 py-0.5 rounded bg-zinc-800 text-amber-400 font-mono mr-2">
+                  {key}
+                </span>
+                Habilidade {key}
+              </label>
+              <input
+                type="text"
+                value={skills[key] || ''}
+                onChange={(e) => onChange(key, e.target.value)}
+                placeholder={`Skill ${key}`}
+                className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-amber-500"
+              />
+            </div>
+          ))}
+          <div className="sm:col-span-2">
+            <label className="block text-xs font-medium text-zinc-400 mb-1">
+              Passiva recomendada
+            </label>
+            <select
+              value={skills.passive_P1 || ''}
+              onChange={(e) => onChange('passive_P1', e.target.value)}
+              className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-amber-500"
+            >
+              <option value="">— Selecione uma passiva —</option>
+              {COMMON_PASSIVES.map((cp) => (
+                <option key={cp} value={cp}>{cp}</option>
+              ))}
+            </select>
+          </div>
         </div>
-        <p className="text-xs text-zinc-500">
-          Item sem habilidades/passivas catalogadas. Use o campo de táticas na
-          descrição da build para recomendar opções.
-        </p>
       </div>
     );
   }
