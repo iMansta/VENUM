@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { config } from './config.js';
+import { config } from '../config.js';
 import { buildMissionEmbed } from './commands.js';
 
 let supabase = null;
@@ -35,6 +35,7 @@ export async function pollNewMissions(client) {
       title: mission.title,
       description: mission.description || 'Sem descrição',
       points: mission.points_reward || 0,
+      hubUrl: config.hubUrl,
     });
 
     await channel.send({ embeds: [embed] });

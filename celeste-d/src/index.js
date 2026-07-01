@@ -1,10 +1,12 @@
+import { randomUUID } from 'node:crypto';
 import {
   Client,
   GatewayIntentBits,
   Events,
   MessageFlags,
+  ActivityType,
 } from 'discord.js';
-import { config, assertConfig } from './config.js';
+import { config, assertConfig, resolveGuildId } from './config.js';
 import {
   buildAnnouncementEmbed,
   buildMissionEmbed,
@@ -15,15 +17,25 @@ import {
   RAID_ROLES,
 } from './commands.js';
 import { startMissionPoller } from './services/missions.js';
+import {
+  createRaidEvent,
+  hydrateRaidEvents,
+  loadRaidEvent,
+  removeSignup,
+  saveSignup,
+} from './services/raids.js';
 
 assertConfig();
+await resolveGuildId();
 
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds],
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages],
 });
 
-client.once(Events.ClientReady, (c) => {
+client.once(Events.ClientReady, async (c) => {
   console.log(`[Celeste D.] Online como ${c.user.tag}`);
+  await c.user.setActivity('I V E N U M I', { type: ActivityType.Watching });
+  await hydrateRaidEvents(client);
   startMissionPoller(client);
 });
 
@@ -49,29 +61,36 @@ async function handleCommand(interaction) {
   const { commandName } = interaction;
 
   if (commandName === 'aviso') {
-    const channelId = config.announcementsChannelId || interaction.channelId;
+    const channelId = config.announcementsChannelId;
     const channel = await interaction.client.channels.fetch(channelId);
     const embed = buildAnnouncementEmbed({
       title: interaction.options.getString('titulo'),
       message: interaction.options.getString('mensagem'),
-      author: interaction.user.displayName,
+      author: interaction.member?.displayName || interaction.user.username,
     });
     await channel.send({ embeds: [embed] });
-    await interaction.reply({ content: 'Aviso publicado!', flags: MessageFlags.Ephemeral });
+    await interaction.reply({
+      content: `Aviso publicado em <#${channelId}>`,
+      flags: MessageFlags.Ephemeral,
+    });
     return;
   }
 
   if (commandName === 'missao') {
-    const channelId = config.missionsChannelId || interaction.channelId;
+    const channelId = config.missionsChannelId;
     const channel = await interaction.client.channels.fetch(channelId);
     const embed = buildMissionEmbed({
       title: interaction.options.getString('titulo'),
       description: interaction.options.getString('descricao'),
       points: interaction.options.getInteger('pontos'),
-      author: interaction.user.displayName,
+      author: interaction.member?.displayName || interaction.user.username,
+      hubUrl: config.hubUrl,
     });
     await channel.send({ embeds: [embed] });
-    await interaction.reply({ content: 'Missão anunciada!', flags: MessageFlags.Ephemeral });
+    await interaction.reply({
+      content: `Missão publicada em <#${channelId}>`,
+      flags: MessageFlags.Ephemeral,
+    });
     return;
   }
 
@@ -81,29 +100,46 @@ async function handleCommand(interaction) {
     const time = interaction.options.getString('hora');
     const description = interaction.options.getString('descricao') || '—';
 
-    const eventId = interaction.id;
+    const eventId = randomUUID();
     const startsAt = parseRaidDate(date, time).getTime();
+    const meta = {
+      title,
+      date,
+      time,
+      description,
+      startsAt,
+      creator: interaction.user.id,
+    };
 
-    raidEvents.set(eventId, {
-      meta: { title, date, time, description, startsAt, creator: interaction.user.id },
-      signups: [],
+    raidEvents.set(eventId, { meta, signups: [] });
+
+    const embed = buildRaidEmbed(eventId, meta, []);
+    const components = buildRaidButtons(eventId);
+    const channelId = config.raidsChannelId;
+    const channel = await interaction.client.channels.fetch(channelId);
+    const msg = await channel.send({
+      content: `📅 **${title}** — clique na sua função para se inscrever`,
+      embeds: [embed],
+      components,
     });
 
-    const embed = buildRaidEmbed(eventId, raidEvents.get(eventId).meta, []);
-    const components = buildRaidButtons(eventId);
-
-    const channelId = config.raidsChannelId || interaction.channelId;
-    const channel = await interaction.client.channels.fetch(channelId);
-    const msg = await channel.send({ embeds: [embed], components });
-
     raidEvents.set(eventId, {
-      ...raidEvents.get(eventId),
+      meta,
+      signups: [],
       messageId: msg.id,
       channelId: msg.channelId,
     });
 
+    await createRaidEvent({
+      eventId,
+      meta,
+      channelId: msg.channelId,
+      messageId: msg.id,
+      guildId: config.guildId || interaction.guildId,
+    });
+
     await interaction.reply({
-      content: `Raid criada em <#${channelId}> — use os botões para inscrever-se.`,
+      content: `Raid criada em <#${channelId}>`,
       flags: MessageFlags.Ephemeral,
     });
   }
@@ -115,11 +151,17 @@ async function handleRaidButton(interaction) {
 
   const eventId = parts[1];
   const action = parts[2];
-  const state = raidEvents.get(eventId);
+  let state = raidEvents.get(eventId);
 
   if (!state) {
-    await interaction.reply({ content: 'Evento expirado ou reinicie o bot.', flags: MessageFlags.Ephemeral });
-    return;
+    state = await loadRaidEvent(eventId);
+    if (!state) {
+      await interaction.reply({
+        content: 'Evento não encontrado. Peça à staff para recriar a raid.',
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
   }
 
   const userId = interaction.user.id;
@@ -127,17 +169,19 @@ async function handleRaidButton(interaction) {
 
   if (action === 'signoff') {
     state.signups = state.signups.filter((s) => s.userId !== userId);
+    await removeSignup(eventId, userId);
   } else {
     const role = RAID_ROLES.find((r) => r.id === action);
     if (!role) return;
 
     state.signups = state.signups.filter((s) => s.userId !== userId);
-    state.signups.push({ userId, displayName, roleId: role.id, roleLabel: role.label });
+    const signup = { userId, displayName, roleId: role.id, roleLabel: role.label };
+    state.signups.push(signup);
+    await saveSignup(eventId, signup);
   }
 
   const embed = buildRaidEmbed(eventId, state.meta, state.signups);
   const components = buildRaidButtons(eventId);
-
   await interaction.update({ embeds: [embed], components });
 }
 

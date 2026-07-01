@@ -48,8 +48,8 @@ export const commands = [
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageEvents),
 ].map((c) => c.toJSON());
 
-export function buildMissionEmbed({ title, description, points, author }) {
-  return new EmbedBuilder()
+export function buildMissionEmbed({ title, description, points, author, hubUrl }) {
+  const embed = new EmbedBuilder()
     .setColor(0xeab308)
     .setTitle(`🎯 Nova Missão — ${title}`)
     .setDescription(description)
@@ -57,8 +57,14 @@ export function buildMissionEmbed({ title, description, points, author }) {
       { name: 'Recompensa', value: `${points} pontos`, inline: true },
       { name: 'Guilda', value: 'I V E N U M I', inline: true }
     )
-    .setFooter({ text: author ? `Publicado por ${author}` : 'Celeste D. · Hub VENUM' })
+    .setFooter({ text: author ? `${author} · Celeste D.` : 'Celeste D. · Hub VENUM' })
     .setTimestamp();
+
+  if (hubUrl) {
+    embed.setURL(hubUrl);
+    embed.addFields({ name: 'Hub', value: `[Abrir missões](${hubUrl}/missions)`, inline: false });
+  }
+  return embed;
 }
 
 export function buildAnnouncementEmbed({ title, message, author }) {
