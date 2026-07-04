@@ -358,6 +358,96 @@ const COMMON_PASSIVES = [
   'Cura Aliada',
 ];
 
+// Editor manual: usado quando o item não tem skills oficiais no catálogo.
+// Permite ao officer nomear as habilidades ativas (Q/W/E) e passivas da build,
+// exibindo o ícone oficial do próprio item. Honesto e funcional na ausência de
+// um mapeamento arma→spell confiável nas bases públicas do Albion.
+const itemHasActiveSkills = (itemId) =>
+  /_(MAIN|2H|OFF)_/.test(String(itemId || '')) || /_OFF_/.test(String(itemId || ''));
+
+const ManualSkillEditor = ({ slotLabel, itemId, skills, onChange, onClose }) => {
+  const hasActive = itemHasActiveSkills(itemId);
+  const itemIcon = `https://render.albiononline.com/v1/item/${encodeURIComponent(itemId)}.png`;
+
+  return (
+    <div className="bg-zinc-900/60 rounded-lg border border-amber-500/30 p-4">
+      <div className="flex items-center gap-2 mb-3">
+        <img
+          src={itemIcon}
+          alt={itemId}
+          className="w-8 h-8 rounded border border-zinc-700 bg-zinc-950"
+          loading="lazy"
+        />
+        <h4 className="text-sm font-semibold text-zinc-200">Habilidades — {slotLabel}</h4>
+        <span className="ml-auto text-[10px] text-zinc-500 font-mono">{itemId}</span>
+        {onClose && (
+          <button type="button" onClick={onClose} className="text-zinc-500 hover:text-zinc-200 p-1">
+            <X className="w-4 h-4" />
+          </button>
+        )}
+      </div>
+
+      <p className="text-[11px] text-zinc-500 mb-3">
+        Digite as habilidades desta build. Ícones oficiais por skill não estão disponíveis nas bases
+        públicas do Albion para armas/armaduras — use os nomes das skills que a build utiliza.
+      </p>
+
+      {hasActive && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-3">
+          {['Q', 'W', 'E'].map((key) => (
+            <div key={key}>
+              <label className="block text-[11px] font-medium text-zinc-400 mb-1">
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-zinc-800 text-amber-400 font-mono uppercase">
+                  <Swords className="w-3 h-3" /> {key}
+                </span>
+              </label>
+              <input
+                type="text"
+                value={skills[key] || ''}
+                onChange={(e) => onChange(key, e.target.value)}
+                placeholder={`Skill ${key}`}
+                className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-xs text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-amber-500"
+              />
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="border-t border-zinc-800 pt-3">
+        <label className="block text-[11px] font-medium text-zinc-400 mb-1">
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-zinc-800 text-amber-400 font-mono uppercase">
+            <Sparkles className="w-3 h-3" /> Passiva
+          </span>
+        </label>
+        <input
+          type="text"
+          value={skills.passive_P1 || ''}
+          onChange={(e) => onChange('passive_P1', e.target.value)}
+          placeholder="Passiva"
+          className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-xs text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-amber-500 mb-2"
+        />
+        <div className="flex flex-wrap gap-1.5">
+          {COMMON_PASSIVES.map((cp) => (
+            <button
+              key={cp}
+              type="button"
+              onClick={() => onChange('passive_P1', cp)}
+              className={[
+                'rounded border px-2 py-1 text-[11px] transition-all',
+                skills.passive_P1 === cp
+                  ? 'border-amber-500 bg-amber-500/10 text-zinc-100'
+                  : 'border-zinc-700 bg-zinc-800 text-zinc-400 hover:border-amber-500/50',
+              ].join(' ')}
+            >
+              {cp}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const SkillSelectorDynamic = ({ slotLabel, itemId, skills, onChange, onClose }) => {
   const [itemData, setItemData] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -409,38 +499,13 @@ const SkillSelectorDynamic = ({ slotLabel, itemId, skills, onChange, onClose }) 
     (!itemData.passive_skills || itemData.passive_skills.length === 0)
   )) {
     return (
-      <div className="bg-zinc-900/60 rounded-lg border border-zinc-800 p-4">
-        <div className="flex items-center gap-2 mb-3">
-          <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-          <h4 className="text-sm font-semibold text-zinc-200">
-            Habilidades & Passivas
-          </h4>
-          <span className="ml-auto text-[10px] text-zinc-500 font-mono">{itemId}</span>
-        </div>
-        <p className="text-xs text-zinc-500 mb-3">
-          Este item ainda não tem skills cadastradas no catálogo.
-        </p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          {COMMON_PASSIVES.map((cp) => (
-            <button
-              key={cp}
-              type="button"
-              onClick={() => onChange('passive_P1', cp)}
-              className={[
-                'text-left rounded border p-2 text-xs transition-all',
-                skills.passive_P1 === cp
-                  ? 'border-amber-500 bg-amber-500/10 text-zinc-100'
-                  : 'border-zinc-700 bg-zinc-800 text-zinc-300 hover:border-amber-500/50',
-              ].join(' ')}
-            >
-              <span className="inline-flex items-center gap-1">
-                <Shield className="w-3.5 h-3.5 text-amber-400" />
-                {cp}
-              </span>
-            </button>
-          ))}
-        </div>
-      </div>
+      <ManualSkillEditor
+        slotLabel={slotLabel}
+        itemId={itemId}
+        skills={skills}
+        onChange={onChange}
+        onClose={onClose}
+      />
     );
   }
 

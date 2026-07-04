@@ -262,9 +262,11 @@ export const getItemWithSkills = async (itemId) => {
 
   try {
     const row = await readFromRpc();
-    const activeCount = Array.isArray(row?.active_skills) ? row.active_skills.length : 0;
-    const passiveCount = Array.isArray(row?.passive_skills) ? row.passive_skills.length : 0;
-    if (row && activeCount + passiveCount >= 2 && !looksFake(row)) {
+    // Se o item já foi processado (possui os arrays de skills, mesmo que vazios)
+    // e não contém dados falsos legados, retorna direto — evita reaquecer à toa.
+    const hasArrays =
+      Array.isArray(row?.active_skills) && Array.isArray(row?.passive_skills);
+    if (row && hasArrays && !looksFake(row)) {
       return row;
     }
   } catch {

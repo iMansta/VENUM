@@ -262,9 +262,10 @@ export default function BuildManagement() {
               <RefreshCw className="w-5 h-5 text-amber-400" /> Catálogo de habilidades
             </h3>
             <p className="text-xs text-zinc-500 mt-1 max-w-xl">
-              Reconstrói habilidades e passivas de armas/armaduras usando os dados oficiais do
-              Albion (ao-bin-dumps), com nomes em PT-BR e ícones oficiais do jogo. Use se as skills
-              aparecerem erradas ou sem ícone.
+              Limpa dados antigos incorretos e importa habilidades oficiais (com ícones) para itens
+              que expõem essa informação nas bases do Albion (montarias e consumíveis). Para
+              armas/armaduras, as bases públicas não trazem as skills — nesses casos você digita as
+              habilidades da build direto no construtor.
             </p>
           </div>
           <button
