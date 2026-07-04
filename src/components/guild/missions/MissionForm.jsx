@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { X, Save, Calendar, Target, Award } from 'lucide-react';
 import { createMission } from '@/lib/supabase/missions';
+import { getMissionTargetSuggestions } from '@/constants/missionTargets';
 
 /**
  * MissionForm component - Form for creating/editing guild missions (Admin/Officer only)
@@ -11,14 +12,22 @@ const MissionForm = ({ onClose, onSuccess, userId }) => {
     title: '',
     description: '',
     mission_type: 'gathering',
-    target_item: '',
+    target_item: getMissionTargetSuggestions('gathering')[0]?.value || '',
     target_quantity: 0,
+    minFameThreshold: 10000,
     points_reward: 0,
     start_date: new Date().toISOString().split('T')[0],
     end_date: '',
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const targetSuggestions = getMissionTargetSuggestions(formData.mission_type);
+
+  const toIsoDateTime = (dateValue, endOfDay = false) => {
+    if (!dateValue) return null;
+    const suffix = endOfDay ? 'T23:59:59.999Z' : 'T00:00:00.000Z';
+    return `${dateValue}${suffix}`;
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -44,13 +53,23 @@ const MissionForm = ({ onClose, onSuccess, userId }) => {
       return;
     }
 
+    if (formData.end_date && formData.end_date < formData.start_date) {
+      setError('A data de término não pode ser anterior à data de início');
+      setLoading(false);
+      return;
+    }
+
     const missionData = {
       ...formData,
       created_by: userId,
       target_quantity: parseInt(formData.target_quantity),
+      min_fame_threshold:
+        formData.mission_type === 'pve'
+          ? Math.max(parseInt(formData.minFameThreshold || 0, 10) || 0, 0)
+          : null,
       points_reward: parseInt(formData.points_reward),
-      start_date: new Date(formData.start_date).toISOString(),
-      end_date: formData.end_date ? new Date(formData.end_date).toISOString() : null,
+      start_date: toIsoDateTime(formData.start_date, false),
+      end_date: toIsoDateTime(formData.end_date, true),
       status: 'active',
     };
 
@@ -74,6 +93,16 @@ const MissionForm = ({ onClose, onSuccess, userId }) => {
     setFormData(prev => ({
       ...prev,
       [name]: value,
+    }));
+  };
+
+  const handleMissionTypeChange = (e) => {
+    const missionType = e.target.value;
+    const firstTarget = getMissionTargetSuggestions(missionType)[0]?.value || '';
+    setFormData((prev) => ({
+      ...prev,
+      mission_type: missionType,
+      target_item: firstTarget,
     }));
   };
 
@@ -138,30 +167,39 @@ const MissionForm = ({ onClose, onSuccess, userId }) => {
             <select
               name="mission_type"
               value={formData.mission_type}
-              onChange={handleChange}
+              onChange={handleMissionTypeChange}
               className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
             >
               <option value="gathering">Coleta</option>
               <option value="crafting">Crafting</option>
+              <option value="pve">PvE</option>
               <option value="pvp">PvP</option>
               <option value="trading">Comércio</option>
               <option value="other">Outro</option>
             </select>
           </div>
 
-          {/* Target Item */}
+          {/* Target Objective */}
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-2">
-              Item Alvo
+              Objetivo da Missão *
             </label>
-            <input
-              type="text"
+            <select
               name="target_item"
               value={formData.target_item}
               onChange={handleChange}
               className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
-              placeholder="Ex: T6_WOOD"
-            />
+              required
+            >
+              {targetSuggestions.map((item) => (
+                <option key={item.value} value={item.value}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+            <p className="mt-2 text-xs text-gray-500">
+              Selecionável (não digitável) para evitar erro de digitação e casar com a Anaconda.
+            </p>
           </div>
 
           {/* Target Quantity */}
@@ -183,6 +221,29 @@ const MissionForm = ({ onClose, onSuccess, userId }) => {
               />
             </div>
           </div>
+
+          {formData.mission_type === 'pve' && (
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                minFameThreshold (PvE dinâmico)
+              </label>
+              <div className="relative">
+                <Target className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-500" />
+                <input
+                  type="number"
+                  name="minFameThreshold"
+                  value={formData.minFameThreshold}
+                  onChange={handleChange}
+                  className="w-full bg-slate-800 border border-slate-700 rounded-lg pl-10 pr-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  placeholder="10000"
+                  min="0"
+                />
+              </div>
+              <p className="mt-2 text-xs text-gray-500">
+                Delta mínimo de fama para inferir abate (ex.: 10000, 15000, 20000).
+              </p>
+            </div>
+          )}
 
           {/* Points Reward */}
           <div>

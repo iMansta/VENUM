@@ -1,34 +1,43 @@
-import { useMemo } from 'react';
-import { Package } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Package, User } from 'lucide-react';
 import { getAlbionIconUrl } from '@/utils/albionIcon';
 import { translateItem } from '@/utils/itemTranslator';
+import { getItemWithSkills } from '@/lib/supabase/catalog';
+import ItemIcon from '@/components/market/ItemIcon';
 
-/**
- * BuildCard - Visualização de uma build completa do Albion Online.
- *
- * Layout: "Visão Geral" de inventário (formato de cruz/manequim).
- *
- *   Esquerda: grid 3x3 com BAG/CAPA/HEAD, MAIN/CHEST/OFF, POTION/SHOES/FOOD
- *             + montaria opcional abaixo.
- *   Direita:  título, autor, descrição, táticas.
- *
- * Slots vazios renderizam como placeholders tracejados.
- */
 const SLOT_LABELS = {
   MAIN_HAND: 'Mão Principal',
-  OFF_HAND:  'Mão Secundária',
-  HEAD:      'Cabeça',
-  ARMOR:     'Peito',
-  SHOES:     'Calçado',
-  CAPE:      'Capa',
-  BAG:       'Mochila',
-  FOOD:      'Comida',
-  POTION:    'Poção',
-  MOUNT:     'Montaria',
+  OFF_HAND: 'Mão Secundária',
+  HEAD: 'Cabeça',
+  ARMOR: 'Peito',
+  SHOES: 'Calçado',
+  CAPE: 'Capa',
+  BAG: 'Mochila',
+  FOOD: 'Comida',
+  POTION: 'Poção',
+  MOUNT: 'Montaria',
 };
 
+const DISPLAY_ORDER = [
+  'MAIN_HAND',
+  'HEAD',
+  'ARMOR',
+  'SHOES',
+  'CAPE',
+  'OFF_HAND',
+  'BAG',
+  'FOOD',
+  'POTION',
+  'MOUNT',
+];
+
+const skillName = (s) => s?.name_pt || s?.name || s?.key || '';
+const norm = (v) => String(v || '').trim().toLowerCase();
+const getItemDisplayName = (itemId, template) =>
+  template?.name_pt || template?.name || translateItem(itemId, { includeTier: true });
+
 const BuildCard = ({ build }) => {
-  if (!build) return null;
+  const [templatesByItem, setTemplatesByItem] = useState({});
 
   const rawItems = useMemo(() => {
     const v = build?.items ?? build;
@@ -49,31 +58,68 @@ const BuildCard = ({ build }) => {
     return Object.entries(sk).filter(([, v]) => v && String(v).trim());
   };
 
-  /**
-   * Layout de cruz 3x3 (estilo inventário):
-   *   Topo:    [BAG]  [HEAD]  [CAPE]
-   *   Meio:    [MAIN] [CHEST] [OFF]
-   *   Fundo:   [POT]  [SHOES] [FOOD]
-   *
-   * Montaria fica em uma linha separada abaixo do grid (à direita).
-   */
-  const gridSlots = [
-    { row: 0, col: 0, slotKey: 'BAG' },
-    { row: 0, col: 1, slotKey: 'HEAD' },
-    { row: 0, col: 2, slotKey: 'CAPE' },
-    { row: 1, col: 0, slotKey: 'MAIN_HAND' },
-    { row: 1, col: 1, slotKey: 'ARMOR' },
-    { row: 1, col: 2, slotKey: 'OFF_HAND' },
-    { row: 2, col: 0, slotKey: 'POTION' },
-    { row: 2, col: 1, slotKey: 'SHOES' },
-    { row: 2, col: 2, slotKey: 'FOOD' },
-  ];
+  const equipped = useMemo(
+    () =>
+      DISPLAY_ORDER.filter((slotKey) => getItemId(rawItems[slotKey])).map((slotKey) => ({
+        slotKey,
+        raw: rawItems[slotKey],
+      })),
+    [rawItems]
+  );
 
-  const renderSlotCell = (slotKey) => {
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      const ids = Array.from(new Set(equipped.map((x) => getItemId(x.raw)).filter(Boolean)));
+      if (ids.length === 0) {
+        setTemplatesByItem({});
+        return;
+      }
+
+      const next = {};
+      await Promise.all(
+        ids.map(async (id) => {
+          try {
+            next[id] = await getItemWithSkills(id);
+          } catch {
+            next[id] = null;
+          }
+        })
+      );
+      if (!cancelled) setTemplatesByItem(next);
+    };
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [equipped]);
+
+  const selectedSkillsFor = (slotKey, raw) => {
+    const selected = getSkills(raw);
+    const itemId = getItemId(raw);
+    const tpl = itemId ? templatesByItem[itemId] : null;
+    const active = Array.isArray(tpl?.active_skills) ? tpl.active_skills : [];
+    const passive = Array.isArray(tpl?.passive_skills) ? tpl.passive_skills : [];
+    const merged = [...active, ...passive];
+
+    return selected.map(([abilityKey, value], idx) => {
+      const valueNorm = norm(value);
+      const found = merged.find(
+        (s) => norm(skillName(s)) === valueNorm || norm(s?.key) === norm(abilityKey)
+      );
+      return {
+        id: `${slotKey}-${abilityKey}-${idx}`,
+        abilityKey,
+        label: found ? skillName(found) : String(value),
+        icon: found?.icon_url || null,
+      };
+    });
+  };
+
+  const renderGridCell = (slotKey) => {
     const raw = rawItems[slotKey];
     const itemId = getItemId(raw);
     const skills = getSkills(raw);
-
     return (
       <div className="flex flex-col items-center gap-1.5">
         {itemId ? (
@@ -108,46 +154,46 @@ const BuildCard = ({ build }) => {
     );
   };
 
-  // Coletar todas as skills/passivas por slot para exibir no painel direito
-  const allSkills = [];
-  for (const slotKey of Object.keys(SLOT_LABELS)) {
-    const skills = getSkills(rawItems[slotKey]);
-    skills.forEach(([key, value]) => {
-      allSkills.push({ slot: SLOT_LABELS[slotKey], slotKey, abilityKey: key, value });
-    });
-  }
+  if (!build) return null;
 
-  const mountRaw = rawItems.MOUNT;
-  const mountId = getItemId(mountRaw);
+  const gridSlots = [
+    { row: 0, col: 0, slotKey: 'BAG' },
+    { row: 0, col: 1, slotKey: 'HEAD' },
+    { row: 0, col: 2, slotKey: 'CAPE' },
+    { row: 1, col: 0, slotKey: 'MAIN_HAND' },
+    { row: 1, col: 1, slotKey: 'ARMOR' },
+    { row: 1, col: 2, slotKey: 'OFF_HAND' },
+    { row: 2, col: 0, slotKey: 'POTION' },
+    { row: 2, col: 1, slotKey: 'SHOES' },
+    { row: 2, col: 2, slotKey: 'FOOD' },
+  ];
+
+  const mountId = getItemId(rawItems.MOUNT);
 
   return (
     <article className="bg-zinc-900 rounded-lg border border-zinc-800 overflow-hidden">
-      {/* Header */}
       <header className="bg-zinc-800 px-5 py-3 border-b border-slate-700">
         <h3 className="text-lg font-bold text-zinc-100">
           {build?.title || build?.name || 'Build sem título'}
         </h3>
         {build?.author && (
-          <p className="text-xs text-zinc-500 mt-0.5">por {build.author}</p>
+          <p className="text-xs text-zinc-500 mt-0.5 inline-flex items-center gap-1">
+            <User className="w-3 h-3" /> por {build.author}
+          </p>
         )}
       </header>
 
-      <div className="p-5 grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-6">
-        {/* Coluna esquerda: MANEQUIM em cruz 3x3 */}
+      <div className="p-5 grid grid-cols-1 xl:grid-cols-[280px_1fr] gap-6">
         <div className="flex flex-col items-center">
           <div className="bg-zinc-950/60 rounded-lg p-3 border border-zinc-800 w-full max-w-[260px]">
             <div className="grid grid-cols-3 gap-3">
               {gridSlots.map(({ row, col, slotKey }) => (
-                <div
-                  key={slotKey}
-                  style={{ gridColumn: col + 1, gridRow: row + 1 }}
-                >
-                  {renderSlotCell(slotKey)}
+                <div key={slotKey} style={{ gridColumn: col + 1, gridRow: row + 1 }}>
+                  {renderGridCell(slotKey)}
                 </div>
               ))}
             </div>
 
-            {/* Montaria: linha separada abaixo */}
             <div className="mt-3 pt-3 border-t border-zinc-800 flex justify-center">
               <div className="flex flex-col items-center gap-1.5">
                 {mountId ? (
@@ -157,7 +203,9 @@ const BuildCard = ({ build }) => {
                       alt={mountId}
                       className="w-full h-full object-contain"
                       referrerPolicy="no-referrer"
-                      onError={(e) => { e.currentTarget.style.opacity = '0.2'; }}
+                      onError={(e) => {
+                        e.currentTarget.style.opacity = '0.2';
+                      }}
                     />
                   </div>
                 ) : (
@@ -171,64 +219,66 @@ const BuildCard = ({ build }) => {
               </div>
             </div>
           </div>
-
-          <p className="text-[10px] text-zinc-500 mt-2 italic text-center">
-            Equipamento da build (Albian Online)
-          </p>
         </div>
 
-        {/* Coluna direita: informações e skills/passivas */}
         <div className="space-y-4 min-w-0">
-          {/* Táticas / descrição */}
+          <section className="bg-zinc-950/60 rounded-lg border border-zinc-800 p-4">
+            <h4 className="text-sm font-semibold text-zinc-200 mb-3">Habilidades & Passivas</h4>
+            {equipped.length === 0 ? (
+              <p className="text-xs text-zinc-500 italic">Nenhum item equipado na build.</p>
+            ) : (
+              <div className="space-y-3">
+                {equipped.map(({ slotKey, raw }) => {
+                  const itemId = getItemId(raw);
+                  const selectedSkills = selectedSkillsFor(slotKey, raw);
+                  return (
+                    <div
+                      key={slotKey}
+                      className="flex items-center justify-between gap-3 border-b border-zinc-800 pb-2 last:border-b-0"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <ItemIcon itemId={itemId} size={40} />
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-zinc-100 truncate">
+                            {getItemDisplayName(itemId, templatesByItem[itemId])}
+                          </p>
+                          <p className="text-[10px] uppercase tracking-wider text-zinc-500">
+                            {SLOT_LABELS[slotKey]}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap items-center justify-end gap-2">
+                        {selectedSkills.length === 0 ? (
+                          <span className="text-[10px] text-zinc-600">Sem skill selecionada</span>
+                        ) : (
+                          selectedSkills.map((s) => (
+                            <div
+                              key={s.id}
+                              className="w-8 h-8 rounded-full border border-zinc-700 overflow-hidden bg-zinc-900"
+                              title={`${s.abilityKey}: ${s.label}`}
+                            >
+                              {s.icon ? (
+                                <img src={s.icon} alt={s.label} className="w-full h-full object-cover" />
+                              ) : (
+                                <div className="w-full h-full text-[10px] text-zinc-300 flex items-center justify-center font-bold">
+                                  {s.abilityKey?.slice(0, 1)?.toUpperCase() || '?'}
+                                </div>
+                              )}
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+
           {build?.description && (
             <section className="bg-zinc-950/60 rounded-lg border border-zinc-800 p-4">
-              <h4 className="text-sm font-semibold text-zinc-200 mb-2 flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                Táticas
-              </h4>
-              <p className="text-sm text-zinc-300 whitespace-pre-line break-words">
-                {build.description}
-              </p>
-            </section>
-          )}
-
-          {/* Skills/Passivas */}
-          {allSkills.length > 0 ? (
-            <section className="bg-zinc-950/60 rounded-lg border border-zinc-800 p-4">
-              <h4 className="text-sm font-semibold text-zinc-200 mb-3 flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                Habilidades & Passivas
-              </h4>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {allSkills.map((s, idx) => (
-                  <div
-                    key={`${s.slotKey}-${s.abilityKey}-${idx}`}
-                    className="bg-zinc-900 rounded px-2 py-1.5 border border-zinc-800"
-                  >
-                    <div className="flex items-center gap-1.5 mb-0.5">
-                      <span className="inline-block px-1 py-0.5 rounded bg-zinc-800 text-amber-400 font-mono text-[9px] uppercase">
-                        {s.abilityKey}
-                      </span>
-                      <span className="text-[10px] text-zinc-500 uppercase tracking-wider">
-                        {s.slot}
-                      </span>
-                    </div>
-                    <p className="text-xs text-zinc-300 break-words">
-                      {translateItem(s.value, { includeTier: false }) || s.value}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </section>
-          ) : (
-            <section className="bg-zinc-950/60 rounded-lg border border-zinc-800 p-4">
-              <h4 className="text-sm font-semibold text-zinc-200 mb-2 flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                Habilidades & Passivas
-              </h4>
-              <p className="text-xs text-zinc-500 italic">
-                Nenhuma habilidade/passiva catalogada para esta build.
-              </p>
+              <h4 className="text-sm font-semibold text-zinc-200 mb-2">Descrição</h4>
+              <p className="text-sm text-zinc-300 whitespace-pre-line break-words">{build.description}</p>
             </section>
           )}
         </div>

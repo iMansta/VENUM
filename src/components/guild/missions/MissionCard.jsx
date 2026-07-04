@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Target, Users, Calendar, Award, Check, X, TrendingUp } from 'lucide-react';
 import { joinMission, leaveMission } from '@/lib/supabase/missions';
+import { getMissionTargetLabel } from '@/constants/missionTargets';
 
 /**
  * MissionCard component - Individual mission card with participation controls
@@ -49,6 +50,7 @@ const MissionCard = ({ mission, userId, isParticipating, onParticipationChange }
     const colors = {
       gathering: 'bg-green-500/20 text-green-400 border-green-500/30',
       crafting: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+      pve: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30',
       pvp: 'bg-red-500/20 text-red-400 border-red-500/30',
       trading: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
       other: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
@@ -60,6 +62,7 @@ const MissionCard = ({ mission, userId, isParticipating, onParticipationChange }
     const names = {
       gathering: 'Coleta',
       crafting: 'Crafting',
+      pve: 'PvE',
       pvp: 'PvP',
       trading: 'Comércio',
       other: 'Outro',
@@ -71,7 +74,13 @@ const MissionCard = ({ mission, userId, isParticipating, onParticipationChange }
     return new Intl.NumberFormat('pt-BR').format(Math.round(value));
   };
 
-  const progress = (mission.current_quantity / mission.target_quantity) * 100;
+  // Progresso INDIVIDUAL do jogador (missões são individuais por player).
+  const myParticipation = mission.mission_participants?.find(
+    (p) => p.profile_id === userId
+  );
+  const myContribution = Number(myParticipation?.contribution_quantity) || 0;
+  const target = Number(mission.target_quantity) || 0;
+  const progress = target > 0 ? (myContribution / target) * 100 : 0;
 
   return (
     <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700 hover:border-amber-500/50 transition-all">
@@ -102,14 +111,20 @@ const MissionCard = ({ mission, userId, isParticipating, onParticipationChange }
       <div className="space-y-2 mb-3">
         {mission.target_item && (
           <div className="flex items-center gap-2 text-sm">
-            <span className="text-gray-400">Item:</span>
-            <span className="text-white">{mission.target_item}</span>
+            <span className="text-gray-400">Objetivo:</span>
+            <span className="text-white">{getMissionTargetLabel(mission.target_item)}</span>
+          </div>
+        )}
+        {mission.mission_type === 'pve' && Number(mission.min_fame_threshold) > 0 && (
+          <div className="flex items-center gap-2 text-sm">
+            <span className="text-gray-400">minFameThreshold:</span>
+            <span className="text-white">{formatSilver(mission.min_fame_threshold)}</span>
           </div>
         )}
         <div className="flex items-center gap-2 text-sm">
-          <span className="text-gray-400">Progresso:</span>
+          <span className="text-gray-400">Meu progresso:</span>
           <span className="text-white">
-            {formatSilver(mission.current_quantity)} / {formatSilver(mission.target_quantity)}
+            {formatSilver(myContribution)} / {formatSilver(target)}
           </span>
           <span className="text-green-400">({progress.toFixed(1)}%)</span>
         </div>

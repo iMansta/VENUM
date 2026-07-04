@@ -18,6 +18,11 @@ const ALL_LOCATIONS = [...ROYAL_CITIES, BM_CITY];
 const BATCH_SIZE = 40;
 const BM_SETUP_TAX = 0.065;
 const DEFAULT_QUALITY = 1;
+const ALLOW_REMOTE_MARKET_API = String(
+  import.meta.env.VITE_MARKET_ALLOW_REMOTE_PRICE_API ?? 'true'
+)
+  .toLowerCase()
+  .trim() !== 'false';
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -101,33 +106,79 @@ const cacheToCityMap = (cachedRows) => {
 const computeOpportunity = (itemId, cityPrices, settings) => {
   let lowestCity = null;
   let lowestPrice = Infinity;
+  let cityBuyStrategy = 'instant_buy_city';
 
   for (const city of ROYAL_CITIES) {
     const pd = cityPrices[city];
     if (!pd) continue;
-    const buy = Number(pd.sell_price_min) || 0;
-    if (buy > 0 && buy < lowestPrice) {
-      lowestPrice = buy;
+
+    const instantBuyPrice = Number(pd.sell_price_min) || 0;
+    const buyOrderPrice = Number(pd.buy_price_max) || 0;
+
+    // Considera os dois modos de entrada na cidade:
+    // - compra instantanea (sell_price_min)
+    // - compra por ordem (buy_price_max)
+    const candidatePrices = [];
+    if (instantBuyPrice > 0) {
+      candidatePrices.push({ mode: 'instant_buy_city', price: instantBuyPrice });
+    }
+    if (buyOrderPrice > 0) {
+      candidatePrices.push({ mode: 'buy_order_city', price: buyOrderPrice });
+    }
+    if (candidatePrices.length === 0) continue;
+
+    const cityBest = candidatePrices.reduce((best, current) =>
+      current.price < best.price ? current : best
+    );
+
+    if (cityBest.price < lowestPrice) {
+      lowestPrice = cityBest.price;
       lowestCity = city;
+      cityBuyStrategy = cityBest.mode;
     }
   }
 
   const bmData = cityPrices[BM_CITY];
-  const bmPrice = Number(bmData?.buy_price_max) || 0;
+  const bmBuyPrice = Number(bmData?.buy_price_max) || 0; // venda instantanea no BM
+  const bmSellPrice = Number(bmData?.sell_price_min) || 0; // venda por ordem no BM
 
-  if (!lowestCity || lowestPrice === Infinity || bmPrice <= 0) return null;
+  if (!lowestCity || lowestPrice === Infinity) return null;
 
-  const netRevenue = bmPrice * (1 - BM_SETUP_TAX);
-  const netProfit = netRevenue - lowestPrice;
-  const margin = lowestPrice > 0 ? (netProfit / lowestPrice) * 100 : 0;
+  // Estrategia 1: melhor entrada na cidade + venda instantanea no BM (buy_max).
+  const instantRevenue = bmBuyPrice;
+  const instantProfit = instantRevenue - lowestPrice;
+  const instantMargin = lowestPrice > 0 ? (instantProfit / lowestPrice) * 100 : 0;
+
+  // Estrategia 2: melhor entrada na cidade + venda por ordem no BM (sell_min).
+  // Aplicamos setup tax do BM sobre o valor de venda por ordem.
+  const orderRevenue = bmSellPrice > 0 ? bmSellPrice * (1 - BM_SETUP_TAX) : 0;
+  const orderProfit = orderRevenue - lowestPrice;
+  const orderMargin = lowestPrice > 0 ? (orderProfit / lowestPrice) * 100 : 0;
+
+  const bestStrategy =
+    orderProfit > instantProfit
+      ? {
+          mode: 'buy_order_city_sell_order_bm',
+          bmPrice: bmSellPrice,
+          netProfit: orderProfit,
+          margin: orderMargin,
+          quantity: Number(bmData?.sell_price_min_count) || 1,
+        }
+      : {
+          mode: 'instant_sell_to_bm',
+          bmPrice: bmBuyPrice,
+          netProfit: instantProfit,
+          margin: instantMargin,
+          quantity: Number(bmData?.buy_price_max_count) || 1,
+        };
 
   const minProfit = settings.minProfit ?? 10000;
   const minMarginPct = (settings.minMarginPct ?? 0.1) * 100;
 
-  if (netProfit < minProfit || margin < minMarginPct) return null;
+  if (bestStrategy.netProfit < minProfit || bestStrategy.margin < minMarginPct) return null;
 
   const risk = getRouteRisk(lowestCity, BM_CITY);
-  const expectedProfit = calculateExpectedProfit(netProfit, risk.value);
+  const expectedProfit = calculateExpectedProfit(bestStrategy.netProfit, risk.value);
   const travelTime = getTravelTime(lowestCity, BM_CITY);
   const { enchantment } = parseItemId(itemId);
 
@@ -137,13 +188,15 @@ const computeOpportunity = (itemId, cityPrices, settings) => {
     lowestCity,
     lowestPrice,
     sellCity: 'Black Market',
-    bmPrice,
-    netProfit,
+    bmPrice: bestStrategy.bmPrice,
+    netProfit: bestStrategy.netProfit,
     expectedProfit,
-    margin,
+    margin: bestStrategy.margin,
     risk,
     travelTime,
-    quantity: Number(bmData?.buy_price_max_count) || 1,
+    quantity: bestStrategy.quantity,
+    cityBuyStrategy,
+    strategy: bestStrategy.mode,
   };
 };
 
@@ -200,26 +253,32 @@ export const fetchTopOpportunities = async (
 
     const missing = batch.filter((id) => !batchPrices[id]);
     if (missing.length > 0) {
-      onProgress?.({ loaded, total: ids.length, phase: 'api' });
-      try {
-        const apiRows = await fetchPricesFromApi(missing);
-        const grouped = groupByItem(apiRows);
+      if (ALLOW_REMOTE_MARKET_API) {
+        onProgress?.({ loaded, total: ids.length, phase: 'api' });
+        try {
+          const apiRows = await fetchPricesFromApi(missing);
+          const grouped = groupByItem(apiRows);
 
-        const cacheEntries = [];
-        for (const itemId of missing) {
-          const cityMap = grouped[itemId] || {};
-          batchPrices[itemId] = cityMap;
-          for (const [location, priceData] of Object.entries(cityMap)) {
-            cacheEntries.push({ itemId, location, priceData });
+          const cacheEntries = [];
+          for (const itemId of missing) {
+            const cityMap = grouped[itemId] || {};
+            batchPrices[itemId] = cityMap;
+            for (const [location, priceData] of Object.entries(cityMap)) {
+              cacheEntries.push({ itemId, location, priceData });
+            }
           }
+          if (cacheEntries.length > 0) {
+            await setCachedMarketPricesByLocation(cacheEntries);
+          }
+        } catch (err) {
+          console.warn('[ALBION API] Batch failed, skipping:', err.message);
         }
-        if (cacheEntries.length > 0) {
-          await setCachedMarketPricesByLocation(cacheEntries);
+        await sleep(150);
+      } else {
+        for (const itemId of missing) {
+          batchPrices[itemId] = {};
         }
-      } catch (err) {
-        console.warn('[ALBION API] Batch failed, skipping:', err.message);
       }
-      await sleep(150);
     }
 
     Object.assign(allCityPrices, batchPrices);

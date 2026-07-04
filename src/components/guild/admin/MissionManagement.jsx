@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Target, Plus, Edit, Trash2, Check, X } from 'lucide-react';
 import { getActiveMissions, updateMission, deleteMission } from '@/lib/supabase/missions';
 import MissionForm from '../missions/MissionForm';
+import { getMissionTargetLabel } from '@/constants/missionTargets';
 
 /**
  * MissionManagement component - Admin panel for managing guild missions
@@ -72,6 +73,7 @@ const MissionManagement = ({ userId, userRole }) => {
     const colors = {
       gathering: 'bg-green-500/20 text-green-400 border-green-500/30',
       crafting: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+      pve: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30',
       pvp: 'bg-red-500/20 text-red-400 border-red-500/30',
       trading: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
       other: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
@@ -83,6 +85,7 @@ const MissionManagement = ({ userId, userRole }) => {
     const names = {
       gathering: 'Coleta',
       crafting: 'Crafting',
+      pve: 'PvE',
       pvp: 'PvP',
       trading: 'Comércio',
       other: 'Outro',
@@ -164,8 +167,8 @@ const MissionManagement = ({ userId, userRole }) => {
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                     {mission.target_item && (
                       <div>
-                        <span className="text-gray-500">Item:</span>
-                        <span className="text-white ml-2">{mission.target_item}</span>
+                        <span className="text-gray-500">Objetivo:</span>
+                        <span className="text-white ml-2">{getMissionTargetLabel(mission.target_item)}</span>
                       </div>
                     )}
                     <div>

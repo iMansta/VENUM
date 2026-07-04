@@ -94,8 +94,9 @@ CREATE TABLE IF NOT EXISTS public.missions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   title TEXT NOT NULL,
   description TEXT,
-  mission_type TEXT NOT NULL CHECK (mission_type IN ('gathering', 'crafting', 'pvp', 'trading', 'other')),
+  mission_type TEXT NOT NULL CHECK (mission_type IN ('gathering', 'crafting', 'pve', 'pvp', 'trading', 'other')),
   target_item TEXT,
+  min_fame_threshold INTEGER,
   target_quantity INTEGER NOT NULL,
   current_quantity INTEGER DEFAULT 0,
   points_reward INTEGER NOT NULL,
@@ -109,6 +110,7 @@ CREATE TABLE IF NOT EXISTS public.missions (
 );
 
 ALTER TABLE public.missions ADD COLUMN IF NOT EXISTS discord_notified BOOLEAN DEFAULT false;
+ALTER TABLE public.missions ADD COLUMN IF NOT EXISTS min_fame_threshold INTEGER;
 
 CREATE INDEX IF NOT EXISTS idx_missions_status ON public.missions(status);
 CREATE INDEX IF NOT EXISTS idx_missions_type ON public.missions(mission_type);
@@ -165,6 +167,40 @@ CREATE POLICY "Officers can update participations"
   ON public.mission_participants FOR UPDATE USING (
     EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role IN ('admin', 'officer'))
   );
+
+-- ---------------------------------------------------------------------
+-- 4.1) guild_metrics_snapshots
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.guild_metrics_snapshots (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  guild_id TEXT NOT NULL,
+  guild_name TEXT NOT NULL,
+  member_count INTEGER,
+  silver_amount BIGINT,
+  season_points BIGINT,
+  kill_fame BIGINT,
+  death_fame BIGINT,
+  total_fame BIGINT,
+  source TEXT DEFAULT 'unknown',
+  payload JSONB,
+  collected_at TIMESTAMPTZ DEFAULT NOW(),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_guild_metrics_snapshots_collected_at
+  ON public.guild_metrics_snapshots(collected_at DESC);
+CREATE INDEX IF NOT EXISTS idx_guild_metrics_snapshots_guild
+  ON public.guild_metrics_snapshots(guild_id, collected_at DESC);
+
+ALTER TABLE public.guild_metrics_snapshots ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Guild metrics are viewable by members" ON public.guild_metrics_snapshots;
+CREATE POLICY "Guild metrics are viewable by members"
+  ON public.guild_metrics_snapshots FOR SELECT USING (auth.role() = 'authenticated');
+
+DROP POLICY IF EXISTS "No direct writes guild metrics" ON public.guild_metrics_snapshots;
+CREATE POLICY "No direct writes guild metrics"
+  ON public.guild_metrics_snapshots FOR ALL USING (false) WITH CHECK (false);
 
 -- ---------------------------------------------------------------------
 -- 5) points_ledger

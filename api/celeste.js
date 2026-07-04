@@ -78,7 +78,7 @@ export default async function handler(req, res) {
         break;
       }
       case 'guild': {
-        res.status(200).json({ ok: true, ...(await syncGuildMembers()) });
+        res.status(200).json({ ok: true, ...(await syncGuildMembers(req.body || {})) });
         break;
       }
       case 'events': {

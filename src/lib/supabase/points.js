@@ -60,51 +60,26 @@ export const deductPoints = async (profileId, amount, reason, referenceId = null
   }
 };
 
-// Adjust points manually (officers/admins only)
+// Adjust points manually (officers/admins only) via SECURITY DEFINER RPC.
+// Direct inserts into points_ledger are blocked by RLS, so we delegate to the
+// `adjust_points` function which validates the caller role server-side.
 export const adjustPoints = async (profileId, amount, reason, createdBy) => {
   try {
-    console.log('adjustPoints called with:', { profileId, amount, reason, createdBy });
-    
-    // Get current total points
-    const { data: currentProfile } = await supabase
-      .from('profiles')
-      .select('total_points')
-      .eq('id', profileId)
-      .single();
-
-    const newTotal = (currentProfile?.total_points || 0) + amount;
-
-    // Insert into ledger without transaction_type (trigger will set it automatically)
-    const { error: insertError } = await supabase.from('points_ledger').insert({
-      profile_id: profileId,
-      amount: amount,
-      transaction_type: null, // Let trigger set it based on amount sign
-      reason: reason,
-      reference_id: createdBy,
-      reference_type: 'manual_adjustment',
+    const { data, error } = await supabase.rpc('adjust_points', {
+      p_profile_id: profileId,
+      p_amount: amount,
+      p_reason: reason,
+      p_created_by: createdBy,
     });
 
-    if (insertError) {
-      console.error('Error inserting into points_ledger:', insertError);
-      throw insertError;
+    if (error) throw error;
+
+    const row = Array.isArray(data) ? data[0] : data;
+    if (row && row.success === false) {
+      return { success: false, error: row.message || 'Falha ao ajustar pontos' };
     }
 
-    // Update profile total
-    const { error: updateError } = await supabase
-      .from('profiles')
-      .update({
-        total_points: newTotal,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', profileId);
-
-    if (updateError) {
-      console.error('Error updating profile total_points:', updateError);
-      throw updateError;
-    }
-
-    console.log('Points adjusted successfully:', { profileId, newTotal });
-    return { success: true };
+    return { success: true, data: row };
   } catch (error) {
     console.error('Adjust points error:', error);
     return { success: false, error: error.message };
@@ -118,7 +93,7 @@ export const getAllPointsLedger = async (limit = 100) => {
       .from('points_ledger')
       .select(`
         *,
-        profiles(username, full_name)
+        profiles:profiles!points_ledger_profile_id_fkey(username, full_name)
       `)
       .order('created_at', { ascending: false })
       .limit(limit);

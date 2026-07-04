@@ -1,5 +1,5 @@
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { Home, TrendingUp, Target, Hammer, Wrench, Shield, LogOut, Store, ShoppingBag } from 'lucide-react';
+import { Home, TrendingUp, Target, Hammer, Wrench, Shield, LogOut, Store, ShoppingBag, Coins, Sparkles } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
 import VenumLogo from '@/components/common/VenumLogo';
 import CelesteDownload from '@/components/common/CelesteDownload';
@@ -16,7 +16,9 @@ const DashboardLayout = ({ userId, userRole, profile }) => {
     { name: 'Dashboard', href: '/dashboard', icon: Home },
     { name: 'Ranking', href: '/ranking', icon: TrendingUp },
     { name: 'Missões', href: '/missions', icon: Target },
+    { name: 'Content', href: '/content', icon: Sparkles },
     { name: 'Black Market', href: '/market', icon: ShoppingBag },
+    { name: 'Guild', href: '/guild', icon: Coins },
     { name: 'Loja', href: '/shop', icon: Store },
     { name: 'Produção', href: '/production', icon: Hammer },
     { name: 'Builds', href: '/builds', icon: Wrench },
@@ -56,11 +58,20 @@ const DashboardLayout = ({ userId, userRole, profile }) => {
 
         <div className="absolute bottom-0 left-0 right-0 p-6 border-t border-slate-800 space-y-3">
           <div className="flex items-center gap-3 mb-4">
-            <div className="w-10 h-10 bg-slate-800 rounded-full flex items-center justify-center">
-              <span className="text-white font-semibold">
-                {profile?.username?.[0]?.toUpperCase() || 'U'}
-              </span>
-            </div>
+            {profile?.avatar_url ? (
+              <img
+                src={profile.avatar_url}
+                alt={profile?.username || 'User'}
+                className="w-10 h-10 rounded-full object-cover"
+                loading="lazy"
+              />
+            ) : (
+              <div className="w-10 h-10 bg-slate-800 rounded-full flex items-center justify-center">
+                <span className="text-white font-semibold">
+                  {profile?.username?.[0]?.toUpperCase() || 'U'}
+                </span>
+              </div>
+            )}
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-white truncate">
                 {profile?.username || 'User'}

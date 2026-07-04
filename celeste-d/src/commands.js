@@ -22,21 +22,6 @@ export const RAID_ROLES = [
 
 export const commands = [
   new SlashCommandBuilder()
-    .setName('aviso')
-    .setDescription('Publica aviso da guilda no canal configurado')
-    .addStringOption((o) => o.setName('titulo').setDescription('Título').setRequired(true))
-    .addStringOption((o) => o.setName('mensagem').setDescription('Conteúdo').setRequired(true))
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages),
-
-  new SlashCommandBuilder()
-    .setName('missao')
-    .setDescription('Anuncia missão ativa do hub VENUM')
-    .addStringOption((o) => o.setName('titulo').setDescription('Título').setRequired(true))
-    .addStringOption((o) => o.setName('descricao').setDescription('Descrição').setRequired(true))
-    .addIntegerOption((o) => o.setName('pontos').setDescription('Recompensa em pontos').setRequired(true))
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages),
-
-  new SlashCommandBuilder()
     .setName('raid')
     .setDescription('Cria evento AVA/CTG estilo Raid-Helper')
     .addStringOption((o) => o.setName('titulo').setDescription('Ex: AVA B2B VENUM').setRequired(true))
@@ -48,14 +33,26 @@ export const commands = [
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageEvents),
 ].map((c) => c.toJSON());
 
-export function buildMissionEmbed({ title, description, points, author, hubUrl }) {
+export function buildMissionEmbed({
+  title,
+  description,
+  points,
+  author,
+  hubUrl,
+  missionType,
+  targetItem,
+  targetQuantity,
+}) {
   const embed = new EmbedBuilder()
     .setColor(0xeab308)
     .setTitle(`🎯 Nova Missão — ${title}`)
     .setDescription(description)
     .addFields(
       { name: 'Recompensa', value: `${points} pontos`, inline: true },
-      { name: 'Guilda', value: 'I V E N U M I', inline: true }
+      { name: 'Guilda', value: 'I V E N U M I', inline: true },
+      { name: 'Tipo', value: missionType || 'other', inline: true },
+      { name: 'Alvo', value: targetItem || 'Qualquer', inline: true },
+      { name: 'Meta', value: String(targetQuantity || 0), inline: true }
     )
     .setFooter({ text: author ? `${author} · Celeste D.` : 'Celeste D. · Hub VENUM' })
     .setTimestamp();

@@ -1,5 +1,20 @@
 import { useState, useEffect } from 'react';
 import { TrendingUp, Users, Target, Award } from 'lucide-react';
+import { getProfile, getGuildMembers } from '@/lib/supabase/profiles';
+import { getUserPointsLedger } from '@/lib/supabase/points';
+import { getMissionCompletionRanking } from '@/lib/supabase/ranking';
+import { supabase } from '@/lib/supabase/client';
+
+const formatRelativeDate = (dateStr) => {
+  if (!dateStr) return 'Agora';
+  const diffMs = Date.now() - new Date(dateStr).getTime();
+  const minutes = Math.max(1, Math.floor(diffMs / (1000 * 60)));
+  if (minutes < 60) return `há ${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `há ${hours}h`;
+  const days = Math.floor(hours / 24);
+  return `há ${days}d`;
+};
 
 const Dashboard = ({ userId }) => {
   const [stats, setStats] = useState({
@@ -8,21 +23,72 @@ const Dashboard = ({ userId }) => {
     rank: 0,
     totalMembers: 0,
   });
+  const [recentActivity, setRecentActivity] = useState([]);
+  const [latestCompletedMissions, setLatestCompletedMissions] = useState([]);
 
   useEffect(() => {
-    // TODO: Fetch real stats from Supabase
-    setStats({
-      totalPoints: 12500,
-      completedMissions: 42,
-      rank: 5,
-      totalMembers: 28,
-    });
+    let cancelled = false;
+
+    const loadDashboard = async () => {
+      const [profileRes, membersRes, rankingRes, ledgerRes, completedRes, missionRewardsRes] =
+        await Promise.all([
+          getProfile(userId),
+          getGuildMembers(),
+          getMissionCompletionRanking(300),
+          getUserPointsLedger(userId, 6),
+          supabase
+            .from('missions')
+            .select('id, title, points_reward, updated_at, end_date, status')
+            .eq('status', 'completed')
+            .order('updated_at', { ascending: false })
+            .limit(4),
+          supabase
+            .from('mission_reward_events')
+            .select('id, mission_id')
+            .eq('profile_id', userId),
+        ]);
+
+      if (cancelled) return;
+
+      const members = membersRes.success ? membersRes.data || [] : [];
+      const activeMembers = members.filter((m) => m?.is_active !== false).length;
+
+      const rankingRows = rankingRes.success ? rankingRes.data || [] : [];
+      const rankForUser = rankingRows.find((row) => row.profileId === userId)?.rank || 0;
+
+      const profile = profileRes.success ? profileRes.data : null;
+      const userMissionsCompleted = missionRewardsRes.data?.length || 0;
+
+      setStats({
+        totalPoints: Number(profile?.total_points || 0),
+        completedMissions: userMissionsCompleted,
+        rank: rankForUser,
+        totalMembers: activeMembers,
+      });
+
+      const ledger = ledgerRes.success ? ledgerRes.data || [] : [];
+      const activityRows = ledger.map((entry) => ({
+        id: entry.id,
+        title: entry.reason || 'Movimento de pontos',
+        when: formatRelativeDate(entry.created_at),
+        points: Number(entry.amount || 0),
+      }));
+      setRecentActivity(activityRows);
+
+      const completed = completedRes.data || [];
+      setLatestCompletedMissions(completed);
+    };
+
+    loadDashboard();
+    return () => {
+      cancelled = true;
+    };
   }, [userId]);
 
   const statCards = [
     { label: 'Pontos Totais', value: stats.totalPoints, icon: Award, color: 'text-amber-500' },
     { label: 'Missões Completadas', value: stats.completedMissions, icon: Target, color: 'text-green-500' },
-    { label: 'Ranking', value: `#${stats.rank}`, icon: TrendingUp, color: 'text-blue-500' },
+    { label: 'Ranking', value: stats.rank > 0 ? `#${stats.rank}` : '-', icon: TrendingUp, color: 'text-blue-500' },
     { label: 'Membros da Guilda', value: stats.totalMembers, icon: Users, color: 'text-purple-500' },
   ];
 
@@ -49,34 +115,45 @@ const Dashboard = ({ userId }) => {
         <div className="bg-slate-900 rounded-lg border border-slate-800 p-6">
           <h2 className="text-lg font-semibold text-white mb-4">Atividade Recente</h2>
           <div className="space-y-4">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="flex items-center gap-4 p-3 bg-slate-800/50 rounded-lg">
+            {recentActivity.length === 0 && (
+              <p className="text-sm text-slate-500">Sem movimentações recentes.</p>
+            )}
+            {recentActivity.map((entry) => (
+              <div key={entry.id} className="flex items-center gap-4 p-3 bg-slate-800/50 rounded-lg">
                 <div className="w-10 h-10 bg-slate-700 rounded-full flex items-center justify-center">
                   <Target className="w-5 h-5 text-green-500" />
                 </div>
                 <div className="flex-1">
-                  <p className="text-sm font-medium text-white">Missão #{i}</p>
-                  <p className="text-xs text-gray-400">Completada há {i * 2} horas</p>
+                  <p className="text-sm font-medium text-white">{entry.title}</p>
+                  <p className="text-xs text-gray-400">{entry.when}</p>
                 </div>
-                <span className="text-sm text-amber-500">+{i * 100} pts</span>
+                <span className={`text-sm ${entry.points >= 0 ? 'text-amber-500' : 'text-red-400'}`}>
+                  {entry.points >= 0 ? '+' : ''}
+                  {entry.points} pts
+                </span>
               </div>
             ))}
           </div>
         </div>
 
         <div className="bg-slate-900 rounded-lg border border-slate-800 p-6">
-          <h2 className="text-lg font-semibold text-white mb-4">Próximas Missões</h2>
+          <h2 className="text-lg font-semibold text-white mb-4">Últimas Missões Concluídas</h2>
           <div className="space-y-4">
-            {[1, 2].map((i) => (
-              <div key={i} className="flex items-center gap-4 p-3 bg-slate-800/50 rounded-lg">
+            {latestCompletedMissions.length === 0 && (
+              <p className="text-sm text-slate-500">Nenhuma missão concluída ainda.</p>
+            )}
+            {latestCompletedMissions.map((mission) => (
+              <div key={mission.id} className="flex items-center gap-4 p-3 bg-slate-800/50 rounded-lg">
                 <div className="w-10 h-10 bg-slate-700 rounded-full flex items-center justify-center">
                   <Target className="w-5 h-5 text-blue-500" />
                 </div>
                 <div className="flex-1">
-                  <p className="text-sm font-medium text-white">Missão Diária #{i}</p>
-                  <p className="text-xs text-gray-400">Expira em {i * 3} horas</p>
+                  <p className="text-sm font-medium text-white">{mission.title}</p>
+                  <p className="text-xs text-gray-400">
+                    Concluída {formatRelativeDate(mission.updated_at)}
+                  </p>
                 </div>
-                <span className="text-sm text-green-500">{i * 150} pts</span>
+                <span className="text-sm text-green-500">{mission.points_reward || 0} pts</span>
               </div>
             ))}
           </div>

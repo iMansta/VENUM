@@ -1,10 +1,9 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Search, X } from 'lucide-react';
+import { Search, X, Sparkles, Swords, Shield } from 'lucide-react';
 import ItemSlot from './ItemSlot';
 import { ITEM_SLOTS, SLOT_LABELS_PT } from '@/constants/itemDefinitions';
 import { translateItem, parseItemId } from '@/utils/itemTranslator';
-import { getItemsForSlot } from '@/lib/supabase/catalog';
-import { supabase } from '@/lib/supabase/client';
+import { getItemsForSlot, getItemWithSkills } from '@/lib/supabase/catalog';
 import { slotSupportsSkills } from '@/lib/albion/slotItems';
 import ItemIcon from '@/components/market/ItemIcon';
 
@@ -23,7 +22,9 @@ import ItemIcon from '@/components/market/ItemIcon';
  *   - Skills/passivas vêm de RPC get_item_with_skills (Supabase)
  *   - Campos de habilidade SÓ aparecem quando o item tem skills.
  */
+const T8_REQUIRED_SLOTS = new Set(['MAIN_HAND', 'OFF_HAND', 'HEAD', 'ARMOR', 'SHOES', 'CAPE']);
 const TIER_DEFAULT = 8;
+const getTierForSlot = (slotKey) => (T8_REQUIRED_SLOTS.has(slotKey) ? TIER_DEFAULT : null);
 
 const BuildBuilder = ({ value, onChange, readOnly = false }) => {
   const initialItems = useMemo(() => {
@@ -146,6 +147,7 @@ const ItemPickerLazy = ({ slotKey, slotLabel, currentItemId, onPick, onClose }) 
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const limit = 50;
+  const slotTier = getTierForSlot(slotKey);
 
   const loadItems = async (reset = false) => {
     const currentOffset = reset ? 0 : offset;
@@ -155,7 +157,7 @@ const ItemPickerLazy = ({ slotKey, slotLabel, currentItemId, onPick, onClose }) 
     try {
       const { items: list } = await getItemsForSlot({
         slotKey,
-        tier: TIER_DEFAULT,
+        tier: slotTier,
         search: search || '',
         limit,
         offset: currentOffset,
@@ -206,7 +208,7 @@ const ItemPickerLazy = ({ slotKey, slotLabel, currentItemId, onPick, onClose }) 
           autoFocus
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder={`Buscar ${slotLabel} — Tier ${TIER_DEFAULT} do Albion Online...`}
+          placeholder={`Buscar ${slotLabel} — ${slotTier ? `Tier ${slotTier}` : 'Tier 4-8'}...`}
           className="flex-1 bg-transparent text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none"
         />
         <button
@@ -222,7 +224,7 @@ const ItemPickerLazy = ({ slotKey, slotLabel, currentItemId, onPick, onClose }) 
       <div className="max-h-72 overflow-y-auto p-2">
         {loading ? (
           <p className="text-xs text-zinc-500 text-center py-6 animate-pulse">
-            Carregando itens do Albion Online...
+            Carregando itens do catálogo...
           </p>
         ) : error ? (
           <p className="text-xs text-red-400 text-center py-6">
@@ -260,7 +262,9 @@ const ItemPickerLazy = ({ slotKey, slotLabel, currentItemId, onPick, onClose }) 
       </div>
 
       <div className="px-3 py-2 border-t border-zinc-800 bg-zinc-900/40 text-[10px] text-zinc-500 flex items-center justify-between">
-        <span>{filtered.length} itens · Tier {TIER_DEFAULT} · sem encantamentos</span>
+        <span>
+          {filtered.length} itens · {slotTier ? `Tier ${slotTier}` : 'Tier 4-8'} · sem encantamentos
+        </span>
         <kbd className="px-1 bg-zinc-800 rounded">Esc fecha</kbd>
       </div>
     </div>
@@ -286,6 +290,52 @@ const ItemPickerCard = ({ item, onPick, selected = false }) => (
     <span className="text-[9px] text-zinc-500 font-mono">T{item.tier}</span>
   </button>
 );
+
+const SkillChoiceButton = ({ skill, selected, onSelect, passive = false }) => {
+  const label = skill?.name_pt || skill?.name || skill?.key || 'Skill';
+  const description = skill?.description_pt || skill?.description || '';
+  const value = label;
+  const Icon = passive ? Shield : Swords;
+  const [imgError, setImgError] = useState(false);
+  const showImg = skill?.icon_url && !imgError;
+
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(value)}
+      className={[
+        'flex items-center gap-2 rounded border p-1.5 transition-all text-left',
+        selected
+          ? 'border-amber-500 bg-amber-500/10'
+          : 'border-zinc-700 bg-zinc-800 hover:border-amber-500/60 hover:bg-zinc-700',
+      ].join(' ')}
+      title={description || label}
+    >
+      {showImg ? (
+        <img
+          src={skill.icon_url}
+          alt={label}
+          onError={() => setImgError(true)}
+          className="w-9 h-9 flex-shrink-0 rounded object-cover border border-zinc-600 bg-zinc-900"
+          loading="lazy"
+          decoding="async"
+        />
+      ) : (
+        <span className="w-9 h-9 flex-shrink-0 rounded border border-zinc-600 bg-zinc-900 text-amber-400 inline-flex items-center justify-center">
+          <Icon className="w-4 h-4" />
+        </span>
+      )}
+      <div className="min-w-0">
+        <div className="text-[11px] font-medium text-zinc-100 leading-tight line-clamp-1">
+          {label}
+        </div>
+        {description ? (
+          <div className="text-[10px] text-zinc-500 leading-tight line-clamp-1">{description}</div>
+        ) : null}
+      </div>
+    </button>
+  );
+};
 
 // =============================================================================
 // SkillSelectorDynamic - lê skills/passivas via RPC get_item_with_skills
@@ -321,14 +371,9 @@ const SkillSelectorDynamic = ({ slotLabel, itemId, skills, onChange, onClose }) 
       setError(null);
 
       try {
-        const { data, error } = await supabase.rpc('get_item_with_skills', {
-          p_item_id: itemId,
-        });
-
-        if (error) throw error;
-
-        if (data && data.length > 0) {
-          setItemData(data[0]);
+        const row = await getItemWithSkills(itemId);
+        if (row) {
+          setItemData(row);
         } else {
           setItemData(null);
         }
@@ -373,41 +418,27 @@ const SkillSelectorDynamic = ({ slotLabel, itemId, skills, onChange, onClose }) 
           <span className="ml-auto text-[10px] text-zinc-500 font-mono">{itemId}</span>
         </div>
         <p className="text-xs text-zinc-500 mb-3">
-          Catálogo sem skills para este item — selecione manualmente:
+          Este item ainda não tem skills cadastradas no catálogo.
         </p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {['Q', 'W', 'E'].map((key) => (
-            <div key={key}>
-              <label className="block text-xs font-medium text-zinc-400 mb-1">
-                <span className="inline-block px-1.5 py-0.5 rounded bg-zinc-800 text-amber-400 font-mono mr-2">
-                  {key}
-                </span>
-                Habilidade {key}
-              </label>
-              <input
-                type="text"
-                value={skills[key] || ''}
-                onChange={(e) => onChange(key, e.target.value)}
-                placeholder={`Skill ${key}`}
-                className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-amber-500"
-              />
-            </div>
-          ))}
-          <div className="sm:col-span-2">
-            <label className="block text-xs font-medium text-zinc-400 mb-1">
-              Passiva recomendada
-            </label>
-            <select
-              value={skills.passive_P1 || ''}
-              onChange={(e) => onChange('passive_P1', e.target.value)}
-              className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-amber-500"
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {COMMON_PASSIVES.map((cp) => (
+            <button
+              key={cp}
+              type="button"
+              onClick={() => onChange('passive_P1', cp)}
+              className={[
+                'text-left rounded border p-2 text-xs transition-all',
+                skills.passive_P1 === cp
+                  ? 'border-amber-500 bg-amber-500/10 text-zinc-100'
+                  : 'border-zinc-700 bg-zinc-800 text-zinc-300 hover:border-amber-500/50',
+              ].join(' ')}
             >
-              <option value="">— Selecione uma passiva —</option>
-              {COMMON_PASSIVES.map((cp) => (
-                <option key={cp} value={cp}>{cp}</option>
-              ))}
-            </select>
-          </div>
+              <span className="inline-flex items-center gap-1">
+                <Shield className="w-3.5 h-3.5 text-amber-400" />
+                {cp}
+              </span>
+            </button>
+          ))}
         </div>
       </div>
     );
@@ -415,6 +446,13 @@ const SkillSelectorDynamic = ({ slotLabel, itemId, skills, onChange, onClose }) 
 
   const activeSkills = itemData.active_skills || [];
   const passiveSkills = itemData.passive_skills || [];
+  const groupedActive = activeSkills.reduce((acc, skill) => {
+    const raw = String(skill?.key || '').toUpperCase();
+    const group = ['Q', 'W', 'E'].includes(raw[0]) ? raw[0] : 'ACTIVE';
+    if (!acc[group]) acc[group] = [];
+    acc[group].push(skill);
+    return acc;
+  }, {});
 
   return (
     <div className="bg-zinc-900/60 rounded-lg border border-amber-500/30 p-4">
@@ -432,59 +470,55 @@ const SkillSelectorDynamic = ({ slotLabel, itemId, skills, onChange, onClose }) 
       </div>
 
       {activeSkills.length > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
-          {activeSkills.map((skill) => (
-            <div key={skill.key}>
-              <label className="block text-xs font-medium text-zinc-400 mb-1">
-                <span className="inline-block px-1.5 py-0.5 rounded bg-zinc-800 text-amber-400 font-mono mr-2 uppercase">
-                  {skill.key}
+        <div className="space-y-3 mb-3">
+          {Object.entries(groupedActive).map(([group, list]) => (
+            <div key={group}>
+              <label className="block text-xs font-medium text-zinc-400 mb-2">
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-zinc-800 text-amber-400 font-mono mr-2 uppercase">
+                  <Swords className="w-3 h-3" />
+                  {group}
                 </span>
-                {skill.name_pt}
+                Skill ativa
               </label>
-              <select
-                value={skills[skill.key.toUpperCase()] || ''}
-                onChange={(e) => onChange(skill.key.toUpperCase(), e.target.value)}
-                className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-amber-500"
-              >
-                <option value="">— Selecione —</option>
-                <option value={skill.name_pt}>{skill.name_pt}</option>
-              </select>
-              {skill.description_pt && (
-                <p className="text-[10px] text-zinc-500 mt-1 line-clamp-2">
-                  {skill.description_pt}
-                </p>
-              )}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
+                {list.map((skill, idx) => (
+                  <SkillChoiceButton
+                    key={`${group}-${skill.key || idx}`}
+                    skill={skill}
+                    selected={skills[group] === (skill.name_pt || skill.name || skill.key)}
+                    onSelect={(value) => onChange(group, value)}
+                  />
+                ))}
+              </div>
             </div>
           ))}
         </div>
       )}
 
       {passiveSkills.length > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 border-t border-zinc-800 pt-3">
-          {passiveSkills.map((skill) => {
-            const passiveKey = `passive_${skill.key}`;
-            return (
-              <div key={skill.key}>
-                <label className="block text-xs font-medium text-zinc-400 mb-1">
-                  <span className="inline-block px-1.5 py-0.5 rounded bg-zinc-800 text-amber-400 font-mono mr-2 uppercase">
-                    P
-                  </span>
-                  {skill.name_pt}
-                </label>
-                <select
-                  value={skills[passiveKey] || ''}
-                  onChange={(e) => onChange(passiveKey, e.target.value)}
-                  className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-amber-500"
-                >
-                  <option value="">— Selecione uma passiva —</option>
-                  <option value={skill.name_pt}>{skill.name_pt}</option>
-                  {COMMON_PASSIVES.map((cp) => (
-                    <option key={cp} value={cp}>{cp}</option>
-                  ))}
-                </select>
-              </div>
-            );
-          })}
+        <div className="border-t border-zinc-800 pt-3">
+          <label className="block text-xs font-medium text-zinc-400 mb-2">
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-zinc-800 text-amber-400 font-mono mr-2 uppercase">
+              <Sparkles className="w-3 h-3" />
+              P
+            </span>
+            Passivas
+          </label>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
+            {passiveSkills.map((skill, idx) => {
+              const passiveKey = `passive_${skill.key || idx}`;
+              const value = skill.name_pt || skill.name || skill.key;
+              return (
+                <SkillChoiceButton
+                  key={`${passiveKey}-${idx}`}
+                  skill={skill}
+                  passive
+                  selected={skills[passiveKey] === value}
+                  onSelect={(selectedValue) => onChange(passiveKey, selectedValue)}
+                />
+              );
+            })}
+          </div>
         </div>
       )}
     </div>

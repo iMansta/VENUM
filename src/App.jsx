@@ -11,6 +11,8 @@ import Market from '@/pages/Market';
 import Builds from '@/pages/Builds';
 import Production from '@/pages/Production';
 import Shop from '@/pages/Shop';
+import Guild from '@/pages/Guild';
+import Content from '@/pages/Content';
 import AdminPanel from '@/components/guild/admin/AdminPanel';
 import { getSession, onAuthStateChange } from '@/lib/supabase/auth';
 import { getProfile } from '@/lib/supabase/profiles';
@@ -151,6 +153,26 @@ function App() {
           }
         >
           <Route index element={<Builds />} />
+        </Route>
+        <Route
+          path="/guild"
+          element={
+            <ProtectedRoute>
+              <DashboardLayout userId={user?.id} userRole={profile?.role} profile={profile} />
+            </ProtectedRoute>
+          }
+        >
+          <Route index element={<Guild />} />
+        </Route>
+        <Route
+          path="/content"
+          element={
+            <ProtectedRoute>
+              <DashboardLayout userId={user?.id} userRole={profile?.role} profile={profile} />
+            </ProtectedRoute>
+          }
+        >
+          <Route index element={<Content userId={user?.id} userRole={profile?.role} />} />
         </Route>
         <Route
           path="/admin"

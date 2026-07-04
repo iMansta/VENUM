@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { createServer } from 'node:http';
 import {
   Client,
   GatewayIntentBits,
@@ -8,15 +9,15 @@ import {
 } from 'discord.js';
 import { config, assertConfig, resolveGuildId } from './config.js';
 import {
-  buildAnnouncementEmbed,
-  buildMissionEmbed,
   buildRaidEmbed,
   buildRaidButtons,
   parseRaidDate,
   raidEvents,
   RAID_ROLES,
 } from './commands.js';
-import { startMissionPoller } from './services/missions.js';
+import { handleMissionButton, startMissionPoller } from './services/missions.js';
+import { startAnnouncementPoller } from './services/announcements.js';
+import { startKillboardPoller, startBattleboardPoller } from './services/killboards.js';
 import {
   createRaidEvent,
   hydrateRaidEvents,
@@ -24,9 +25,39 @@ import {
   removeSignup,
   saveSignup,
 } from './services/raids.js';
+import {
+  startContentPoller,
+  hydrateContentEvents,
+  handleContentButton,
+} from './services/content.js';
 
 assertConfig();
 await resolveGuildId();
+
+const startedAt = Date.now();
+let botReady = false;
+
+const healthPort = Number(process.env.PORT || process.env.CELESTE_D_HEALTH_PORT || 3001);
+const healthServer = createServer((req, res) => {
+  if (req.url === '/healthz') {
+    res.writeHead(botReady ? 200 : 503, { 'Content-Type': 'application/json' });
+    res.end(
+      JSON.stringify({
+        ok: botReady,
+        uptimeMs: Date.now() - startedAt,
+        guildId: config.guildId || null,
+        readyAt: botReady ? new Date().toISOString() : null,
+      })
+    );
+    return;
+  }
+  res.writeHead(200, { 'Content-Type': 'text/plain' });
+  res.end('Celeste D. online');
+});
+
+healthServer.listen(healthPort, () => {
+  console.log(`[Celeste D.] Health server listening on :${healthPort}`);
+});
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages],
@@ -36,7 +67,13 @@ client.once(Events.ClientReady, async (c) => {
   console.log(`[Celeste D.] Online como ${c.user.tag}`);
   await c.user.setActivity('I V E N U M I', { type: ActivityType.Watching });
   await hydrateRaidEvents(client);
+  await hydrateContentEvents(client);
   startMissionPoller(client);
+  startAnnouncementPoller(client);
+  startContentPoller(client);
+  startKillboardPoller(client);
+  startBattleboardPoller(client);
+  botReady = true;
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {
@@ -44,7 +81,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
     if (interaction.isChatInputCommand()) {
       await handleCommand(interaction);
     } else if (interaction.isButton()) {
-      await handleRaidButton(interaction);
+      const cid = String(interaction.customId || '');
+      if (cid.startsWith('mission:')) {
+        await handleMissionButton(interaction);
+      } else if (cid.startsWith('content:')) {
+        await handleContentButton(interaction);
+      } else {
+        await handleRaidButton(interaction);
+      }
     }
   } catch (err) {
     console.error('[Celeste D.]', err);
@@ -57,42 +101,47 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
 });
 
+client.on(Events.Error, (err) => {
+  console.error('[Celeste D.] Client error:', err);
+});
+
+client.on(Events.ShardDisconnect, (event, id) => {
+  botReady = false;
+  console.warn(`[Celeste D.] Shard ${id} disconnected`, event?.code || '');
+});
+
+client.on(Events.ShardResume, (id, replayed) => {
+  botReady = true;
+  console.log(`[Celeste D.] Shard ${id} resumed (${replayed} events replayed)`);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('[Celeste D.] unhandledRejection:', reason);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('[Celeste D.] uncaughtException:', err);
+  process.exit(1);
+});
+
+process.on('SIGINT', async () => {
+  try {
+    await client.destroy();
+  } finally {
+    process.exit(0);
+  }
+});
+
+process.on('SIGTERM', async () => {
+  try {
+    await client.destroy();
+  } finally {
+    process.exit(0);
+  }
+});
+
 async function handleCommand(interaction) {
   const { commandName } = interaction;
-
-  if (commandName === 'aviso') {
-    const channelId = config.announcementsChannelId;
-    const channel = await interaction.client.channels.fetch(channelId);
-    const embed = buildAnnouncementEmbed({
-      title: interaction.options.getString('titulo'),
-      message: interaction.options.getString('mensagem'),
-      author: interaction.member?.displayName || interaction.user.username,
-    });
-    await channel.send({ embeds: [embed] });
-    await interaction.reply({
-      content: `Aviso publicado em <#${channelId}>`,
-      flags: MessageFlags.Ephemeral,
-    });
-    return;
-  }
-
-  if (commandName === 'missao') {
-    const channelId = config.missionsChannelId;
-    const channel = await interaction.client.channels.fetch(channelId);
-    const embed = buildMissionEmbed({
-      title: interaction.options.getString('titulo'),
-      description: interaction.options.getString('descricao'),
-      points: interaction.options.getInteger('pontos'),
-      author: interaction.member?.displayName || interaction.user.username,
-      hubUrl: config.hubUrl,
-    });
-    await channel.send({ embeds: [embed] });
-    await interaction.reply({
-      content: `Missão publicada em <#${channelId}>`,
-      flags: MessageFlags.Ephemeral,
-    });
-    return;
-  }
 
   if (commandName === 'raid') {
     const title = interaction.options.getString('titulo');

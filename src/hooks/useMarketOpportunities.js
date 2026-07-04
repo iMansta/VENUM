@@ -37,19 +37,6 @@ export const useMarketOpportunities = (limit = 50, refreshKey = 0) => {
         forceRefresh,
       });
 
-      // TODO[diag]: remove after verifying "0 profitable opportunities" issue
-      // eslint-disable-next-line no-console
-      console.log(
-        '[DIAG][useMarketOpportunities] raw count=', Array.isArray(data) ? data.length : 0,
-        'bmCount=',
-        Array.isArray(data) ? data.filter(o => (o?.sellCity || 'Black Market') === 'Black Market').length : 0,
-        'withNetProfit=',
-        Array.isArray(data) ? data.filter(o => Number.isFinite(o?.netProfit) && o.netProfit > 0).length : 0,
-        'withMarginOk=',
-        Array.isArray(data) ? data.filter(o => Number.isFinite(o?.netProfit) && o.netProfit >= 10000 && Number(o?.margin) >= 10).length : 0,
-        'sample=', Array.isArray(data) ? data[0] : null
-      );
-
       setOpportunities(data);
     } catch (err) {
       setError('Failed to load opportunities');

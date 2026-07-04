@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
-import { Shield, Users, Target, Award, RefreshCw, Hammer, Store, Sparkles } from 'lucide-react';
+import { Shield, Users, Target, Award, RefreshCw, Hammer, Store, Sparkles, Megaphone, Bot } from 'lucide-react';
 import { getGuildMembers } from '@/lib/supabase/profiles';
 import UserManagement from './UserManagement';
 import MissionManagement from './MissionManagement';
 import PointsManagement from './PointsManagement';
 import BuildManagement from './BuildManagement';
 import ShopManagement from './ShopManagement';
+import AnnouncementManagement from './AnnouncementManagement';
+import BotControl from './BotControl';
 import CelesteDownload from '@/components/common/CelesteDownload';
 
 const AdminPanel = ({ userId, userRole }) => {
@@ -37,10 +39,12 @@ const AdminPanel = ({ userId, userRole }) => {
   const tabs = [
     { id: 'users', label: 'Usuários', icon: Users },
     { id: 'shop', label: 'Loja', icon: Store },
+    { id: 'announcements', label: 'Avisos', icon: Megaphone },
     { id: 'missions', label: 'Missões', icon: Target },
     { id: 'points', label: 'Pontos', icon: Award },
     { id: 'builds', label: 'Builds', icon: Hammer },
-    { id: 'celeste', label: 'Celeste', icon: Sparkles },
+    { id: 'discord', label: 'Discord', icon: Bot },
+    { id: 'celeste', label: 'Anaconda', icon: Sparkles },
   ];
 
   return (
@@ -111,9 +115,11 @@ const AdminPanel = ({ userId, userRole }) => {
       <div className="p-6">
         {activeTab === 'users' && <UserManagement userId={userId} userRole={userRole} />}
         {activeTab === 'shop' && <ShopManagement />}
+        {activeTab === 'announcements' && <AnnouncementManagement userId={userId} />}
         {activeTab === 'missions' && <MissionManagement userId={userId} userRole={userRole} />}
         {activeTab === 'points' && <PointsManagement userId={userId} userRole={userRole} />}
         {activeTab === 'builds' && <BuildManagement />}
+        {activeTab === 'discord' && <BotControl userId={userId} />}
         {activeTab === 'celeste' && <CelesteDownload />}
       </div>
     </div>

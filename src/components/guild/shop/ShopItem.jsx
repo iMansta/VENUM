@@ -7,6 +7,9 @@ import { Package, Award, ShoppingCart, AlertCircle } from 'lucide-react';
 const ShopItem = ({ item, userPoints, onPurchase }) => {
   const canAfford = userPoints >= item.cost_points;
   const outOfStock = item.stock !== -1 && item.stock <= 0;
+  const itemName = item.resolved_name || item.name;
+  const itemDescription = item.resolved_description || item.description;
+  const itemImage = item.resolved_image_url || item.image_url;
 
   const handlePurchase = () => {
     if (!canAfford) return;
@@ -17,10 +20,10 @@ const ShopItem = ({ item, userPoints, onPurchase }) => {
     <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700 hover:border-amber-500/50 transition-all">
       {/* Item Image/Icon */}
       <div className="w-full h-32 bg-slate-900 rounded-lg mb-3 flex items-center justify-center overflow-hidden">
-        {item.image_url ? (
+        {itemImage ? (
           <img
-            src={item.image_url}
-            alt={item.name}
+            src={itemImage}
+            alt={itemName}
             className="w-full h-full object-cover"
           />
         ) : (
@@ -29,11 +32,11 @@ const ShopItem = ({ item, userPoints, onPurchase }) => {
       </div>
 
       {/* Item Name */}
-      <h3 className="text-lg font-semibold text-white mb-1">{item.name}</h3>
+      <h3 className="text-lg font-semibold text-white mb-1">{itemName}</h3>
 
       {/* Description */}
-      {item.description && (
-        <p className="text-sm text-gray-400 mb-3 line-clamp-2">{item.description}</p>
+      {itemDescription && (
+        <p className="text-sm text-gray-400 mb-3 line-clamp-2">{itemDescription}</p>
       )}
 
       {/* Category */}

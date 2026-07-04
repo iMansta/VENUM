@@ -30,7 +30,7 @@ export const createMission = async (missionData) => {
   try {
     const { data, error } = await supabase
       .from('missions')
-      .insert({ ...missionData, status: 'active' })
+      .insert({ ...missionData, status: 'active', discord_notified: false })
       .select()
       .single();
 

@@ -8,6 +8,7 @@ const mapMissionRow = (row, rank) => ({
   score: Number(row.total_points || 0),
   secondary: 0,
   secondaryLabel: 'missões',
+  avatarUrl: row.avatar_url || null,
 });
 
 const mapFameRow = (row, rank, field) => ({
@@ -18,28 +19,48 @@ const mapFameRow = (row, rank, field) => ({
   score: Number(row[field] || 0),
   secondary: null,
   secondaryLabel: 'fama',
+  avatarUrl: row.avatar_url || null,
 });
 
 const isMissingRpc = (error) =>
   error?.code === 'PGRST202' || error?.status === 404;
 
+const attachAvatarUrls = async (rows = []) => {
+  const ids = [...new Set(rows.map((row) => row.profileId).filter(Boolean))];
+  if (ids.length === 0) return rows;
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id, avatar_url')
+    .in('id', ids);
+
+  if (error) return rows;
+
+  const avatarById = new Map((data || []).map((row) => [row.id, row.avatar_url || null]));
+  return rows.map((row) => ({
+    ...row,
+    avatarUrl: row.avatarUrl || avatarById.get(row.profileId) || null,
+  }));
+};
+
 /** Fallback seguro — só colunas base de profiles. */
 const fallbackMissionRanking = async (limit = 30) => {
   const { data, error } = await supabase
     .from('profiles')
-    .select('id, username, full_name, total_points')
+    .select('id, username, full_name, total_points, avatar_url')
     .order('total_points', { ascending: false })
     .limit(limit);
 
   if (error) throw error;
 
-  return (data || []).map((row, i) => mapMissionRow(row, i + 1));
+  const rows = (data || []).map((row, i) => mapMissionRow(row, i + 1));
+  return attachAvatarUrls(rows);
 };
 
 const fallbackFameRanking = async (field, limit = 30) => {
   const { data, error } = await supabase
     .from('profiles')
-    .select(`id, username, full_name, ${field}`)
+    .select(`id, username, full_name, avatar_url, ${field}`)
     .order(field, { ascending: false })
     .limit(limit);
 
@@ -48,9 +69,10 @@ const fallbackFameRanking = async (field, limit = 30) => {
     throw error;
   }
 
-  return (data || [])
+  const rows = (data || [])
     .filter((row) => Number(row[field] || 0) > 0)
     .map((row, i) => mapFameRow(row, i + 1, field));
+  return attachAvatarUrls(rows);
 };
 
 export const getMissionCompletionRanking = async (limit = 30) => {
@@ -67,18 +89,21 @@ export const getMissionCompletionRanking = async (limit = 30) => {
       throw error;
     }
 
+    const mapped = (data || []).map((row) => ({
+      rank: Number(row.rank),
+      profileId: row.profile_id,
+      username: row.username,
+      displayName: row.albion_character_name || row.username,
+      score: Number(row.total_points || 0),
+      secondary: Number(row.completed_missions || 0),
+      secondaryLabel: 'missões',
+      avatarUrl: null,
+    }));
+
     return {
       success: true,
       source: 'rpc',
-      data: (data || []).map((row) => ({
-        rank: Number(row.rank),
-        profileId: row.profile_id,
-        username: row.username,
-        displayName: row.albion_character_name || row.username,
-        score: Number(row.total_points || 0),
-        secondary: Number(row.completed_missions || 0),
-        secondaryLabel: 'missões',
-      })),
+      data: await attachAvatarUrls(mapped),
     };
   } catch (error) {
     console.error('Get mission completion ranking error:', error);
@@ -113,18 +138,21 @@ export const getMonthlyFameRanking = async (category = 'pvp', limit = 30) => {
       throw error;
     }
 
+    const mapped = (data || []).map((row) => ({
+      rank: Number(row.rank),
+      profileId: row.profile_id,
+      username: row.username,
+      displayName: row.albion_character_name || row.username,
+      score: Number(row.fame_delta || 0),
+      secondary: null,
+      secondaryLabel: 'fama',
+      avatarUrl: null,
+    }));
+
     return {
       success: true,
       source: 'rpc',
-      data: (data || []).map((row) => ({
-        rank: Number(row.rank),
-        profileId: row.profile_id,
-        username: row.username,
-        displayName: row.albion_character_name || row.username,
-        score: Number(row.fame_delta || 0),
-        secondary: null,
-        secondaryLabel: 'fama',
-      })),
+      data: await attachAvatarUrls(mapped),
     };
   } catch (error) {
     console.error('Get monthly fame ranking error:', error);
@@ -148,21 +176,21 @@ export const RANKING_TABS = [
   {
     id: 'pvp',
     label: 'PvP',
-    description: 'Fama PvP mensal (Celeste sincroniza)',
+    description: 'Fama PvP mensal (Anaconda sincroniza)',
     scoreLabel: 'Fama PvP',
     load: (limit) => getMonthlyFameRanking('pvp', limit),
   },
   {
     id: 'pve',
     label: 'PvE',
-    description: 'Fama PvE mensal (Celeste sincroniza)',
+    description: 'Fama PvE mensal (Anaconda sincroniza)',
     scoreLabel: 'Fama PvE',
     load: (limit) => getMonthlyFameRanking('pve', limit),
   },
   {
     id: 'gathering',
     label: 'Coleta',
-    description: 'Fama de coleta mensal (Celeste sincroniza)',
+    description: 'Fama de coleta mensal (Anaconda sincroniza)',
     scoreLabel: 'Fama Coleta',
     load: (limit) => getMonthlyFameRanking('gathering', limit),
   },

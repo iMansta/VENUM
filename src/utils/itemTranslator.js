@@ -92,6 +92,21 @@ const FAMILY_NAMES = {
   // Standalone
   SHIELD: 'Escudo',
   CAPE: 'Capa',
+
+  // Artefatos comuns / nomes meta
+  '2H_BOW_KEEPER': 'Arco Badônico',
+  '2H_BOW_CEREMONIAL': 'Arco Cerimonial',
+  '2H_BOW_LONGBOW': 'Arco Longo',
+  '2H_BOW_WARBOW': 'Arco de Guerra',
+  '2H_BOW': 'Arco',
+};
+
+const SPECIAL_ITEM_NAMES = {
+  T4_2H_BOW_KEEPER: 'Arco Badônico do Adepto',
+  T5_2H_BOW_KEEPER: 'Arco Badônico do Perito',
+  T6_2H_BOW_KEEPER: 'Arco Badônico do Mestre',
+  T7_2H_BOW_KEEPER: 'Arco Badônico do Grão-mestre',
+  T8_2H_BOW_KEEPER: 'Arco Badônico do Ancião',
 };
 
 /**
@@ -130,11 +145,15 @@ export const translateItem = (itemId, opts = {}) => {
 
   if (!itemId || typeof itemId !== 'string') return '—';
 
+  if (SPECIAL_ITEM_NAMES[itemId]) {
+    return SPECIAL_ITEM_NAMES[itemId];
+  }
+
   const { tier, family, enchant } = parseItemId(itemId);
 
   if (!tier || !family) return itemId;
 
-  const baseName = FAMILY_NAMES[family] || family;
+  const baseName = FAMILY_NAMES[family] || family.replaceAll('_', ' ');
   const tierSuffix = includeTier ? ` ${TIER_NAMES[tier] || ''}` : '';
   const enchantSuffix =
     includeEnchant && enchant > 0
@@ -155,6 +174,25 @@ export const safeTranslate = (itemId) => {
   } catch (e) {
     return itemId || '—';
   }
+};
+
+/**
+ * Detecta nomes ainda "crus" (ex.: "T8 MOUNT ARMORED HORSE", "T4 HEAD CLOTH")
+ * que vieram do banco sem localização adequada.
+ */
+export const isRawItemName = (name) =>
+  !name || /^T\d+\s+[A-Z0-9_ ]+$/.test(String(name));
+
+/**
+ * Retorna o melhor nome PT-BR disponível: usa `name` se já estiver localizado,
+ * senão cai para o tradutor a partir do itemId.
+ */
+export const cleanItemName = (name, itemId) => {
+  if (isRawItemName(name) && itemId) {
+    const translated = translateItem(itemId);
+    if (translated && !isRawItemName(translated)) return translated;
+  }
+  return name || (itemId ? translateItem(itemId) : '') || itemId || '';
 };
 
 /**

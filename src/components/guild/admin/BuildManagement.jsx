@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Hammer, Plus, Edit, Trash2, Save, X } from 'lucide-react';
+import { Hammer, Plus, Edit, Trash2, Save, X, RefreshCw, Loader2 } from 'lucide-react';
 import {
   fetchAllCategoriesAdmin,
   createCategory,
@@ -51,6 +51,7 @@ export default function BuildManagement() {
 
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState(null);
+  const [rebuilding, setRebuilding] = useState(false);
 
   const loadAll = async () => {
     setLoading(true);
@@ -193,6 +194,35 @@ export default function BuildManagement() {
     setShowBuilder(true);
   };
 
+  const rebuildSkills = async () => {
+    if (
+      !window.confirm(
+        'Reconstruir habilidades/passivas de todas as armas e armaduras a partir dos dados oficiais do Albion (ao-bin-dumps)? Isso substitui os dados atuais e usa ícones oficiais.'
+      )
+    )
+      return;
+    setRebuilding(true);
+    try {
+      const res = await fetch('/api/catalog-skill-template?force=1&limit=500', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || json?.ok === false) {
+        throw new Error(json?.error || 'Falha ao reconstruir skills.');
+      }
+      flash(
+        `Skills reconstruídas: ${json.updated || 0} itens atualizados${
+          json.failed ? `, ${json.failed} falhas` : ''
+        }.`
+      );
+    } catch (e) {
+      flash(e.message || 'Erro ao reconstruir skills.', true);
+    } finally {
+      setRebuilding(false);
+    }
+  };
+
   const buildsByCategory = (catId) =>
     builds.filter((b) => b.category_id === catId);
 
@@ -223,6 +253,35 @@ export default function BuildManagement() {
           {feedback.msg}
         </div>
       )}
+
+      {/* Manutenção do catálogo de skills */}
+      <section className="bg-zinc-900/60 border border-zinc-800 rounded-lg p-5">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <h3 className="text-lg font-semibold text-zinc-100 flex items-center gap-2">
+              <RefreshCw className="w-5 h-5 text-amber-400" /> Catálogo de habilidades
+            </h3>
+            <p className="text-xs text-zinc-500 mt-1 max-w-xl">
+              Reconstrói habilidades e passivas de armas/armaduras usando os dados oficiais do
+              Albion (ao-bin-dumps), com nomes em PT-BR e ícones oficiais do jogo. Use se as skills
+              aparecerem erradas ou sem ícone.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={rebuildSkills}
+            disabled={rebuilding}
+            className="bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-zinc-950 font-semibold px-4 py-2 rounded flex items-center gap-2 text-sm"
+          >
+            {rebuilding ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <RefreshCw className="w-4 h-4" />
+            )}
+            Reconstruir skills
+          </button>
+        </div>
+      </section>
 
       {/* Categorias */}
       <section className="bg-zinc-900/60 border border-zinc-800 rounded-lg p-5">

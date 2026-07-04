@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Target, Users, Calendar, Award, Filter } from 'lucide-react';
+import { Target, Filter } from 'lucide-react';
 import { getActiveMissions } from '@/lib/supabase/missions';
 import MissionCard from './MissionCard';
 
@@ -10,7 +10,7 @@ import MissionCard from './MissionCard';
 const MissionList = ({ userId, userRole }) => {
   const [missions, setMissions] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState('all'); // all, gathering, crafting, pvp, trading
+  const [filter, setFilter] = useState('all'); // all, gathering, crafting, pve, pvp, trading
   const [participatingMissions, setParticipatingMissions] = useState(new Set());
 
   useEffect(() => {
@@ -22,10 +22,21 @@ const MissionList = ({ userId, userRole }) => {
     try {
       const { success, data } = await getActiveMissions();
       if (success) {
-        setMissions(data);
+        // Missões são individuais: quando o jogador atinge a meta individual
+        // (contribution_quantity >= target_quantity) a missão some da lista DELE,
+        // mas continua disponível para os demais dentro do prazo.
+        const visibleMissions = (data || []).filter((m) => {
+          const mine = m.mission_participants?.find((p) => p.profile_id === userId);
+          const target = Number(m.target_quantity) || 0;
+          const myContribution = Number(mine?.contribution_quantity) || 0;
+          const completedByMe = target > 0 && myContribution >= target;
+          return !completedByMe;
+        });
+
+        setMissions(visibleMissions);
         // Check which missions the user is participating in
         const participatingIds = new Set(
-          data
+          visibleMissions
             .filter(m => m.mission_participants?.some(p => p.profile_id === userId))
             .map(m => m.id)
         );
@@ -56,30 +67,16 @@ const MissionList = ({ userId, userRole }) => {
     ? missions 
     : missions.filter(m => m.mission_type === filter);
 
-  const getMissionTypeColor = (type) => {
-    const colors = {
-      gathering: 'bg-green-500/20 text-green-400 border-green-500/30',
-      crafting: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
-      pvp: 'bg-red-500/20 text-red-400 border-red-500/30',
-      trading: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
-      other: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
-    };
-    return colors[type] || colors.other;
-  };
-
   const getMissionTypeName = (type) => {
     const names = {
       gathering: 'Coleta',
       crafting: 'Crafting',
+      pve: 'PvE',
       pvp: 'PvP',
       trading: 'Comércio',
       other: 'Outro',
     };
     return names[type] || 'Outro';
-  };
-
-  const formatSilver = (value) => {
-    return new Intl.NumberFormat('pt-BR').format(Math.round(value));
   };
 
   return (
@@ -99,7 +96,7 @@ const MissionList = ({ userId, userRole }) => {
         <div className="flex items-center gap-2">
           <Filter className="w-4 h-4 text-gray-400" />
           <div className="flex gap-2">
-            {['all', 'gathering', 'crafting', 'pvp', 'trading'].map((type) => (
+            {['all', 'gathering', 'crafting', 'pve', 'pvp', 'trading'].map((type) => (
               <button
                 key={type}
                 onClick={() => setFilter(type)}

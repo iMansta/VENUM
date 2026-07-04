@@ -15,6 +15,17 @@ const LEGACY_AUTH_DOMAINS = String(
 
 const AUTH_DOMAINS = Array.from(new Set([PRIMARY_AUTH_DOMAIN, ...LEGACY_AUTH_DOMAINS]));
 
+const MIGRATION_AUTH_DOMAIN = String(
+  import.meta.env.VITE_AUTH_MIGRATION_EMAIL_DOMAIN || 'example.com'
+)
+  .trim()
+  .toLowerCase();
+
+const LAST_DOMAIN_KEY = 'venum:last_auth_domain';
+const SIGNIN_DOMAINS = Array.from(
+  new Set([MIGRATION_AUTH_DOMAIN, PRIMARY_AUTH_DOMAIN, ...LEGACY_AUTH_DOMAINS])
+);
+
 /** Converte nickname em e-mail interno (padrão VENUM). */
 const toEmail = (nickname, domain = PRIMARY_AUTH_DOMAIN) =>
   `${String(nickname).trim().toLowerCase()}@${domain}`;
@@ -22,19 +33,24 @@ const toEmail = (nickname, domain = PRIMARY_AUTH_DOMAIN) =>
 const isInvalidCredentials = (error) =>
   error?.message === 'Invalid login credentials';
 
-const isAlreadyRegistered = (error) =>
-  /already registered|already exists/i.test(String(error?.message || ''));
-
 const signInByEmailVariants = async (nickname, password) => {
   let lastError = null;
+  const remembered =
+    typeof window !== 'undefined' ? window.localStorage.getItem(LAST_DOMAIN_KEY) : null;
+  const orderedDomains = Array.from(
+    new Set([remembered, ...SIGNIN_DOMAINS].filter(Boolean))
+  );
 
-  for (const domain of AUTH_DOMAINS) {
+  for (const domain of orderedDomains) {
     const { data, error } = await supabase.auth.signInWithPassword({
       email: toEmail(nickname, domain),
       password,
     });
 
     if (!error) {
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(LAST_DOMAIN_KEY, domain);
+      }
       return { success: true, data, email: toEmail(nickname, domain), domain };
     }
 
@@ -45,6 +61,30 @@ const signInByEmailVariants = async (nickname, password) => {
   }
 
   return { success: false, error: lastError };
+};
+
+const provisionAccountOnServer = async (nickname, password) => {
+  const response = await fetch('/api/auth-provision', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ nickname, password }),
+  });
+
+  let json = {};
+  try {
+    json = await response.json();
+  } catch {
+    json = {};
+  }
+
+  if (!response.ok || json.success === false) {
+    return {
+      success: false,
+      error: json.error || 'Não foi possível provisionar conta no servidor',
+    };
+  }
+
+  return { success: true, data: json };
 };
 
 const nicknameExists = async (nickname) => {
@@ -72,15 +112,9 @@ const autoProvisionFromNickname = async (nickname, password) => {
     return { success: false, error: 'Nickname ou senha inválidos' };
   }
 
-  const registerResult = await signUp(nickname, password);
-  if (!registerResult.success) {
-    if (isAlreadyRegistered(registerResult.rawError)) {
-      const retried = await signInByEmailVariants(nickname, password);
-      if (retried.success) {
-        return { success: true, data: retried.data, autoProvisioned: false };
-      }
-    }
-    return registerResult;
+  const provisionResult = await provisionAccountOnServer(nickname, password);
+  if (!provisionResult.success) {
+    return provisionResult;
   }
 
   const loginAfterCreate = await signInByEmailVariants(nickname, password);
@@ -167,41 +201,25 @@ export const signUp = async (nickname, password) => {
       return { success: false, error: guildCheck.error };
     }
 
-    const { data, error } = await supabase.auth.signUp({
-      email: toEmail(normalizedNickname, PRIMARY_AUTH_DOMAIN),
-      password,
-      options: {
-        data: {
-          username: normalizedNickname,
-          full_name: normalizedNickname,
-          albion_player_id: guildCheck.playerId,
-        },
-      },
-    });
-
-    if (error) throw error;
-
-    if (data.user) {
-      await supabase
-        .from('profiles')
-        .update({
-          username: normalizedNickname,
-          full_name: normalizedNickname,
-          albion_character_name: normalizedNickname,
-          albion_player_id: guildCheck.playerId,
-          guild_verified: true,
-          last_guild_verified_at: new Date().toISOString(),
-          is_active: true,
-        })
-        .eq('id', data.user.id);
+    const provisioned = await provisionAccountOnServer(normalizedNickname, password);
+    if (!provisioned.success) {
+      return provisioned;
     }
 
-    return { success: true, data };
+    const loginResult = await signInByEmailVariants(normalizedNickname, password);
+    if (!loginResult.success) {
+      throw loginResult.error || new Error('Conta criada, mas falhou login');
+    }
+
+    return {
+      success: true,
+      data: loginResult.data,
+      email: provisioned.data?.email || toEmail(normalizedNickname, MIGRATION_AUTH_DOMAIN),
+    };
   } catch (error) {
     console.error('Sign up error:', error);
     return {
       success: false,
-      rawError: error,
       error: error.message || 'Erro ao criar conta',
     };
   }

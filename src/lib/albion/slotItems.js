@@ -31,19 +31,22 @@ export function getLocalItemsForSlot(slotKey, tier = 8, search = '') {
   const families = SLOT_FAMILIES[slotKey] || [];
   const q = search.trim().toLowerCase();
   const items = [];
+  const tiers = Number.isInteger(tier) ? [tier] : [4, 5, 6, 7, 8];
 
-  for (const family of families) {
-    const itemId = buildItemId(tier, family, 0);
-    if (q && !itemId.toLowerCase().includes(q) && !family.toLowerCase().includes(q)) {
-      continue;
+  for (const selectedTier of tiers) {
+    for (const family of families) {
+      const itemId = buildItemId(selectedTier, family, 0);
+      if (q && !itemId.toLowerCase().includes(q) && !family.toLowerCase().includes(q)) {
+        continue;
+      }
+      items.push({
+        item_id: itemId,
+        name_pt: itemId.replace(/_/g, ' '),
+        tier: selectedTier,
+        family,
+        image_url: `https://render.albiononline.com/v1/item/${encodeURIComponent(itemId)}.png`,
+      });
     }
-    items.push({
-      item_id: itemId,
-      name_pt: itemId.replace(/_/g, ' '),
-      tier,
-      family,
-      image_url: `https://render.albiononline.com/v1/item/${encodeURIComponent(itemId)}.png`,
-    });
   }
 
   return items;

@@ -6,14 +6,14 @@ import { getAlbionIconUrl } from '@/utils/albionIcon';
  * Exibe ícone oficial do Albion Online (render.albiononline.com).
  * Usa URL com .png e encodeURIComponent — necessário para IDs com @.
  */
-const ItemIcon = ({ itemId, size = 32, className = '' }) => {
-  const [error, setError] = useState(false);
-  const iconUrl = itemId ? getAlbionIconUrl(itemId) : null;
+const ItemIcon = ({ itemId, imageUrl = null, size = 32, className = '' }) => {
+  const fallbackIconUrl = itemId ? getAlbionIconUrl(itemId) : null;
+  const [source, setSource] = useState(imageUrl || fallbackIconUrl || null);
 
   const boxStyle = { width: size, height: size };
   const iconSize = size * 0.5;
 
-  if (!iconUrl || error) {
+  if (!source) {
     return (
       <div
         className={`bg-slate-800 rounded flex items-center justify-center shrink-0 ${className}`}
@@ -27,14 +27,20 @@ const ItemIcon = ({ itemId, size = 32, className = '' }) => {
 
   return (
     <img
-      src={iconUrl}
+      src={source}
       alt={itemId}
       className={`rounded shrink-0 object-contain bg-slate-900/50 ${className}`}
       style={boxStyle}
       loading="lazy"
       decoding="async"
       referrerPolicy="no-referrer"
-      onError={() => setError(true)}
+      onError={() => {
+        if (source !== fallbackIconUrl && fallbackIconUrl) {
+          setSource(fallbackIconUrl);
+          return;
+        }
+        setSource(null);
+      }}
       title={itemId}
     />
   );

@@ -1,8 +1,40 @@
 import { supabase } from './client';
+import { getCatalogItemsMeta } from './catalog';
+import { cleanItemName } from '@/utils/itemTranslator';
 
 /**
  * Shop operations for VENUM MARKET
  */
+
+const enrichWithCatalog = async (items = []) => {
+  const ids = items.map((item) => item.catalog_item_id).filter(Boolean);
+  if (ids.length === 0) return items;
+  const catalog = await getCatalogItemsMeta(ids);
+  return items.map((item) => {
+    const meta = item.catalog_item_id ? catalog[item.catalog_item_id] : null;
+    return {
+      ...item,
+      resolved_name: cleanItemName(meta?.name_pt || item.name, item.catalog_item_id),
+      resolved_image_url: meta?.image_url || item.image_url,
+      resolved_description: item.description || meta?.subcategory || '',
+    };
+  });
+};
+
+const withCatalogDefaults = async (payload = {}) => {
+  const itemId = payload.catalog_item_id;
+  if (!itemId) return payload;
+  const catalog = await getCatalogItemsMeta([itemId]);
+  const row = catalog[itemId];
+  if (!row) return payload;
+
+  return {
+    ...payload,
+    name: payload.name || row.name_pt || itemId,
+    image_url: payload.image_url || row.image_url || null,
+    description: payload.description || row.subcategory || payload.description || null,
+  };
+};
 
 // Get all active shop items
 export const getShopItems = async (category = null) => {
@@ -20,7 +52,8 @@ export const getShopItems = async (category = null) => {
     const { data, error } = await query;
 
     if (error) throw error;
-    return { success: true, data };
+    const enriched = await enrichWithCatalog(data || []);
+    return { success: true, data: enriched };
   } catch (error) {
     console.error('Get shop items error:', error);
     return { success: false, error: error.message };
@@ -37,7 +70,8 @@ export const getShopItemById = async (itemId) => {
       .single();
 
     if (error) throw error;
-    return { success: true, data };
+    const enriched = await enrichWithCatalog(data ? [data] : []);
+    return { success: true, data: enriched[0] || data };
   } catch (error) {
     console.error('Get shop item by ID error:', error);
     return { success: false, error: error.message };
@@ -47,9 +81,10 @@ export const getShopItemById = async (itemId) => {
 // Create shop item (officers/admins only)
 export const createShopItem = async (itemData) => {
   try {
+    const prepared = await withCatalogDefaults(itemData);
     const { data, error } = await supabase
       .from('shop_items')
-      .insert(itemData)
+      .insert(prepared)
       .select()
       .single();
 
@@ -64,9 +99,10 @@ export const createShopItem = async (itemData) => {
 // Update shop item (officers/admins only)
 export const updateShopItem = async (itemId, updates) => {
   try {
+    const prepared = await withCatalogDefaults(updates);
     const { data, error } = await supabase
       .from('shop_items')
-      .update(updates)
+      .update(prepared)
       .eq('id', itemId)
       .select()
       .single();

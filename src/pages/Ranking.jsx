@@ -51,11 +51,20 @@ const Podium = ({ top3, tabId, userId, scoreLabel }) => {
             >
               {member ? (
                 <>
-                  <div className="w-12 h-12 rounded-full bg-slate-800 border-2 border-slate-600 flex items-center justify-center mb-2">
-                    <span className="text-lg font-bold text-white">
-                      {String(member.displayName || '?').charAt(0).toUpperCase()}
-                    </span>
-                  </div>
+                  {member.avatarUrl ? (
+                    <img
+                      src={member.avatarUrl}
+                      alt={member.displayName}
+                      className="w-12 h-12 rounded-full border-2 border-slate-600 object-cover mb-2"
+                      loading="lazy"
+                    />
+                  ) : (
+                    <div className="w-12 h-12 rounded-full bg-slate-800 border-2 border-slate-600 flex items-center justify-center mb-2">
+                      <span className="text-lg font-bold text-white">
+                        {String(member.displayName || '?').charAt(0).toUpperCase()}
+                      </span>
+                    </div>
+                  )}
                   <p className="text-xs font-semibold text-white text-center truncate w-full">
                     {member.displayName}
                   </p>
@@ -97,11 +106,20 @@ const RankingList = ({ rows, tabId, userId, scoreLabel }) => (
             <span className="text-sm font-bold text-slate-400">#{member.rank}</span>
           </div>
           <div className="col-span-7 flex items-center gap-3 min-w-0">
-            <div className="w-9 h-9 bg-slate-700 rounded-full flex-shrink-0 flex items-center justify-center">
-              <span className="text-sm font-semibold text-white">
-                {String(member.displayName || '?').charAt(0).toUpperCase()}
-              </span>
-            </div>
+            {member.avatarUrl ? (
+              <img
+                src={member.avatarUrl}
+                alt={member.displayName}
+                className="w-9 h-9 rounded-full flex-shrink-0 object-cover"
+                loading="lazy"
+              />
+            ) : (
+              <div className="w-9 h-9 bg-slate-700 rounded-full flex-shrink-0 flex items-center justify-center">
+                <span className="text-sm font-semibold text-white">
+                  {String(member.displayName || '?').charAt(0).toUpperCase()}
+                </span>
+              </div>
+            )}
             <div className="min-w-0">
               <p className="text-sm font-medium text-white truncate">{member.displayName}</p>
               {isUser && <span className="text-xs text-red-400">Você</span>}
@@ -249,7 +267,7 @@ const Ranking = ({ userId }) => {
       {activeTab !== 'missions' && !loading && !error && (
         <p className="text-xs text-slate-500 mt-4 text-center">
           Rankings PvP, PvE e Coleta usam fama mensal sincronizada pela{' '}
-          <strong className="text-emerald-400/90">Celeste</strong> (Admin → Celeste).
+          <strong className="text-emerald-400/90">Anaconda</strong> (Admin → Anaconda).
         </p>
       )}
     </div>

@@ -11,11 +11,19 @@ export const config = {
     process.env.DISCORD_RAIDS_CHANNEL_ID ||
     process.env.DISCORD_CONTENT_CHANNEL_ID ||
     process.env.DISCORD_MISSIONS_CHANNEL_ID,
+  killboardChannelId:
+    process.env.DISCORD_KILLBOARD_CHANNEL_ID || process.env.DISCORD_CONTENT_CHANNEL_ID,
+  battleboardChannelId:
+    process.env.DISCORD_BATTLEBOARD_CHANNEL_ID || process.env.DISCORD_KILLBOARD_CHANNEL_ID,
   supabaseUrl: process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL,
   supabaseKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
   guildName: process.env.GUILD_NAME || 'I V E N U M I',
+  albionGuildId: process.env.ALBION_GUILD_ID || '-TW40MAhRHGsv3ow5h_Zdw',
   hubUrl: process.env.VITE_APP_URL || 'https://venum-eight.vercel.app',
   missionPollMs: Number(process.env.MISSION_POLL_MS || 60_000),
+  contentPollMs: Number(process.env.CONTENT_POLL_MS || 45_000),
+  killboardPollMs: Number(process.env.KILLBOARD_POLL_MS || 90_000),
+  battleboardPollMs: Number(process.env.BATTLEBOARD_POLL_MS || 180_000),
 };
 
 export function assertConfig() {

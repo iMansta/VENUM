@@ -15,11 +15,12 @@ import ItemIcon from '@/components/market/ItemIcon';
 import { reserveTransportOpportunity } from '@/lib/supabase/transports';
 import { supabase } from '@/lib/supabase/client';
 import { safeTranslate as translateItem } from '@/utils/itemTranslator';
+import { getCatalogItemsMeta } from '@/lib/supabase/catalog';
 
 const formatSilver = (v) =>
   new Intl.NumberFormat('pt-BR').format(Math.round(v || 0));
 
-const formatPct = (v) => `${(Number(v || 0) * 100).toFixed(1)}%`;
+const formatPct = (v) => `${Number(v || 0).toFixed(1)}%`;
 
 /**
  * Hub de mercado — comprar nas cidades reais, vender no Black Market.
@@ -38,6 +39,8 @@ const MarketHub = ({ userId }) => {
   const [myBag, setMyBag] = useState([]);
   const [reservingId, setReservingId] = useState(null);
   const [completingId, setCompletingId] = useState(null);
+  const [catalogMeta, setCatalogMeta] = useState({});
+  const [reservedItemIds, setReservedItemIds] = useState(new Set());
 
   const {
     opportunities,
@@ -46,10 +49,13 @@ const MarketHub = ({ userId }) => {
     progress,
   } = useMarketOpportunities(60, refreshKey);
 
-  const filteredOpportunities = useMemo(
-    () => applyMarketFilters(opportunities, filters),
-    [opportunities, filters]
-  );
+  // Remove oportunidades cujo item já foi reservado por qualquer membro
+  // (evita duplicar a mesma "missão" de transporte).
+  const filteredOpportunities = useMemo(() => {
+    const base = applyMarketFilters(opportunities, filters);
+    if (reservedItemIds.size === 0) return base;
+    return base.filter((opp) => !reservedItemIds.has(opp.itemId));
+  }, [opportunities, filters, reservedItemIds]);
 
   const progressText =
     progress.total > 0
@@ -71,9 +77,39 @@ const MarketHub = ({ userId }) => {
     if (!error) setMyBag(data || []);
   }, [userId]);
 
+  const loadReservedItemIds = useCallback(async () => {
+    const nowIso = new Date().toISOString();
+    const { data, error } = await supabase
+      .from('transport_reservations')
+      .select('item_id, expires_at, status')
+      .eq('status', 'reserved');
+
+    if (!error && Array.isArray(data)) {
+      const ids = data
+        .filter((r) => !r.expires_at || r.expires_at > nowIso)
+        .map((r) => r.item_id)
+        .filter(Boolean);
+      setReservedItemIds(new Set(ids));
+    }
+  }, []);
+
   useEffect(() => {
     loadMyBag();
-  }, [loadMyBag, refreshKey]);
+    loadReservedItemIds();
+  }, [loadMyBag, loadReservedItemIds, refreshKey]);
+
+  useEffect(() => {
+    const loadMeta = async () => {
+      const ids = opportunities.map((o) => o.itemId).filter(Boolean);
+      if (ids.length === 0) {
+        setCatalogMeta({});
+        return;
+      }
+      const meta = await getCatalogItemsMeta(ids);
+      setCatalogMeta(meta);
+    };
+    loadMeta();
+  }, [opportunities]);
 
   const handleReserve = async (opp) => {
     if (!userId) {
@@ -100,6 +136,7 @@ const MarketHub = ({ userId }) => {
 
       setTab('bag');
       loadMyBag();
+      loadReservedItemIds();
     } catch (e) {
       alert('Erro ao reservar. Tente novamente.');
     } finally {
@@ -112,6 +149,7 @@ const MarketHub = ({ userId }) => {
     try {
       await supabase.from('transport_reservations').update({ status: 'completed' }).eq('id', id);
       loadMyBag();
+      loadReservedItemIds();
     } catch {
       alert('Erro ao concluir.');
     } finally {
@@ -239,12 +277,23 @@ const MarketHub = ({ userId }) => {
               className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col md:flex-row md:items-center gap-4 hover:border-red-500/30 transition-colors"
             >
               <div className="flex items-center gap-3 flex-1 min-w-0">
-                <ItemIcon itemId={opp.itemId} size={56} />
+                    <ItemIcon
+                      itemId={opp.itemId}
+                      imageUrl={catalogMeta[opp.itemId]?.image_url || null}
+                      size={56}
+                    />
                 <div className="min-w-0">
                   <p className="font-semibold text-white truncate">
-                    {translateItem(opp.itemId)}
+                    {catalogMeta[opp.itemId]?.name_pt || translateItem(opp.itemId)}
                   </p>
-                  <p className="text-xs text-gray-500 font-mono truncate">{opp.itemId}</p>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    {opp.enchantment > 0 && (
+                      <span className="text-xs text-purple-400">.{opp.enchantment}</span>
+                    )}
+                    <span className="text-xs text-blue-400 font-medium">
+                      Qtd: {opp.quantity || 1}
+                    </span>
+                  </div>
                 </div>
               </div>
 
@@ -270,7 +319,7 @@ const MarketHub = ({ userId }) => {
                 <p className="text-lg font-bold text-emerald-400">
                   +{formatSilver(opp.netProfit)}
                 </p>
-                <p className="text-xs text-gray-400">{formatPct(opp.marginPct)} margem</p>
+                <p className="text-xs text-gray-400">{formatPct(opp.margin)} margem</p>
               </div>
 
               <button
