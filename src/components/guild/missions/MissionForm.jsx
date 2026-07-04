@@ -60,8 +60,11 @@ const MissionForm = ({ onClose, onSuccess, userId }) => {
     }
 
     const missionData = {
-      ...formData,
       created_by: userId,
+      title: formData.title,
+      description: formData.description,
+      mission_type: formData.mission_type,
+      target_item: formData.target_item,
       target_quantity: parseInt(formData.target_quantity),
       min_fame_threshold:
         formData.mission_type === 'pve'

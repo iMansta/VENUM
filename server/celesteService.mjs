@@ -8,6 +8,7 @@ const ALBION_DATA_BASE =
   process.env.VITE_ALBION_DATA_BASE || 'https://west.albion-online-data.com';
 const GAMEINFO_BASE =
   process.env.VITE_GAMEINFO_BASE || 'https://gameinfo.albiononline.com/api/gameinfo';
+const ALBION_GUILD_ID = process.env.ALBION_GUILD_ID || '';
 const ROYAL_CITIES = ['Martlock', 'Thetford', 'Fort Sterling', 'Lymhurst', 'Bridgewatch'];
 const BM_CITY = 'Caerleon';
 
@@ -18,12 +19,233 @@ const FALLBACK_ITEMS = [
 ];
 
 const normalizeGuild = (s) => String(s || '').replace(/\s+/g, '').toUpperCase();
+const toNumber = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const toNullableNumber = (v) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
+
+async function fetchJsonWithRetry(url, { attempts = 3, timeoutMs = 20000 } = {}) {
+  let lastError = null;
+  for (let i = 0; i < attempts; i += 1) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(url, { signal: controller.signal });
+      if (res.ok) {
+        clearTimeout(timer);
+        return await res.json();
+      }
+      lastError = new Error(`HTTP ${res.status}`);
+    } catch (err) {
+      lastError = err;
+    } finally {
+      clearTimeout(timer);
+    }
+    if (i < attempts - 1) {
+      await sleep(800 * (i + 1));
+    }
+  }
+  throw lastError || new Error('Falha ao consultar Albion API');
+}
+
+const missionTargetMatches = (targetItem, accepted = []) => {
+  const t = String(targetItem || '').trim().toLowerCase();
+  if (!t || t === 'any' || t === 'general') return true;
+  return accepted.includes(t);
+};
+
+async function applyMissionContributionDelta({
+  supabase,
+  profileId,
+  missionType,
+  acceptedTargets,
+  delta,
+}) {
+  if (!profileId || !delta || delta <= 0) return 0;
+
+  const { data: missions, error } = await supabase
+    .from('missions')
+    .select('id, target_item, target_quantity, current_quantity')
+    .eq('status', 'active')
+    .eq('mission_type', missionType)
+    .or(`end_date.is.null,end_date.gt.${new Date().toISOString()}`);
+
+  if (error || !missions?.length) return 0;
+
+  let updates = 0;
+  for (const mission of missions) {
+    if (!missionTargetMatches(mission.target_item, acceptedTargets)) continue;
+    const nextQty = Math.min(
+      toNumber(mission.target_quantity),
+      toNumber(mission.current_quantity) + delta
+    );
+    const { error: upErr } = await supabase
+      .from('missions')
+      .update({ current_quantity: nextQty, updated_at: new Date().toISOString() })
+      .eq('id', mission.id);
+    if (upErr) continue;
+    updates += 1;
+
+    const { data: existing } = await supabase
+      .from('mission_participants')
+      .select('id, contribution_quantity')
+      .eq('mission_id', mission.id)
+      .eq('profile_id', profileId)
+      .maybeSingle();
+
+    if (existing?.id) {
+      await supabase
+        .from('mission_participants')
+        .update({
+          contribution_quantity: toNumber(existing.contribution_quantity) + delta,
+        })
+        .eq('id', existing.id);
+    } else {
+      await supabase.from('mission_participants').insert({
+        mission_id: mission.id,
+        profile_id: profileId,
+        contribution_quantity: delta,
+      });
+    }
+  }
+
+  return updates;
+}
+
+async function getActivePveMissionThresholds(supabase) {
+  const { data, error } = await supabase
+    .from('missions')
+    .select('id, title, mission_type, target_item, min_fame_threshold, end_date')
+    .eq('status', 'active')
+    .eq('mission_type', 'pve')
+    .in('target_item', ['mob_kill', 'kill', 'pve_kill'])
+    .or(`end_date.is.null,end_date.gt.${new Date().toISOString()}`);
+
+  if (error || !data?.length) return [];
+
+  return data.map((mission) => ({
+    id: mission.id,
+    title: mission.title,
+    targetItem: mission.target_item,
+    minFameThreshold: Number(mission.min_fame_threshold) > 0
+      ? Number(mission.min_fame_threshold)
+      : 10000,
+    endDate: mission.end_date || null,
+  }));
+}
+
+async function getPlayerPveMissionThresholds(supabase, username) {
+  const user = String(username || '').trim();
+  if (!user) return [];
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('id')
+    .or(`username.ilike.${user},albion_character_name.ilike.${user}`)
+    .limit(1)
+    .maybeSingle();
+  if (!profile?.id) return [];
+
+  const { data, error } = await supabase
+    .from('mission_participants')
+    .select(`
+      mission_id,
+      missions!inner (
+        id,
+        title,
+        mission_type,
+        target_item,
+        min_fame_threshold,
+        end_date,
+        status
+      )
+    `)
+    .eq('profile_id', profile.id)
+    .eq('missions.status', 'active')
+    .eq('missions.mission_type', 'pve')
+    .in('missions.target_item', ['mob_kill', 'kill', 'pve_kill'])
+    .or(`end_date.is.null,end_date.gt.${new Date().toISOString()}`, {
+      foreignTable: 'missions',
+    });
+
+  if (error || !data?.length) return [];
+
+  return data
+    .map((row) => row.missions)
+    .filter(Boolean)
+    .map((mission) => ({
+      id: mission.id,
+      title: mission.title,
+      targetItem: mission.target_item,
+      minFameThreshold: Number(mission.min_fame_threshold) > 0
+        ? Number(mission.min_fame_threshold)
+        : 10000,
+      endDate: mission.end_date || null,
+    }));
+}
+
+async function syncGuildMetricsSnapshot({ supabase, guildId, guildName, memberCount }) {
+  let detail = null;
+  try {
+    detail = await fetchJsonWithRetry(`${GAMEINFO_BASE}/guilds/${guildId}`, {
+      attempts: 2,
+      timeoutMs: 12000,
+    });
+  } catch {
+    detail = null;
+  }
+
+  const source = detail || {};
+  const silverAmount = toNullableNumber(
+    source.SilverAmount ??
+      source.silverAmount ??
+      source.Silver ??
+      source.silver ??
+      source.GuildSilver
+  );
+  const seasonPoints = toNullableNumber(
+    source.SeasonPoints ??
+      source.seasonPoints ??
+      source.RankingPoints ??
+      source.rankingPoints
+  );
+  const killFame = toNullableNumber(source.KillFame ?? source.killFame);
+  const deathFame = toNullableNumber(source.DeathFame ?? source.deathFame);
+  const totalFame = toNullableNumber(source.Fame ?? source.fame ?? source.TotalFame);
+
+  const snapshot = {
+    guild_id: guildId,
+    guild_name: guildName || GUILD_NAME,
+    member_count: toNumber(memberCount),
+    silver_amount: silverAmount,
+    season_points: seasonPoints,
+    kill_fame: killFame,
+    death_fame: deathFame,
+    total_fame: totalFame,
+    source: detail ? 'gameinfo_guild_detail' : 'guild_sync_fallback',
+    payload: detail || null,
+    collected_at: new Date().toISOString(),
+  };
+
+  const { error } = await supabase.from('guild_metrics_snapshots').insert(snapshot);
+  if (error) {
+    return { ...snapshot, warning: error.message };
+  }
+  return snapshot;
+}
 
 function getSupabaseAdmin() {
-  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const url =
+    process.env.SUPABASE_URL ||
+    process.env.VITE_SUPABASE_URL ||
+    process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY;
   if (!url || !key) {
-    throw new Error('Configure SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY na Vercel');
+    throw new Error(
+      'Configure SUPABASE_URL e chave admin (SUPABASE_SERVICE_ROLE_KEY ou SUPABASE_SECRET_KEY) na Vercel'
+    );
   }
   return createClient(url, key);
 }
@@ -100,22 +322,40 @@ export async function upsertMarketPrices(rows) {
   const supabase = getSupabaseAdmin();
   let count = 0;
 
+  const deduped = new Map();
   for (const row of rows || []) {
-    if (!row?.item_id || !row?.city) continue;
-    const { error } = await supabase.rpc('set_cached_market_price_by_location', {
-      p_item_id: row.item_id,
-      p_location: row.city,
-      p_price_data: {
-        buy_price_min: row.buy_price_min,
-        buy_price_max: row.buy_price_max,
-        sell_price_min: row.sell_price_min,
-        sell_price_max: row.sell_price_max,
-      },
-    });
-    if (!error) count += 1;
+    const itemId = String(row?.item_id || '').trim();
+    const city = String(row?.city || '').trim();
+    if (!itemId || !city) continue;
+    deduped.set(`${itemId}::${city}`, row);
+    if (deduped.size >= 500) break; // trava de segurança para não saturar writes
   }
 
-  return { rows: count };
+  const normalized = [...deduped.values()];
+  const chunkSize = 25;
+
+  for (let i = 0; i < normalized.length; i += chunkSize) {
+    const chunk = normalized.slice(i, i + chunkSize);
+    const results = await Promise.all(
+      chunk.map((row) =>
+        supabase.rpc('set_cached_market_price_by_location', {
+          p_item_id: row.item_id,
+          p_location: row.city,
+          p_price_data: {
+            buy_price_min: row.buy_price_min,
+            buy_price_max: row.buy_price_max,
+            sell_price_min: row.sell_price_min,
+            sell_price_max: row.sell_price_max,
+          },
+        })
+      )
+    );
+    for (const res of results) {
+      if (!res.error) count += 1;
+    }
+  }
+
+  return { rows: count, accepted: normalized.length };
 }
 
 export async function aggregateCelesteObservations(limit = 500) {
@@ -138,53 +378,170 @@ export async function aggregateCelesteObservations(limit = 500) {
   };
 }
 
-export async function syncGuildMembers() {
+export async function syncGuildMembers(options = {}) {
   const supabase = getSupabaseAdmin();
+  const clientUsername = String(options.username || '').trim();
+  let guildId = ALBION_GUILD_ID;
+  if (!guildId) {
+    const searchData = await fetchJsonWithRetry(
+      `${GAMEINFO_BASE}/search?q=${encodeURIComponent(GUILD_NAME)}`
+    );
+    const guild = (searchData.guilds || []).find(
+      (g) => normalizeGuild(g.Name) === normalizeGuild(GUILD_NAME)
+    );
+    if (!guild) throw new Error(`Guilda "${GUILD_NAME}" não encontrada`);
+    guildId = guild.Id;
+  }
 
-  const searchRes = await fetch(`${GAMEINFO_BASE}/search?q=${encodeURIComponent(GUILD_NAME)}`);
-  if (!searchRes.ok) throw new Error(`GameInfo search ${searchRes.status}`);
-  const searchData = await searchRes.json();
-  const guild = (searchData.guilds || []).find(
-    (g) => normalizeGuild(g.Name) === normalizeGuild(GUILD_NAME)
-  );
-  if (!guild) throw new Error(`Guilda "${GUILD_NAME}" não encontrada`);
-
-  const membersRes = await fetch(`${GAMEINFO_BASE}/guilds/${guild.Id}/members`);
-  if (!membersRes.ok) throw new Error(`GameInfo members ${membersRes.status}`);
-  const members = await membersRes.json();
+  const members = await fetchJsonWithRetry(`${GAMEINFO_BASE}/guilds/${guildId}/members`);
   const memberNames = new Set((members || []).map((m) => String(m.Name || '').toLowerCase()));
 
   const { data: profiles, error } = await supabase
     .from('profiles')
-    .select('id, username, role, is_active');
+    .select('id, username, albion_character_name, role, is_active, albion_kill_fame, albion_pve_fame, albion_gathering_fame');
 
   if (error) throw error;
 
   let activated = 0;
   let deactivated = 0;
+  let fameSynced = 0;
+  let missionUpdates = 0;
+  let matchedProfiles = 0;
+
+  const memberByName = new Map(
+    (members || []).map((m) => [String(m.Name || '').trim().toLowerCase(), m])
+  );
 
   for (const profile of profiles || []) {
-    const charName = (profile.username || '').toLowerCase();
-    if (!charName || profile.role === 'admin') continue;
+    const charName = String(
+      profile.albion_character_name || profile.username || ''
+    ).trim().toLowerCase();
+    if (!charName) continue;
 
     const inGuild = memberNames.has(charName);
 
     if (inGuild && profile.is_active === false) {
       await supabase.from('profiles').update({ is_active: true }).eq('id', profile.id);
       activated += 1;
-    } else if (!inGuild && profile.is_active !== false) {
+    } else if (!inGuild && profile.is_active !== false && profile.role !== 'admin') {
       await supabase.from('profiles').update({ is_active: false }).eq('id', profile.id);
       deactivated += 1;
     }
+
+    const member = memberByName.get(charName);
+    if (!member) continue;
+    matchedProfiles += 1;
+
+    const killNow = toNumber(member.KillFame);
+    const pveNow = toNumber(member.LifetimeStatistics?.PvE?.Total);
+    const gatherNow = toNumber(member.LifetimeStatistics?.Gathering?.All?.Total);
+
+    const oldKill = toNumber(profile.albion_kill_fame);
+    const oldPve = toNumber(profile.albion_pve_fame);
+    const oldGather = toNumber(profile.albion_gathering_fame);
+
+    const killDelta = oldKill > 0 ? Math.max(killNow - oldKill, 0) : 0;
+    const pveDelta = oldPve > 0 ? Math.max(pveNow - oldPve, 0) : 0;
+    const gatherDelta = oldGather > 0 ? Math.max(gatherNow - oldGather, 0) : 0;
+    const needsBaseline =
+      (oldKill === 0 && killNow > 0) ||
+      (oldPve === 0 && pveNow > 0) ||
+      (oldGather === 0 && gatherNow > 0);
+
+    if (killDelta > 0 || pveDelta > 0 || gatherDelta > 0 || needsBaseline) {
+      await supabase
+        .from('profiles')
+        .update({
+          albion_kill_fame: Math.max(oldKill, killNow),
+          albion_pve_fame: Math.max(oldPve, pveNow),
+          albion_gathering_fame: Math.max(oldGather, gatherNow),
+          albion_fame_synced_at: new Date().toISOString(),
+        })
+        .eq('id', profile.id);
+      fameSynced += 1;
+    }
+
+    if (pveDelta > 0) {
+      missionUpdates += await applyMissionContributionDelta({
+        supabase,
+        profileId: profile.id,
+        missionType: 'pve',
+        acceptedTargets: ['pve_fame', 'fame'],
+        delta: pveDelta,
+      });
+    }
+    if (gatherDelta > 0) {
+      missionUpdates += await applyMissionContributionDelta({
+        supabase,
+        profileId: profile.id,
+        missionType: 'gathering',
+        acceptedTargets: ['gather_any'],
+        delta: gatherDelta,
+      });
+    }
+    if (killDelta > 0) {
+      missionUpdates += await applyMissionContributionDelta({
+        supabase,
+        profileId: profile.id,
+        missionType: 'pvp',
+        acceptedTargets: ['player_kill', 'pvp_kill'],
+        delta: killDelta,
+      });
+    }
   }
 
-  return { memberCount: memberNames.size, activated, deactivated };
+  try {
+    await supabase.rpc('celeste_finalize_completed_missions');
+  } catch {
+    /* noop */
+  }
+  const guildMetrics = await syncGuildMetricsSnapshot({
+    supabase,
+    guildId,
+    guildName: GUILD_NAME,
+    memberCount: memberNames.size,
+  });
+  const activePveMissions = await getActivePveMissionThresholds(supabase);
+  const playerPveMissions = await getPlayerPveMissionThresholds(supabase, clientUsername);
+  return {
+    memberCount: memberNames.size,
+    matchedProfiles,
+    activated,
+    deactivated,
+    fameSynced,
+    missionUpdates,
+    guildMetrics,
+    activePveMissions,
+    playerPveMissions,
+  };
 }
 
 export async function syncGameEvents() {
   const supabase = getSupabaseAdmin();
-  const res = await fetch(`${GAMEINFO_BASE}/events?limit=20&offset=0`);
-  if (!res.ok) throw new Error(`Eventos ${res.status}`);
+  const eventsUrl = `${GAMEINFO_BASE}/events?limit=20&offset=0`;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10000);
+
+  let res;
+  try {
+    res = await fetch(eventsUrl, { signal: controller.signal });
+  } catch (error) {
+    clearTimeout(timeout);
+    return {
+      inserted: 0,
+      total: 0,
+      warning:
+        error?.name === 'AbortError'
+          ? 'Eventos timeout'
+          : `Eventos indisponível: ${error?.message || 'erro de rede'}`,
+    };
+  }
+  clearTimeout(timeout);
+
+  if (!res.ok) {
+    return { inserted: 0, total: 0, warning: `Eventos upstream ${res.status}` };
+  }
+
   const events = await res.json();
 
   let inserted = 0;
@@ -335,7 +692,11 @@ export async function getCelesteOperationalStatus() {
 
   const supabaseHost = (() => {
     try {
-      return new URL(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL).host;
+      return new URL(
+        process.env.SUPABASE_URL ||
+          process.env.VITE_SUPABASE_URL ||
+          process.env.NEXT_PUBLIC_SUPABASE_URL
+      ).host;
     } catch {
       return null;
     }
@@ -383,6 +744,7 @@ export async function ingestCelesteTelemetry(payload = {}) {
       app_version: String(meta.version || ''),
       host_name: String(meta.hostName || ''),
       game_log_path: String(meta.gameLogPath || ''),
+      username: String(meta.username || '').trim() || null,
       guild_name: GUILD_NAME,
     },
     { onConflict: 'client_id' }
@@ -392,13 +754,83 @@ export async function ingestCelesteTelemetry(payload = {}) {
     return { clientId, inserted: 0 };
   }
 
-  const capped = observations.slice(0, 200).map((obs) => ({
+  const inferPassiveServerSide = (rows) => {
+    const alreadyHasPassivePve = rows.some(
+      (obs) =>
+        String(obs?.type || '') === 'pve_fame' &&
+        String(obs?.payload?.source || '').includes('passive_network_heuristic')
+    );
+    const alreadyHasPassiveMobKill = rows.some(
+      (obs) =>
+        String(obs?.type || '') === 'mob_kill' &&
+        String(obs?.payload?.source || '').includes('passive_network_heuristic')
+    );
+    if (alreadyHasPassivePve && alreadyHasPassiveMobKill) {
+      return [];
+    }
+
+    const inferred = [];
+    for (const obs of rows) {
+      if (String(obs?.type || '') !== 'net_udp_packets') continue;
+      const packets = Number(obs?.valueNumeric ?? 0);
+      const bytesTotal = Number(obs?.payload?.bytes_total ?? 0);
+      if (!Number.isFinite(packets) || !Number.isFinite(bytesTotal)) continue;
+      if (packets < 40 || bytesTotal < 12000) continue;
+
+      const observedAt = obs?.observedAt || now;
+      const estimatedFame = packets * 150;
+      const estimatedKills = Math.max(1, Math.floor(packets / 45));
+
+      if (!alreadyHasPassivePve) {
+        inferred.push({
+          observedAt,
+          type: 'pve_fame',
+          valueNumeric: estimatedFame,
+          payload: {
+            source: 'server_passive_network_heuristic',
+            target_key: 'pve_fame',
+            packets,
+            bytes_total: bytesTotal,
+          },
+        });
+      }
+      if (!alreadyHasPassiveMobKill) {
+        inferred.push({
+          observedAt,
+          type: 'mob_kill',
+          valueNumeric: estimatedKills,
+          payload: {
+            source: 'server_passive_network_heuristic',
+            target_key: 'mob_kill',
+            packets,
+            bytes_total: bytesTotal,
+          },
+        });
+      }
+    }
+    return inferred;
+  };
+
+  const withDerived = observations.concat(inferPassiveServerSide(observations));
+
+  const capped = withDerived.slice(0, 200).map((obs) => ({
     client_id: clientId,
     observed_at: obs.observedAt || now,
     type: String(obs.type || 'raw'),
     value_numeric:
       Number.isFinite(Number(obs.valueNumeric)) ? Number(obs.valueNumeric) : null,
-    payload: obs.payload && typeof obs.payload === 'object' ? obs.payload : { raw: String(obs.raw || '') },
+    payload:
+      obs.payload && typeof obs.payload === 'object'
+        ? {
+            ...obs.payload,
+            client_id: clientId,
+            username: obs.payload?.username || String(meta.username || '').trim() || null,
+          }
+        : {
+            raw: String(obs.raw || ''),
+            client_id: clientId,
+            username: String(meta.username || '').trim() || null,
+          },
   }));
 
   const { error } = await supabase.from('celeste_observations').insert(capped);

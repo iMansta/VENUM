@@ -6,10 +6,19 @@ import { fileURLToPath } from 'node:url';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const clientDir = join(root, 'celeste-client');
 const outDir = join(root, 'public', 'downloads');
-const outZip = join(outDir, 'celeste.zip');
-const outExe = join(outDir, 'celeste.exe');
-const builtExe = join(clientDir, 'celeste.exe');
-const installBat = join(clientDir, 'Instalar-Celeste.bat');
+const outZip = join(outDir, 'anaconda.zip');
+const outExe = join(outDir, 'anaconda.exe');
+const outSetupExe = join(outDir, 'Anaconda-Setup.exe');
+const sourceIcon = join(root, 'public', 'assets', 'anaconda-icon.png');
+const outIcon = join(outDir, 'anaconda-icon.png');
+const sourceIco = join(root, 'celeste-client', 'installer', 'assets', 'anaconda.ico');
+const outIco = join(outDir, 'anaconda-icon.ico');
+const builtExe = existsSync(join(clientDir, 'anaconda.exe'))
+  ? join(clientDir, 'anaconda.exe')
+  : join(clientDir, 'celeste.exe');
+const installBat = existsSync(join(clientDir, 'Instalar-Anaconda.bat'))
+  ? join(clientDir, 'Instalar-Anaconda.bat')
+  : join(clientDir, 'Instalar-Celeste.bat');
 
 const isCI = Boolean(
   process.env.VERCEL ||
@@ -123,6 +132,16 @@ if (!hasExe && existsSync(outExe)) {
   hasExe = true;
 }
 
+if (!hasExe && existsSync(builtExe)) {
+  copyFileSync(builtExe, outExe);
+  hasExe = true;
+}
+
+if (!hasExe && existsSync(join(outDir, 'celeste.exe'))) {
+  copyFileSync(join(outDir, 'celeste.exe'), outExe);
+  hasExe = true;
+}
+
 if (!hasExe) {
   console.warn(
     '[celeste:pack] celeste.exe ausente — build do app continua. ' +
@@ -132,18 +151,48 @@ if (!hasExe) {
 }
 
 if (existsSync(installBat)) {
+  copyFileSync(installBat, join(outDir, 'Instalar-Anaconda.bat'));
   copyFileSync(installBat, join(outDir, 'Instalar-Celeste.bat'));
 }
 
-const zipEntries = [{ name: 'celeste.exe', data: readFileSync(outExe) }];
-if (existsSync(join(outDir, 'Instalar-Celeste.bat'))) {
+if (existsSync(sourceIcon)) {
+  copyFileSync(sourceIcon, outIcon);
+}
+if (existsSync(sourceIco)) {
+  copyFileSync(sourceIco, outIco);
+}
+
+const zipEntries = [{ name: 'anaconda.exe', data: readFileSync(outExe) }];
+if (existsSync(outIcon)) {
   zipEntries.push({
-    name: 'Instalar-Celeste.bat',
-    data: readFileSync(join(outDir, 'Instalar-Celeste.bat')),
+    name: 'anaconda-icon.png',
+    data: readFileSync(outIcon),
+  });
+}
+if (existsSync(outIco)) {
+  zipEntries.push({
+    name: 'anaconda-icon.ico',
+    data: readFileSync(outIco),
+  });
+}
+if (existsSync(outSetupExe)) {
+  zipEntries.push({
+    name: 'Anaconda-Setup.exe',
+    data: readFileSync(outSetupExe),
+  });
+}
+if (existsSync(join(outDir, 'Instalar-Anaconda.bat'))) {
+  zipEntries.push({
+    name: 'Instalar-Anaconda.bat',
+    data: readFileSync(join(outDir, 'Instalar-Anaconda.bat')),
   });
 }
 
 if (existsSync(outZip)) rmSync(outZip);
 createZip(zipEntries);
+
+// Compatibilidade de links antigos
+copyFileSync(outExe, join(outDir, 'celeste.exe'));
+copyFileSync(outZip, join(outDir, 'celeste.zip'));
 
 console.log(`[celeste:pack] ${outZip} (${zipEntries.length} arquivos)`);

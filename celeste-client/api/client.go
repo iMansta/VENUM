@@ -91,6 +91,26 @@ type CatalogResponse struct {
 	BatchSize int      `json:"batchSize"`
 }
 
+type ActivePveMission struct {
+	ID               string `json:"id"`
+	Title            string `json:"title"`
+	TargetItem       string `json:"targetItem"`
+	MinFameThreshold int    `json:"minFameThreshold"`
+	EndDate          string `json:"endDate"`
+}
+
+type GuildSyncResponse struct {
+	OK                bool               `json:"ok"`
+	MemberCount       int                `json:"memberCount"`
+	MatchedProfiles   int                `json:"matchedProfiles"`
+	Activated         int                `json:"activated"`
+	Deactivated       int                `json:"deactivated"`
+	FameSynced        int                `json:"fameSynced"`
+	MissionUpdates    int                `json:"missionUpdates"`
+	ActivePveMissions []ActivePveMission `json:"activePveMissions"`
+	PlayerPveMissions []ActivePveMission `json:"playerPveMissions"`
+}
+
 func (c *Client) Catalog() (*CatalogResponse, error) {
 	var out CatalogResponse
 	if err := c.do(http.MethodPost, "catalog", map[string]string{"action": "catalog"}, &out); err != nil {
@@ -110,8 +130,17 @@ func (c *Client) UploadPrices(rows []map[string]any) (int, error) {
 	return out.Rows, nil
 }
 
-func (c *Client) SyncGuild() error {
-	return c.do(http.MethodPost, "guild", map[string]string{"action": "guild"}, nil)
+func (c *Client) SyncGuild(clientID, username string) (*GuildSyncResponse, error) {
+	var out GuildSyncResponse
+	body := map[string]string{
+		"action":   "guild",
+		"clientId": clientID,
+		"username": username,
+	}
+	if err := c.do(http.MethodPost, "guild", body, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
 }
 
 func (c *Client) SyncEvents() error {

@@ -1,4 +1,4 @@
-# Celeste Client (Windows)
+# Anaconda Client (Windows)
 
 Executável estilo Albion Data Client — console + bandeja do sistema.
 Foco: rodar em massa nos desktops da guilda e alimentar o hub com dados locais + mercado.
@@ -12,13 +12,13 @@ cd celeste-client
 .\build.ps1
 ```
 
-Gera `celeste.exe`. Depois, na raiz do projeto:
+Gera `celeste.exe` (base interna), e o empacotamento publica como `anaconda.exe`. Depois, na raiz do projeto:
 
 ```bash
 npm run celeste:pack
 ```
 
-Isso cria `public/downloads/celeste.zip` (exe + instalador BAT).
+Isso cria `public/downloads/anaconda.zip` (fallback com exe + instalador BAT).
 
 ## Setup .exe (instalador amigável)
 
@@ -29,13 +29,13 @@ cd celeste-client
 .\build-installer.ps1
 ```
 
-Gera `public/downloads/Celeste-Setup.exe`.
+Gera `public/downloads/Anaconda-Setup.exe`.
 Para MSI, recomendo etapa futura com WiX Toolset; o `.exe` já cobre 100% da instalação para jogador leigo.
 
 ## O que o .exe contém (embutido)
 
 - URL do hub: `https://venum-eight.vercel.app`
-- Token de agente Celeste (não é service_role)
+- Token de agente Anaconda (não é service_role)
 
 ## Variáveis na Vercel (obrigatório)
 
@@ -53,11 +53,12 @@ Se o frontend continuar chamando `moglqrrmqokhuzjoigbr`, a Vercel ainda está co
 
 ## Instalação (membro da guilda)
 
-1. Baixar ZIP no hub → Admin → Celeste  
-2. Extrair → `Instalar-Celeste.bat`  
-3. Desktop → **Iniciar Celeste**
+1. Baixar `Anaconda-Setup.exe` no hub → Admin → Anaconda  
+2. Seguir o assistente de instalação  
+3. Concluir (o app já pode iniciar automaticamente)
 
 Sem Node, sem chaves, sem configuração.
+Se o `.exe` não estiver disponível no momento do deploy, usar fallback em ZIP.
 
 ## Como alimenta o sistema (modelo fan-in)
 
@@ -80,7 +81,7 @@ Arquivos principais:
 
 ## Endpoint de status operacional
 
-Com token da Celeste:
+Com token da Anaconda:
 
 ```bash
 curl -X POST "https://venum-eight.vercel.app/api/celeste?action=status" \
@@ -102,7 +103,7 @@ Retorna:
 2. `supabase/UPDATE_CELESTE_INGESTION.sql`
 3. `supabase/UPDATE_CELESTE_AGGREGATION.sql`
 
-Com isso, cada observação da Celeste vira:
+Com isso, cada observação da Anaconda vira:
 - progresso de missão (`missions.current_quantity`)
 - participação automática (`mission_participants`)
 - fama por categoria (`profiles.albion_*_fame`)
