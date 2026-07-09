@@ -11,10 +11,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/venum-i/celeste/api"
-	"github.com/venum-i/celeste/collector"
-	"github.com/venum-i/celeste/config"
-	"github.com/venum-i/celeste/logger"
+	"github.com/venum-i/anaconda/api"
+	"github.com/venum-i/anaconda/collector"
+	"github.com/venum-i/anaconda/config"
+	"github.com/venum-i/anaconda/logger"
 )
 
 var (

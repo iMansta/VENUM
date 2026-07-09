@@ -1,13 +1,31 @@
-import { useEffect, useState } from 'react';
-import { Megaphone, Plus, Trash2, RefreshCw, Send } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Megaphone, Plus, Trash2, RefreshCw, Send, AtSign, AlertTriangle } from 'lucide-react';
 import {
   createGuildAnnouncement,
   deleteGuildAnnouncement,
   getGuildAnnouncements,
   updateGuildAnnouncement,
 } from '@/lib/supabase/announcements';
+import EmojiPicker from '@/components/common/EmojiPicker';
 
-const EMPTY_FORM = { title: '', message: '' };
+const EMPTY_FORM = { title: '', message: '', priority: 'normal', mention: 'none' };
+
+const PRIORITY_OPTIONS = [
+  { value: 'normal', label: 'Normal', badge: 'bg-slate-700 text-slate-300' },
+  { value: 'important', label: 'Importante', badge: 'bg-amber-500/20 text-amber-300' },
+  { value: 'urgent', label: 'Urgente', badge: 'bg-red-500/20 text-red-300' },
+];
+
+const MENTION_OPTIONS = [
+  { value: 'none', label: 'Sem menção' },
+  { value: 'here', label: '@here' },
+  { value: 'everyone', label: '@everyone' },
+];
+
+const priorityBadge = (value) =>
+  PRIORITY_OPTIONS.find((p) => p.value === value)?.badge || PRIORITY_OPTIONS[0].badge;
+const priorityLabel = (value) =>
+  PRIORITY_OPTIONS.find((p) => p.value === value)?.label || 'Normal';
 
 const AnnouncementManagement = ({ userId }) => {
   const [items, setItems] = useState([]);
@@ -15,6 +33,27 @@ const AnnouncementManagement = ({ userId }) => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState(null);
+  const titleRef = useRef(null);
+  const messageRef = useRef(null);
+
+  // Insere o emoji na posição atual do cursor do campo controlado.
+  const insertAtCursor = (field, ref, emoji) => {
+    const el = ref.current;
+    setForm((f) => {
+      const value = f[field] || '';
+      const start = el?.selectionStart ?? value.length;
+      const end = el?.selectionEnd ?? value.length;
+      const next = value.slice(0, start) + emoji + value.slice(end);
+      requestAnimationFrame(() => {
+        if (el) {
+          const pos = start + emoji.length;
+          el.focus();
+          el.setSelectionRange(pos, pos);
+        }
+      });
+      return { ...f, [field]: next };
+    });
+  };
 
   const flash = (msg, isError = false) => {
     setFeedback({ msg, isError });
@@ -47,6 +86,8 @@ const AnnouncementManagement = ({ userId }) => {
     const result = await createGuildAnnouncement({
       title: form.title.trim(),
       message: form.message.trim(),
+      priority: form.priority,
+      mention: form.mention,
       created_by: userId,
     });
     setSaving(false);
@@ -130,23 +171,76 @@ const AnnouncementManagement = ({ userId }) => {
         className="bg-slate-800/50 border border-slate-700 rounded-lg p-4 space-y-3"
       >
         <p className="text-sm text-gray-400">
-          Avisos publicados aqui serão enviados ao Discord automaticamente pela Celeste D.
+          Avisos publicados aqui serão enviados ao Discord automaticamente pela Celeste D com
+          destaque (embed colorido por prioridade e menção opcional).
         </p>
-        <input
-          value={form.title}
-          onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
-          placeholder="Título do aviso"
-          className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white"
-          required
-        />
-        <textarea
-          value={form.message}
-          onChange={(e) => setForm((f) => ({ ...f, message: e.target.value }))}
-          placeholder="Mensagem do aviso"
-          rows={4}
-          className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white"
-          required
-        />
+
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <label className="text-xs text-gray-400">Título</label>
+            <EmojiPicker onSelect={(emoji) => insertAtCursor('title', titleRef, emoji)} />
+          </div>
+          <input
+            ref={titleRef}
+            value={form.title}
+            onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+            placeholder="Título do aviso"
+            className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white"
+            required
+          />
+        </div>
+
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <label className="text-xs text-gray-400">Mensagem</label>
+            <EmojiPicker onSelect={(emoji) => insertAtCursor('message', messageRef, emoji)} />
+          </div>
+          <textarea
+            ref={messageRef}
+            value={form.message}
+            onChange={(e) => setForm((f) => ({ ...f, message: e.target.value }))}
+            placeholder="Mensagem do aviso"
+            rows={4}
+            className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white"
+            required
+          />
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs text-gray-400 flex items-center gap-1 mb-1">
+              <AlertTriangle className="w-3.5 h-3.5" /> Prioridade
+            </label>
+            <select
+              value={form.priority}
+              onChange={(e) => setForm((f) => ({ ...f, priority: e.target.value }))}
+              className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white"
+            >
+              {PRIORITY_OPTIONS.map((p) => (
+                <option key={p.value} value={p.value}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs text-gray-400 flex items-center gap-1 mb-1">
+              <AtSign className="w-3.5 h-3.5" /> Menção no Discord
+            </label>
+            <select
+              value={form.mention}
+              onChange={(e) => setForm((f) => ({ ...f, mention: e.target.value }))}
+              className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white"
+            >
+              {MENTION_OPTIONS.map((m) => (
+                <option key={m.value} value={m.value}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
         <button
           type="submit"
           disabled={saving}
@@ -170,7 +264,18 @@ const AnnouncementManagement = ({ userId }) => {
             >
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0">
-                  <p className="text-white font-medium">{item.title}</p>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="text-white font-medium">{item.title}</p>
+                    <span className={`px-2 py-0.5 rounded text-[11px] ${priorityBadge(item.priority)}`}>
+                      {priorityLabel(item.priority)}
+                    </span>
+                    {item.mention && item.mention !== 'none' && (
+                      <span className="px-2 py-0.5 rounded text-[11px] bg-sky-500/20 text-sky-300 inline-flex items-center gap-1">
+                        <AtSign className="w-3 h-3" />
+                        {item.mention}
+                      </span>
+                    )}
+                  </div>
                   <p className="text-sm text-gray-400 mt-1 whitespace-pre-wrap">{item.message}</p>
                   <div className="mt-2 text-xs text-gray-500 flex flex-wrap gap-3">
                     <span>{new Date(item.created_at).toLocaleString('pt-BR')}</span>

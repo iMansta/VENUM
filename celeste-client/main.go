@@ -8,9 +8,9 @@ import (
 	"syscall"
 
 	"github.com/getlantern/systray"
-	"github.com/venum-i/celeste/config"
-	"github.com/venum-i/celeste/logger"
-	"github.com/venum-i/celeste/syncer"
+	"github.com/venum-i/anaconda/config"
+	"github.com/venum-i/anaconda/logger"
+	"github.com/venum-i/anaconda/syncer"
 )
 
 func main() {

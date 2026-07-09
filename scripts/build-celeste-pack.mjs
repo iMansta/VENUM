@@ -114,7 +114,7 @@ if (!hasExe && existsSync(join(clientDir, 'go.mod')) && !isCI) {
         stdio: 'inherit',
       });
     } else {
-      execSync('go build -ldflags "-s -w" -o celeste.exe .', {
+      execSync('go build -ldflags "-s -w" -o anaconda.exe .', {
         cwd: clientDir,
         stdio: 'inherit',
       });

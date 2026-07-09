@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/venum-i/celeste/api"
+	"github.com/venum-i/anaconda/api"
 )
 
 type Watcher struct {
@@ -45,6 +45,7 @@ func (w *Watcher) DetectPath() string {
 	}
 
 	candidates := []string{
+		os.Getenv("ANACONDA_LOG_PATH"),
 		os.Getenv("CELESTE_LOG_PATH"),
 		filepath.Join(os.Getenv("USERPROFILE"), "Documents", "Albion Online", "game.log"),
 		filepath.Join(os.Getenv("LOCALAPPDATA"), "Albion Online", "game.log"),
@@ -201,6 +202,45 @@ func parseLine(line string) (api.Observation, bool) {
 				"character":   actor,
 			},
 		}, true
+	case isBigChestLine(low):
+		return api.Observation{
+			Type:         "big_chest",
+			ObservedAt:   now,
+			ValueNumeric: 1,
+			Payload: map[string]any{
+				"raw":         raw,
+				"target_key":  "big_chest",
+				"target_name": targetName,
+				"character":   actor,
+				"scope":       "group",
+			},
+		}, true
+	case strings.Contains(low, "outpost"):
+		return api.Observation{
+			Type:         "outpost_capture",
+			ObservedAt:   now,
+			ValueNumeric: 1,
+			Payload: map[string]any{
+				"raw":         raw,
+				"target_key":  "outpost_capture",
+				"target_name": targetName,
+				"character":   actor,
+				"scope":       "group",
+			},
+		}, true
+	case strings.Contains(low, "castle") || strings.Contains(low, "castelo"):
+		return api.Observation{
+			Type:         "castle_capture",
+			ObservedAt:   now,
+			ValueNumeric: 1,
+			Payload: map[string]any{
+				"raw":         raw,
+				"target_key":  "castle_capture",
+				"target_name": targetName,
+				"character":   actor,
+				"scope":       "group",
+			},
+		}, true
 	case strings.Contains(low, "mission"):
 		return api.Observation{
 			Type:       "mission",
@@ -215,6 +255,25 @@ func parseLine(line string) (api.Observation, bool) {
 	default:
 		return api.Observation{}, false
 	}
+}
+
+// isBigChestLine detecta abertura de baús grandes (dourado/verde/azul/roxo) para
+// objetivos de grupo. Ignora baús comuns para reduzir ruído.
+func isBigChestLine(low string) bool {
+	if !strings.Contains(low, "chest") && !strings.Contains(low, "baú") && !strings.Contains(low, "bau") {
+		return false
+	}
+	keywords := []string{
+		"big chest", "large chest", "golden chest", "gold chest",
+		"green chest", "blue chest", "purple chest", "legendary chest",
+		"baú grande", "bau grande", "baú dourado", "bau dourado",
+	}
+	for _, k := range keywords {
+		if strings.Contains(low, k) {
+			return true
+		}
+	}
+	return false
 }
 
 func parseNumber(line string) float64 {

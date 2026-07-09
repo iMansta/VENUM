@@ -11,8 +11,9 @@ const MissionForm = ({ onClose, onSuccess, userId }) => {
   const [formData, setFormData] = useState({
     title: '',
     description: '',
+    mission_scope: 'individual',
     mission_type: 'gathering',
-    target_item: getMissionTargetSuggestions('gathering')[0]?.value || '',
+    target_item: getMissionTargetSuggestions('gathering', 'individual')[0]?.value || '',
     target_quantity: 0,
     minFameThreshold: 10000,
     points_reward: 0,
@@ -21,7 +22,7 @@ const MissionForm = ({ onClose, onSuccess, userId }) => {
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const targetSuggestions = getMissionTargetSuggestions(formData.mission_type);
+  const targetSuggestions = getMissionTargetSuggestions(formData.mission_type, formData.mission_scope);
 
   const toIsoDateTime = (dateValue, endOfDay = false) => {
     if (!dateValue) return null;
@@ -63,6 +64,7 @@ const MissionForm = ({ onClose, onSuccess, userId }) => {
       created_by: userId,
       title: formData.title,
       description: formData.description,
+      mission_scope: formData.mission_scope,
       mission_type: formData.mission_type,
       target_item: formData.target_item,
       target_quantity: parseInt(formData.target_quantity),
@@ -101,12 +103,19 @@ const MissionForm = ({ onClose, onSuccess, userId }) => {
 
   const handleMissionTypeChange = (e) => {
     const missionType = e.target.value;
-    const firstTarget = getMissionTargetSuggestions(missionType)[0]?.value || '';
+    const firstTarget = getMissionTargetSuggestions(missionType, formData.mission_scope)[0]?.value || '';
     setFormData((prev) => ({
       ...prev,
       mission_type: missionType,
       target_item: firstTarget,
     }));
+  };
+
+  const handleScopeChange = (scope) => {
+    setFormData((prev) => {
+      const firstTarget = getMissionTargetSuggestions(prev.mission_type, scope)[0]?.value || '';
+      return { ...prev, mission_scope: scope, target_item: firstTarget };
+    });
   };
 
   return (
@@ -162,6 +171,45 @@ const MissionForm = ({ onClose, onSuccess, userId }) => {
             />
           </div>
 
+          {/* Mission Scope: Individual x Grupo */}
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-2">
+              Modo da Missão *
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => handleScopeChange('individual')}
+                className={[
+                  'rounded-lg border px-4 py-3 text-left transition-colors',
+                  formData.mission_scope === 'individual'
+                    ? 'border-amber-500 bg-amber-500/10'
+                    : 'border-slate-700 bg-slate-800 hover:border-slate-600',
+                ].join(' ')}
+              >
+                <span className="block text-sm font-semibold text-white">Individual</span>
+                <span className="block text-xs text-gray-400 mt-0.5">
+                  Cada jogador cumpre a própria meta.
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleScopeChange('group')}
+                className={[
+                  'rounded-lg border px-4 py-3 text-left transition-colors',
+                  formData.mission_scope === 'group'
+                    ? 'border-amber-500 bg-amber-500/10'
+                    : 'border-slate-700 bg-slate-800 hover:border-slate-600',
+                ].join(' ')}
+              >
+                <span className="block text-sm font-semibold text-white">Grupo</span>
+                <span className="block text-xs text-gray-400 mt-0.5">
+                  Todos os participantes somam para a meta coletiva.
+                </span>
+              </button>
+            </div>
+          </div>
+
           {/* Mission Type */}
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-2">
@@ -208,7 +256,7 @@ const MissionForm = ({ onClose, onSuccess, userId }) => {
           {/* Target Quantity */}
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-2">
-              Meta de Quantidade *
+              {formData.mission_scope === 'group' ? 'Meta Coletiva *' : 'Meta Individual *'}
             </label>
             <div className="relative">
               <Target className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-500" />
@@ -223,6 +271,11 @@ const MissionForm = ({ onClose, onSuccess, userId }) => {
                 required
               />
             </div>
+            <p className="mt-2 text-xs text-gray-500">
+              {formData.mission_scope === 'group'
+                ? 'Soma de todos os participantes. Ao atingir, todos que contribuíram recebem os pontos e a missão é arquivada.'
+                : 'Cada jogador precisa atingir esta meta individualmente para receber os pontos.'}
+            </p>
           </div>
 
           {formData.mission_type === 'pve' && (

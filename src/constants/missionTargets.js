@@ -36,15 +36,31 @@ export const MISSION_TARGET_SUGGESTIONS = {
   other: [{ value: 'general', label: 'Objetivo genérico' }],
 };
 
-const TARGET_LABEL_BY_VALUE = Object.values(MISSION_TARGET_SUGGESTIONS)
-  .flat()
-  .reduce((acc, row) => {
-    acc[row.value] = row.label;
-    return acc;
-  }, {});
+// Objetivos que fazem sentido em missões de GRUPO (conquistas coletivas).
+// A Anaconda envia observações destes tipos e o backend soma para a meta coletiva.
+export const GROUP_OBJECTIVE_SUGGESTIONS = [
+  { value: 'big_chest', label: 'Abrir Baús Grandes' },
+  { value: 'outpost_capture', label: 'Capturar Outpost' },
+  { value: 'castle_capture', label: 'Capturar Castelo' },
+  { value: 'world_boss', label: 'Matar Boss de Mundo' },
+];
 
-export const getMissionTargetSuggestions = (missionType) =>
-  MISSION_TARGET_SUGGESTIONS[missionType] || MISSION_TARGET_SUGGESTIONS.other;
+const TARGET_LABEL_BY_VALUE = [
+  ...Object.values(MISSION_TARGET_SUGGESTIONS).flat(),
+  ...GROUP_OBJECTIVE_SUGGESTIONS,
+].reduce((acc, row) => {
+  acc[row.value] = row.label;
+  return acc;
+}, {});
+
+// scope: 'individual' | 'group'. Em grupo, o tipo "Outro" oferece conquistas coletivas.
+export const getMissionTargetSuggestions = (missionType, scope = 'individual') => {
+  const base = MISSION_TARGET_SUGGESTIONS[missionType] || MISSION_TARGET_SUGGESTIONS.other;
+  if (scope === 'group' && missionType === 'other') {
+    return [...GROUP_OBJECTIVE_SUGGESTIONS, ...base];
+  }
+  return base;
+};
 
 export const getMissionTargetLabel = (value) => TARGET_LABEL_BY_VALUE[value] || value || '—';
 

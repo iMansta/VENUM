@@ -116,7 +116,8 @@ export const getMissionCompletionRanking = async (limit = 30) => {
   }
 };
 
-export const getMonthlyFameRanking = async (category = 'pvp', limit = 30) => {
+// Ranking de fama desde a ENTRADA na guild (delta em relação ao baseline).
+export const getGuildFameRanking = async (category = 'pvp', limit = 30) => {
   const fieldMap = {
     pvp: 'albion_kill_fame',
     pve: 'albion_pve_fame',
@@ -125,10 +126,18 @@ export const getMonthlyFameRanking = async (category = 'pvp', limit = 30) => {
   const field = fieldMap[category] || 'albion_kill_fame';
 
   try {
-    const { data, error } = await supabase.rpc('get_monthly_fame_ranking', {
+    let { data, error } = await supabase.rpc('get_guild_fame_ranking', {
       p_category: category,
       p_limit: limit,
     });
+
+    // Compatibilidade: se o novo RPC ainda não foi aplicado, tenta o antigo (mensal).
+    if (error && isMissingRpc(error)) {
+      ({ data, error } = await supabase.rpc('get_monthly_fame_ranking', {
+        p_category: category,
+        p_limit: limit,
+      }));
+    }
 
     if (error) {
       if (isMissingRpc(error)) {
@@ -155,7 +164,7 @@ export const getMonthlyFameRanking = async (category = 'pvp', limit = 30) => {
       data: await attachAvatarUrls(mapped),
     };
   } catch (error) {
-    console.error('Get monthly fame ranking error:', error);
+    console.error('Get guild fame ranking error:', error);
     try {
       const fallback = await fallbackFameRanking(field, limit);
       return { success: true, data: fallback, source: 'fallback' };
@@ -165,33 +174,36 @@ export const getMonthlyFameRanking = async (category = 'pvp', limit = 30) => {
   }
 };
 
+// Alias mantido por compatibilidade com chamadas existentes.
+export const getMonthlyFameRanking = getGuildFameRanking;
+
 export const RANKING_TABS = [
   {
     id: 'missions',
     label: 'Missões',
-    description: 'Pontos acumulados na guilda',
+    description: 'Pontos de missões desde a entrada na guild',
     scoreLabel: 'Pontos',
     load: (limit) => getMissionCompletionRanking(limit),
   },
   {
     id: 'pvp',
     label: 'PvP',
-    description: 'Fama PvP mensal (Anaconda sincroniza)',
+    description: 'Fama PvP conquistada desde a entrada na guild',
     scoreLabel: 'Fama PvP',
-    load: (limit) => getMonthlyFameRanking('pvp', limit),
+    load: (limit) => getGuildFameRanking('pvp', limit),
   },
   {
     id: 'pve',
     label: 'PvE',
-    description: 'Fama PvE mensal (Anaconda sincroniza)',
+    description: 'Fama PvE conquistada desde a entrada na guild',
     scoreLabel: 'Fama PvE',
-    load: (limit) => getMonthlyFameRanking('pve', limit),
+    load: (limit) => getGuildFameRanking('pve', limit),
   },
   {
     id: 'gathering',
     label: 'Coleta',
-    description: 'Fama de coleta mensal (Anaconda sincroniza)',
+    description: 'Fama de coleta conquistada desde a entrada na guild',
     scoreLabel: 'Fama Coleta',
-    load: (limit) => getMonthlyFameRanking('gathering', limit),
+    load: (limit) => getGuildFameRanking('gathering', limit),
   },
 ];

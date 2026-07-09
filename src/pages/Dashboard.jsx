@@ -30,22 +30,18 @@ const Dashboard = ({ userId }) => {
     let cancelled = false;
 
     const loadDashboard = async () => {
-      const [profileRes, membersRes, rankingRes, ledgerRes, completedRes, missionRewardsRes] =
+      const [profileRes, membersRes, rankingRes, ledgerRes, missionRewardsRes] =
         await Promise.all([
           getProfile(userId),
           getGuildMembers(),
           getMissionCompletionRanking(300),
           getUserPointsLedger(userId, 6),
-          supabase
-            .from('missions')
-            .select('id, title, points_reward, updated_at, end_date, status')
-            .eq('status', 'completed')
-            .order('updated_at', { ascending: false })
-            .limit(4),
+          // Missões concluídas do PRÓPRIO perfil (registro individual da conclusão).
           supabase
             .from('mission_reward_events')
-            .select('id, mission_id')
-            .eq('profile_id', userId),
+            .select('id, mission_id, awarded_points, awarded_at, missions(title, mission_type)')
+            .eq('profile_id', userId)
+            .order('awarded_at', { ascending: false }),
         ]);
 
       if (cancelled) return;
@@ -57,7 +53,8 @@ const Dashboard = ({ userId }) => {
       const rankForUser = rankingRows.find((row) => row.profileId === userId)?.rank || 0;
 
       const profile = profileRes.success ? profileRes.data : null;
-      const userMissionsCompleted = missionRewardsRes.data?.length || 0;
+      const rewardEvents = missionRewardsRes.data || [];
+      const userMissionsCompleted = rewardEvents.length;
 
       setStats({
         totalPoints: Number(profile?.total_points || 0),
@@ -75,8 +72,14 @@ const Dashboard = ({ userId }) => {
       }));
       setRecentActivity(activityRows);
 
-      const completed = completedRes.data || [];
-      setLatestCompletedMissions(completed);
+      setLatestCompletedMissions(
+        rewardEvents.slice(0, 4).map((ev) => ({
+          id: ev.id,
+          title: ev.missions?.title || 'Missão concluída',
+          points_reward: ev.awarded_points,
+          updated_at: ev.awarded_at,
+        }))
+      );
     };
 
     loadDashboard();
@@ -87,7 +90,7 @@ const Dashboard = ({ userId }) => {
 
   const statCards = [
     { label: 'Pontos Totais', value: stats.totalPoints, icon: Award, color: 'text-amber-500' },
-    { label: 'Missões Completadas', value: stats.completedMissions, icon: Target, color: 'text-green-500' },
+    { label: 'Missões Concluídas', value: stats.completedMissions, icon: Target, color: 'text-green-500' },
     { label: 'Ranking', value: stats.rank > 0 ? `#${stats.rank}` : '-', icon: TrendingUp, color: 'text-blue-500' },
     { label: 'Membros da Guilda', value: stats.totalMembers, icon: Users, color: 'text-purple-500' },
   ];

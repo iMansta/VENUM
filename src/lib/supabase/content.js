@@ -50,6 +50,26 @@ export const getContentEvents = async () => {
   }
 };
 
+// Histórico de content: eventos arquivados (is_active=false) ou cujo horário já passou.
+export const getContentHistory = async (limit = 60) => {
+  try {
+    const nowIso = new Date().toISOString();
+    const { data, error } = await supabase
+      .from('discord_content_events')
+      .select(contentSelect)
+      .or(`is_active.eq.false,starts_at.lt.${nowIso}`)
+      .order('starts_at', { ascending: false, nullsFirst: false })
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    if (error) throw error;
+    return { success: true, data: data || [] };
+  } catch (error) {
+    console.error('Get content history error:', error);
+    return { success: false, error: error.message };
+  }
+};
+
 export const createContentEvent = async (payload) => {
   try {
     const { data, error } = await supabase

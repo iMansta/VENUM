@@ -215,6 +215,26 @@ async function syncGuildMetricsSnapshot({ supabase, guildId, guildName, memberCo
   const deathFame = toNullableNumber(source.DeathFame ?? source.deathFame);
   const totalFame = toNullableNumber(source.Fame ?? source.fame ?? source.TotalFame);
 
+  // Aliança
+  const allianceTag = source.AllianceTag || source.allianceTag || null;
+  const allianceName = source.AllianceName || source.allianceName || null;
+
+  // Propriedades da guild (Hideouts / Territórios / QG). A GameInfo nem sempre
+  // expõe estes dados no detalhe da guild; coletamos de forma resiliente.
+  const countOf = (v) => (Array.isArray(v) ? v.length : toNullableNumber(v));
+  const hideoutCount = countOf(
+    source.Hideouts ?? source.hideouts ?? source.HideoutCount ?? source.hideoutCount
+  );
+  const territoryCount = countOf(
+    source.Territories ?? source.territories ?? source.TerritoryCount ?? source.territoryCount
+  );
+  const headquarters =
+    source.Headquarters ||
+    source.HeadquartersName ||
+    source.HQ ||
+    (Array.isArray(source.Hideouts) && source.Hideouts[0]?.Name) ||
+    null;
+
   const snapshot = {
     guild_id: guildId,
     guild_name: guildName || GUILD_NAME,
@@ -224,6 +244,15 @@ async function syncGuildMetricsSnapshot({ supabase, guildId, guildName, memberCo
     kill_fame: killFame,
     death_fame: deathFame,
     total_fame: totalFame,
+    alliance_tag: allianceTag,
+    alliance_name: allianceName,
+    hideout_count: hideoutCount,
+    territory_count: territoryCount,
+    headquarters,
+    properties: {
+      hideouts: source.Hideouts ?? null,
+      territories: source.Territories ?? null,
+    },
     source: detail ? 'gameinfo_guild_detail' : 'guild_sync_fallback',
     payload: detail || null,
     collected_at: new Date().toISOString(),

@@ -12,7 +12,7 @@ cd celeste-client
 .\build.ps1
 ```
 
-Gera `celeste.exe` (base interna), e o empacotamento publica como `anaconda.exe`. Depois, na raiz do projeto:
+Gera `anaconda.exe`. Depois, na raiz do projeto:
 
 ```bash
 npm run celeste:pack

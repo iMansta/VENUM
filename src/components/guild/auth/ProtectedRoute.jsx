@@ -55,9 +55,10 @@ const ProtectedRoute = ({ children, requiredRole = null }) => {
 
   const checkUserRole = (userRole, required) => {
     if (required === 'admin') {
-      return userRole === 'admin';
+      // Admin e Staff acessam o painel administrativo.
+      return userRole === 'admin' || userRole === 'staff';
     } else if (required === 'officer') {
-      return userRole === 'admin' || userRole === 'officer';
+      return userRole === 'admin' || userRole === 'staff' || userRole === 'officer';
     }
     return true;
   };

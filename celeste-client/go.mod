@@ -1,4 +1,4 @@
-module github.com/venum-i/celeste
+module github.com/venum-i/anaconda
 
 go 1.22
 

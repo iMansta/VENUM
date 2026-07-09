@@ -11,6 +11,9 @@ import {
   Crown,
   Calendar,
   Flag,
+  Home,
+  Castle,
+  Map as MapIcon,
 } from 'lucide-react';
 import { getLatestGuildMetrics } from '@/lib/supabase/guildMetrics';
 
@@ -66,6 +69,30 @@ const Guild = () => {
   }, [latest]);
 
   const payload = latest?.payload || {};
+  const allianceTag = latest?.alliance_tag || payload.AllianceTag || null;
+  const properties = useMemo(
+    () => [
+      {
+        label: 'Hideouts (H.O)',
+        value: latest?.hideout_count != null ? formatNumber(latest.hideout_count) : '-',
+        icon: Home,
+        color: 'text-emerald-400',
+      },
+      {
+        label: 'Quartel-General (QG)',
+        value: latest?.headquarters || '-',
+        icon: Castle,
+        color: 'text-amber-400',
+      },
+      {
+        label: 'Territórios',
+        value: latest?.territory_count != null ? formatNumber(latest.territory_count) : '-',
+        icon: MapIcon,
+        color: 'text-blue-400',
+      },
+    ],
+    [latest]
+  );
 
   return (
     <div className="p-8">
@@ -162,7 +189,10 @@ const Guild = () => {
             <li className="flex items-center gap-3">
               <Users className="w-4 h-4 text-purple-400 shrink-0" />
               <span className="text-gray-400 w-28">Aliança</span>
-              <span className="text-white">{payload.AllianceTag || 'Sem aliança'}</span>
+              <span className="text-white">
+                {allianceTag ? `[${allianceTag}]` : 'Sem aliança'}
+                {latest?.alliance_name ? ` ${latest.alliance_name}` : ''}
+              </span>
             </li>
           </ul>
           {loading ? (
@@ -177,6 +207,28 @@ const Guild = () => {
             </p>
           )}
         </div>
+      </div>
+
+      <div className="mt-4 bg-slate-900 rounded-lg border border-slate-800 p-6">
+        <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+          <Home className="w-5 h-5 text-emerald-400" />
+          Propriedades da Guild
+        </h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {properties.map((p) => (
+            <div key={p.label} className="bg-slate-800/50 rounded-lg border border-slate-800 p-4">
+              <div className="flex items-center justify-between mb-2">
+                <p.icon className={`w-5 h-5 ${p.color}`} />
+                <span className="text-lg font-semibold text-white truncate">{p.value}</span>
+              </div>
+              <p className="text-sm text-gray-400">{p.label}</p>
+            </div>
+          ))}
+        </div>
+        <p className="text-xs text-slate-500 mt-4">
+          Coletado pela Anaconda a partir dos dados da guild na GameInfo. Campos indisponíveis
+          aparecem como "-".
+        </p>
       </div>
     </div>
   );

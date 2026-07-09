@@ -26,6 +26,27 @@ export const getActiveMissions = async () => {
   }
 };
 
+// Histórico de Missões do usuário: missões que ele concluiu (individual ou grupo),
+// registradas em mission_reward_events no momento da premiação.
+export const getUserMissionHistory = async (profileId) => {
+  try {
+    const { data, error } = await supabase
+      .from('mission_reward_events')
+      .select(
+        `id, mission_id, awarded_points, awarded_at,
+         missions ( id, title, description, mission_type, mission_scope, target_item, target_quantity, points_reward )`
+      )
+      .eq('profile_id', profileId)
+      .order('awarded_at', { ascending: false });
+
+    if (error) throw error;
+    return { success: true, data: data || [] };
+  } catch (error) {
+    console.error('Get user mission history error:', error);
+    return { success: false, error: error.message };
+  }
+};
+
 export const createMission = async (missionData) => {
   try {
     const { data, error } = await supabase

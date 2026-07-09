@@ -1,3 +1,14 @@
+const express = require('express');
+const app = express();
+const port = process.env.PORT || 3000;
+
+app.get('/', (req, res) => {
+  res.send('Celeste Bot está online!');
+});
+
+app.listen(port, () => {
+  console.log(`Servidor web rodando na porta ${port}`);
+});
 import { randomUUID } from 'node:crypto';
 import { createServer } from 'node:http';
 import {

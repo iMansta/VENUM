@@ -24,6 +24,8 @@ export const createGuildAnnouncement = async (payload) => {
         title: payload.title,
         message: payload.message,
         created_by: payload.created_by,
+        priority: payload.priority || 'normal',
+        mention: payload.mention || 'none',
         is_active: true,
         discord_notified: false,
       })

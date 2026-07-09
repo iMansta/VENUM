@@ -152,6 +152,15 @@ const MissionManagement = ({ userId, userRole }) => {
                     <span className={`px-2 py-1 rounded text-xs font-medium border ${getMissionTypeColor(mission.mission_type)}`}>
                       {getMissionTypeName(mission.mission_type)}
                     </span>
+                    <span
+                      className={`px-2 py-1 rounded text-xs font-medium border ${
+                        mission.mission_scope === 'group'
+                          ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30'
+                          : 'bg-slate-500/20 text-slate-300 border-slate-500/30'
+                      }`}
+                    >
+                      {mission.mission_scope === 'group' ? 'Grupo' : 'Individual'}
+                    </span>
                     <h4 className="text-lg font-semibold text-white">{mission.title}</h4>
                     <div className="flex items-center gap-1 text-amber-400">
                       <span className="text-sm font-medium">{mission.points_reward} pts</span>

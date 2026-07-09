@@ -18,6 +18,7 @@ import { getUserPointsLedger } from '@/lib/supabase/points';
 const ROLE_OPTIONS = [
   { value: 'member', label: 'Membro' },
   { value: 'officer', label: 'Oficial' },
+  { value: 'staff', label: 'Staff' },
   { value: 'admin', label: 'Admin' },
 ];
 
@@ -121,13 +122,14 @@ const UserManagement = ({ userId, userRole }) => {
   const getRoleBadge = (role) => {
     const styles = {
       admin: 'bg-red-500/15 text-red-400 ring-red-500/30',
+      staff: 'bg-fuchsia-500/15 text-fuchsia-300 ring-fuchsia-500/30',
       officer: 'bg-amber-500/15 text-amber-400 ring-amber-500/30',
       member: 'bg-blue-500/15 text-blue-400 ring-blue-500/30',
     };
-    const labels = { admin: 'Admin', officer: 'Oficial', member: 'Membro' };
+    const labels = { admin: 'Admin', staff: 'Staff', officer: 'Oficial', member: 'Membro' };
     return (
       <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium ring-1 ring-inset ${styles[role] || styles.member}`}>
-        {role === 'admin' && <Crown className="w-3 h-3" />}
+        {(role === 'admin' || role === 'staff') && <Crown className="w-3 h-3" />}
         {labels[role] || 'Membro'}
       </span>
     );
@@ -193,6 +195,7 @@ const UserManagement = ({ userId, userRole }) => {
         >
           <option value="all">Todos os cargos</option>
           <option value="admin">Admin</option>
+          <option value="staff">Staff</option>
           <option value="officer">Oficial</option>
           <option value="member">Membro</option>
         </select>

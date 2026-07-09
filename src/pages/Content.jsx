@@ -11,9 +11,13 @@ import {
   Pencil,
   CheckCircle2,
   Loader2,
+  History,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import {
   getContentEvents,
+  getContentHistory,
   createContentEvent,
   deleteContentEvent,
   CONTENT_ROLE_PRESETS,
@@ -29,9 +33,12 @@ const slug = (s) =>
     .replace(/^_+|_+$/g, '') || 'role';
 
 const Content = ({ userId, userRole }) => {
-  const isOfficer = userRole === 'admin' || userRole === 'officer';
+  const isOfficer = userRole === 'admin' || userRole === 'officer' || userRole === 'staff';
   const [events, setEvents] = useState([]);
+  const [history, setHistory] = useState([]);
+  const [tab, setTab] = useState('active');
   const [loading, setLoading] = useState(true);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [feedback, setFeedback] = useState(null);
@@ -51,9 +58,19 @@ const Content = ({ userId, userRole }) => {
     setLoading(false);
   };
 
+  const loadHistory = async () => {
+    const { success, data } = await getContentHistory();
+    if (success) setHistory(data);
+    setHistoryLoaded(true);
+  };
+
   useEffect(() => {
     loadEvents();
   }, []);
+
+  useEffect(() => {
+    if (tab === 'history' && !historyLoaded) loadHistory();
+  }, [tab, historyLoaded]);
 
   const totalSlots = useMemo(
     () => roles.reduce((sum, r) => sum + (Number(r.slots) || 0), 0),
@@ -138,7 +155,10 @@ const Content = ({ userId, userRole }) => {
 
   const handleDelete = async (id) => {
     const { success } = await deleteContentEvent(id);
-    if (success) loadEvents();
+    if (success) {
+      loadEvents();
+      setHistoryLoaded(false);
+    }
   };
 
   return (
@@ -359,94 +379,208 @@ const Content = ({ userId, userRole }) => {
         </form>
       )}
 
-      {loading ? (
+      <div className="flex items-center gap-2 mb-6 border-b border-slate-800">
+        <button
+          onClick={() => setTab('active')}
+          className={[
+            'px-4 py-2 text-sm font-medium -mb-px border-b-2 transition-colors flex items-center gap-2',
+            tab === 'active'
+              ? 'border-red-500 text-white'
+              : 'border-transparent text-gray-400 hover:text-gray-200',
+          ].join(' ')}
+        >
+          <Sparkles className="w-4 h-4" /> Ativos
+        </button>
+        <button
+          onClick={() => setTab('history')}
+          className={[
+            'px-4 py-2 text-sm font-medium -mb-px border-b-2 transition-colors flex items-center gap-2',
+            tab === 'history'
+              ? 'border-red-500 text-white'
+              : 'border-transparent text-gray-400 hover:text-gray-200',
+          ].join(' ')}
+        >
+          <History className="w-4 h-4" /> Histórico
+        </button>
+      </div>
+
+      {tab === 'active' ? (
+        loading ? (
+          <div className="flex justify-center py-16">
+            <Loader2 className="w-8 h-8 text-red-500 animate-spin" />
+          </div>
+        ) : events.length === 0 ? (
+          <div className="text-center py-16 text-gray-500">
+            <Sparkles className="w-10 h-10 mx-auto mb-3 opacity-40" />
+            Nenhum conteúdo criado ainda.
+          </div>
+        ) : (
+          <div className="grid md:grid-cols-2 gap-4">
+            {events.map((ev) => (
+              <ContentCard key={ev.id} ev={ev} isOfficer={isOfficer} onDelete={handleDelete} />
+            ))}
+          </div>
+        )
+      ) : !historyLoaded ? (
         <div className="flex justify-center py-16">
           <Loader2 className="w-8 h-8 text-red-500 animate-spin" />
         </div>
-      ) : events.length === 0 ? (
+      ) : history.length === 0 ? (
         <div className="text-center py-16 text-gray-500">
-          <Sparkles className="w-10 h-10 mx-auto mb-3 opacity-40" />
-          Nenhum conteúdo criado ainda.
+          <History className="w-10 h-10 mx-auto mb-3 opacity-40" />
+          Nenhum conteúdo no histórico ainda.
         </div>
       ) : (
         <div className="grid md:grid-cols-2 gap-4">
-          {events.map((ev) => {
-            const signups = ev.discord_content_signups || [];
-            const evRoles = Array.isArray(ev.roles) ? ev.roles : [];
+          {history.map((ev) => (
+            <ContentCard key={ev.id} ev={ev} isOfficer={false} onDelete={handleDelete} archived />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const ContentCard = ({ ev, isOfficer, onDelete, archived = false }) => {
+  const [showParticipants, setShowParticipants] = useState(false);
+  const signups = ev.discord_content_signups || [];
+  const evRoles = Array.isArray(ev.roles) ? ev.roles : [];
+  const noRole = signups.filter((s) => !evRoles.some((r) => r.id === s.role_id));
+
+  return (
+    <div
+      className={[
+        'bg-slate-900/60 border rounded-xl p-5',
+        archived ? 'border-slate-800/70 opacity-90' : 'border-slate-800',
+      ].join(' ')}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-white font-semibold">{ev.title}</h3>
+          {ev.content_type && (
+            <span className="inline-block mt-1 text-xs px-2 py-0.5 rounded bg-red-500/10 text-red-400">
+              {ev.content_type}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          {archived ? (
+            <span className="flex items-center gap-1 text-xs text-gray-500">
+              <History className="w-3.5 h-3.5" /> Encerrado
+            </span>
+          ) : ev.discord_notified ? (
+            <span className="flex items-center gap-1 text-xs text-green-400">
+              <CheckCircle2 className="w-3.5 h-3.5" /> No Discord
+            </span>
+          ) : (
+            <span className="text-xs text-yellow-400">Enviando...</span>
+          )}
+          {isOfficer && (
+            <button onClick={() => onDelete(ev.id)} className="text-gray-500 hover:text-red-400">
+              <Trash2 className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {ev.description && (
+        <p className="text-sm text-gray-400 mt-3 whitespace-pre-line line-clamp-4">
+          {ev.description}
+        </p>
+      )}
+
+      <div className="flex flex-wrap gap-3 mt-3 text-xs text-gray-400">
+        {ev.event_date && (
+          <span className="flex items-center gap-1">
+            <Calendar className="w-3.5 h-3.5" /> {ev.event_date}
+          </span>
+        )}
+        {ev.event_time && (
+          <span className="flex items-center gap-1">
+            <Clock className="w-3.5 h-3.5" /> {ev.event_time}
+          </span>
+        )}
+        <span className="flex items-center gap-1">
+          <Users className="w-3.5 h-3.5" /> {signups.length}
+          {ev.max_participants ? `/${ev.max_participants}` : ''}
+        </span>
+      </div>
+
+      {evRoles.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mt-3">
+          {evRoles.map((r) => {
+            const count = signups.filter((s) => s.role_id === r.id).length;
             return (
-              <div
-                key={ev.id}
-                className="bg-slate-900/60 border border-slate-800 rounded-xl p-5"
+              <span
+                key={r.id}
+                className="text-xs px-2 py-0.5 rounded bg-slate-800 border border-slate-700 text-gray-300"
               >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <h3 className="text-white font-semibold">{ev.title}</h3>
-                    {ev.content_type && (
-                      <span className="inline-block mt-1 text-xs px-2 py-0.5 rounded bg-red-500/10 text-red-400">
-                        {ev.content_type}
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {ev.discord_notified ? (
-                      <span className="flex items-center gap-1 text-xs text-green-400">
-                        <CheckCircle2 className="w-3.5 h-3.5" /> No Discord
-                      </span>
-                    ) : (
-                      <span className="text-xs text-yellow-400">Enviando...</span>
-                    )}
-                    {isOfficer && (
-                      <button
-                        onClick={() => handleDelete(ev.id)}
-                        className="text-gray-500 hover:text-red-400"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                {ev.description && (
-                  <p className="text-sm text-gray-400 mt-3 whitespace-pre-line line-clamp-4">
-                    {ev.description}
-                  </p>
-                )}
-
-                <div className="flex flex-wrap gap-3 mt-3 text-xs text-gray-400">
-                  {ev.event_date && (
-                    <span className="flex items-center gap-1">
-                      <Calendar className="w-3.5 h-3.5" /> {ev.event_date}
-                    </span>
-                  )}
-                  {ev.event_time && (
-                    <span className="flex items-center gap-1">
-                      <Clock className="w-3.5 h-3.5" /> {ev.event_time}
-                    </span>
-                  )}
-                  <span className="flex items-center gap-1">
-                    <Users className="w-3.5 h-3.5" /> {signups.length}
-                    {ev.max_participants ? `/${ev.max_participants}` : ''}
-                  </span>
-                </div>
-
-                {evRoles.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 mt-3">
-                    {evRoles.map((r) => {
-                      const count = signups.filter((s) => s.role_id === r.id).length;
-                      return (
-                        <span
-                          key={r.id}
-                          className="text-xs px-2 py-0.5 rounded bg-slate-800 border border-slate-700 text-gray-300"
-                        >
-                          {r.emoji} {r.label} {count}/{r.slots || 0}
-                        </span>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
+                {r.emoji} {r.label} {count}/{r.slots || 0}
+              </span>
             );
           })}
+        </div>
+      )}
+
+      {signups.length > 0 && (
+        <div className="mt-3 pt-3 border-t border-slate-800">
+          <button
+            type="button"
+            onClick={() => setShowParticipants((v) => !v)}
+            className="flex items-center gap-1.5 text-xs text-gray-300 hover:text-white transition-colors"
+          >
+            {showParticipants ? (
+              <ChevronUp className="w-3.5 h-3.5" />
+            ) : (
+              <ChevronDown className="w-3.5 h-3.5" />
+            )}
+            {showParticipants ? 'Ocultar participantes' : `Ver participantes (${signups.length})`}
+          </button>
+
+          {showParticipants && (
+            <div className="mt-3 space-y-2">
+              {evRoles.map((r) => {
+                const members = signups.filter((s) => s.role_id === r.id);
+                if (members.length === 0) return null;
+                return (
+                  <div key={r.id}>
+                    <p className="text-xs font-medium text-gray-400 mb-1">
+                      {r.emoji} {r.label}{' '}
+                      <span className="text-gray-600">({members.length})</span>
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {members.map((s) => (
+                        <span
+                          key={s.id}
+                          className="text-xs px-2 py-0.5 rounded-full bg-slate-800 border border-slate-700 text-gray-200"
+                        >
+                          {s.display_name || 'Membro'}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+              {noRole.length > 0 && (
+                <div>
+                  <p className="text-xs font-medium text-gray-400 mb-1">
+                    Outros <span className="text-gray-600">({noRole.length})</span>
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {noRole.map((s) => (
+                      <span
+                        key={s.id}
+                        className="text-xs px-2 py-0.5 rounded-full bg-slate-800 border border-slate-700 text-gray-200"
+                      >
+                        {s.display_name || 'Membro'}
+                        {s.role_label ? ` · ${s.role_label}` : ''}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>

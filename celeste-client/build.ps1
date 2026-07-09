@@ -23,9 +23,9 @@ if (-not $goCmd) {
 $ldflags = @(
   "-s", "-w",
   "-H=windowsgui",
-  "-X", "github.com/venum-i/celeste/config.APIBase=https://venum-eight.vercel.app",
-  "-X", "github.com/venum-i/celeste/config.AgentToken=venum_celeste_bmdvk_7Xk9mP2wQ5nR8tY4vL6jH1sF3dA0cE",
-  "-X", "github.com/venum-i/celeste/config.Version=1.1.0"
+  "-X", "github.com/venum-i/anaconda/config.APIBase=https://venum-eight.vercel.app",
+  "-X", "github.com/venum-i/anaconda/config.AgentToken=venum_celeste_bmdvk_7Xk9mP2wQ5nR8tY4vL6jH1sF3dA0cE",
+  "-X", "github.com/venum-i/anaconda/config.Version=1.1.0"
 ) -join " "
 
 Write-Host "[anaconda] go mod tidy..."
@@ -38,5 +38,4 @@ if (-not (Test-Path "anaconda.exe")) {
   Write-Error "Build falhou"
 }
 
-Copy-Item -Path ".\anaconda.exe" -Destination ".\celeste.exe" -Force
 Write-Host "[anaconda] OK: $Root\anaconda.exe"

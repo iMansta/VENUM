@@ -24,7 +24,7 @@ const DashboardLayout = ({ userId, userRole, profile }) => {
     { name: 'Builds', href: '/builds', icon: Wrench },
   ];
 
-  if (userRole === 'admin') {
+  if (userRole === 'admin' || userRole === 'staff') {
     navigation.push({ name: 'Admin', href: '/admin', icon: Shield });
   }
 

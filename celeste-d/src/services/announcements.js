@@ -23,7 +23,7 @@ export async function pollNewAnnouncements(client) {
 
   const { data: announcements, error } = await db
     .from('guild_announcements')
-    .select('id, title, message, discord_notified, is_active')
+    .select('id, title, message, discord_notified, is_active, priority, mention')
     .eq('is_active', true)
     .eq('discord_notified', false)
     .order('created_at', { ascending: true })
@@ -38,9 +38,18 @@ export async function pollNewAnnouncements(client) {
       title: ann.title,
       message: ann.message || 'Sem descrição',
       author: 'Painel Administrativo',
+      priority: ann.priority || 'normal',
     });
 
-    const msg = await channel.send({ embeds: [embed] });
+    let content;
+    if (ann.mention === 'everyone') content = '@everyone';
+    else if (ann.mention === 'here') content = '@here';
+
+    const msg = await channel.send(
+      content
+        ? { content, embeds: [embed], allowedMentions: { parse: ['everyone'] } }
+        : { embeds: [embed] }
+    );
     await db
       .from('guild_announcements')
       .update({ discord_notified: true, discord_message_id: msg.id })

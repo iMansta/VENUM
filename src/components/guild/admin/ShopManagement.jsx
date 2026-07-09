@@ -1,7 +1,13 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Store, Trash2, Edit2, Save, Search, PackageCheck, Copy } from 'lucide-react';
+import { Store, Trash2, Edit2, Save, Search, PackageCheck, Copy, History, Package } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
-import { createShopItem, updateShopItem, deleteShopItem } from '@/lib/supabase/shop';
+import {
+  createShopItem,
+  updateShopItem,
+  deleteShopItem,
+  getAllPurchases,
+  updatePurchaseStatus,
+} from '@/lib/supabase/shop';
 import {
   getCatalogItemsMeta,
   mapShopCategoryFromGroup,
@@ -27,6 +33,7 @@ const emptyForm = {
 };
 
 const ShopManagement = () => {
+  const [view, setView] = useState('items');
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState(emptyForm);
@@ -184,8 +191,35 @@ const ShopManagement = () => {
         <h3 className="text-lg font-semibold text-white">Gerenciar Loja</h3>
       </div>
 
+      <div className="flex items-center gap-1 border-b border-slate-800">
+        <button
+          onClick={() => setView('items')}
+          className={`px-4 py-2 text-sm font-medium -mb-px border-b-2 transition-colors flex items-center gap-2 ${
+            view === 'items'
+              ? 'border-amber-500 text-white'
+              : 'border-transparent text-gray-400 hover:text-gray-200'
+          }`}
+        >
+          <Package className="w-4 h-4" /> Itens
+        </button>
+        <button
+          onClick={() => setView('history')}
+          className={`px-4 py-2 text-sm font-medium -mb-px border-b-2 transition-colors flex items-center gap-2 ${
+            view === 'history'
+              ? 'border-amber-500 text-white'
+              : 'border-transparent text-gray-400 hover:text-gray-200'
+          }`}
+        >
+          <History className="w-4 h-4" /> Histórico da loja
+        </button>
+      </div>
+
+      {view === 'history' && <ShopPurchaseHistory />}
+
+      {view === 'items' && (
+      <>
       <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-4 space-y-3">
-        <p className="text-sm text-gray-300 font-medium">1) Escolha item do catálogo Albion</p>
+        <p className="text-sm text-gray-300 font-medium">1) Escolha item do catálogo interno</p>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <select
             value={catalogGroup}
@@ -250,21 +284,29 @@ const ShopManagement = () => {
           {editingId ? '2) Editar item da loja' : '2) Configurar e adicionar item'}
         </p>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="md:col-span-2">
-            <label className="block text-xs font-medium text-amber-400/90 mb-1">
-              ID do catálogo Albion
-            </label>
-            <p className="text-[11px] text-gray-500 mb-1.5">
-              Preenchido ao clicar num item acima. É o código oficial (ex.: T8_MOUNT_ARMORED_HORSE) usado para buscar ícone e nome.
-            </p>
-            <input
-              placeholder="Ex.: T8_MOUNT_ARMORED_HORSE"
-              value={form.catalog_item_id}
-              onChange={(e) => setForm({ ...form, catalog_item_id: e.target.value.toUpperCase() })}
-              className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white text-sm"
-              required
-            />
-          </div>
+          {(form.catalog_item_id || form.image_url) && (
+            <div className="md:col-span-2 flex items-center gap-3 bg-slate-900/60 border border-slate-800 rounded-lg p-3">
+              {form.image_url ? (
+                <img
+                  src={form.image_url}
+                  alt={form.name}
+                  className="w-12 h-12 object-contain rounded bg-slate-900"
+                />
+              ) : (
+                <div className="w-12 h-12 rounded bg-slate-800 flex items-center justify-center">
+                  <PackageCheck className="w-5 h-5 text-gray-500" />
+                </div>
+              )}
+              <div className="min-w-0">
+                <p className="text-sm text-white font-medium truncate">
+                  {form.name || 'Item do catálogo selecionado'}
+                </p>
+                <p className="text-[11px] text-gray-500">
+                  Item do catálogo interno selecionado. Nome e ícone vêm do nosso catálogo.
+                </p>
+              </div>
+            </div>
+          )}
           <div>
             <label className="block text-xs font-medium text-amber-400/90 mb-1">
               Nome exibido na loja
@@ -454,6 +496,107 @@ const ShopManagement = () => {
               </div>
             </div>
           ))}
+        </div>
+      )}
+      </>
+      )}
+    </div>
+  );
+};
+
+const PURCHASE_STATUS = {
+  pending: { label: 'Pendente', color: 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30' },
+  approved: { label: 'Aprovado', color: 'bg-blue-500/20 text-blue-300 border-blue-500/30' },
+  delivered: { label: 'Entregue', color: 'bg-green-500/20 text-green-300 border-green-500/30' },
+  cancelled: { label: 'Cancelado', color: 'bg-red-500/20 text-red-300 border-red-500/30' },
+};
+
+const ShopPurchaseHistory = () => {
+  const [purchases, setPurchases] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [statusFilter, setStatusFilter] = useState('all');
+
+  const load = async () => {
+    setLoading(true);
+    const { success, data } = await getAllPurchases(
+      statusFilter === 'all' ? null : statusFilter,
+      100
+    );
+    if (success) setPurchases(data || []);
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusFilter]);
+
+  const changeStatus = async (id, status) => {
+    await updatePurchaseStatus(id, status);
+    load();
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-gray-300">
+          Todas as compras feitas pelos membros. Atualize o status conforme entrega.
+        </p>
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          className="bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-white text-xs"
+        >
+          <option value="all">Todos status</option>
+          <option value="pending">Pendente</option>
+          <option value="approved">Aprovado</option>
+          <option value="delivered">Entregue</option>
+          <option value="cancelled">Cancelado</option>
+        </select>
+      </div>
+
+      {loading ? (
+        <p className="text-gray-500 text-sm">Carregando…</p>
+      ) : purchases.length === 0 ? (
+        <p className="text-gray-500 text-sm">Nenhuma compra registrada.</p>
+      ) : (
+        <div className="divide-y divide-slate-800 border border-slate-800 rounded-lg overflow-hidden">
+          {purchases.map((p) => {
+            const st = PURCHASE_STATUS[p.status] || PURCHASE_STATUS.pending;
+            return (
+              <div
+                key={p.id}
+                className="flex flex-col md:flex-row md:items-center justify-between gap-3 p-4 bg-slate-900/50"
+              >
+                <div className="min-w-0">
+                  <p className="text-white font-medium truncate">
+                    {p.shop_items?.name || 'Item removido'}
+                  </p>
+                  <p className="text-xs text-gray-400">
+                    {p.profiles?.username || p.profiles?.full_name || 'Membro'} ·{' '}
+                    {p.points_spent} pts ·{' '}
+                    {p.created_at ? new Date(p.created_at).toLocaleString('pt-BR') : ''}
+                  </p>
+                  {p.notes && <p className="text-xs text-gray-500 mt-1">Obs.: {p.notes}</p>}
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className={`px-2 py-1 rounded text-xs font-medium border ${st.color}`}>
+                    {st.label}
+                  </span>
+                  <select
+                    value={p.status}
+                    onChange={(e) => changeStatus(p.id, e.target.value)}
+                    className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-white text-xs"
+                  >
+                    <option value="pending">Pendente</option>
+                    <option value="approved">Aprovado</option>
+                    <option value="delivered">Entregue</option>
+                    <option value="cancelled">Cancelado</option>
+                  </select>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

@@ -64,13 +64,24 @@ export function buildMissionEmbed({
   return embed;
 }
 
-export function buildAnnouncementEmbed({ title, message, author }) {
-  return new EmbedBuilder()
-    .setColor(0x10b981)
-    .setTitle(`📢 ${title}`)
+const ANNOUNCEMENT_PRIORITY = {
+  normal: { color: 0x10b981, icon: '📢', label: 'Aviso' },
+  important: { color: 0xf59e0b, icon: '⚠️', label: 'Aviso Importante' },
+  urgent: { color: 0xef4444, icon: '🚨', label: 'AVISO URGENTE' },
+};
+
+export function buildAnnouncementEmbed({ title, message, author, priority = 'normal' }) {
+  const p = ANNOUNCEMENT_PRIORITY[priority] || ANNOUNCEMENT_PRIORITY.normal;
+  const embed = new EmbedBuilder()
+    .setColor(p.color)
+    .setTitle(`${p.icon} ${title}`)
     .setDescription(message)
     .setFooter({ text: author ? `${author} · Celeste D.` : 'Celeste D.' })
     .setTimestamp();
+  if (priority !== 'normal') {
+    embed.setAuthor({ name: p.label });
+  }
+  return embed;
 }
 
 /** Estado em memória: messageId -> { roles, signups, meta } */

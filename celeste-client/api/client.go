@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/venum-i/celeste/config"
+	"github.com/venum-i/anaconda/config"
 )
 
 type Client struct {

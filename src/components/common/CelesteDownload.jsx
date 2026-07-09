@@ -77,7 +77,7 @@ const CelesteDownload = ({ compact = false }) => {
           Baixar Instalador (.exe)
         </a>
         <a
-          href="/downloads/celeste.zip"
+          href="/downloads/anaconda.zip"
           download="anaconda-venum.zip"
           className="inline-flex items-center justify-center gap-2 w-full sm:w-auto px-5 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-gray-200 font-medium border border-slate-700 transition-colors"
         >
