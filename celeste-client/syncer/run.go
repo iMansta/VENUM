@@ -220,12 +220,10 @@ func runCycle(client *api.Client, clientID string, watcher *collector.Watcher, s
 		if netErr != nil {
 			logger.Warn("Captura passiva: %v", netErr)
 		} else if len(netObs) > 0 {
+			// Telemetria de rede apenas (identidade Photon + diagnóstico).
+			// Não inferimos kills/fama a partir de tráfego UDP — isso gerava
+			// progresso falso em missões sem o jogador estar em combate.
 			observations = append(observations, netObs...)
-			derived := derivePassiveGameplayObservations(netObs)
-			if len(derived) > 0 {
-				observations = append(observations, derived...)
-				logger.Info("Captura passiva: %d evento(s) de gameplay inferido(s)", len(derived))
-			}
 			logger.Info("Captura passiva: %d evento(s) UDP coletado(s)", len(netObs))
 		}
 	}
@@ -417,67 +415,6 @@ func simpleHash(v string) int {
 		h = (h*31 + int(v[i])) & 0x7fffffff
 	}
 	return h
-}
-
-func derivePassiveGameplayObservations(netObs []api.Observation) []api.Observation {
-	out := make([]api.Observation, 0, 2)
-	now := time.Now().UTC().Format(time.RFC3339)
-
-	for _, obs := range netObs {
-		if obs.Type != "net_udp_packets" {
-			continue
-		}
-		packets := int(obs.ValueNumeric)
-		bytesTotal := 0
-		if obs.Payload != nil {
-			if v, ok := obs.Payload["bytes_total"]; ok {
-				switch t := v.(type) {
-				case int:
-					bytesTotal = t
-				case int64:
-					bytesTotal = int(t)
-				case float64:
-					bytesTotal = int(t)
-				}
-			}
-		}
-
-		// Heurística: tráfego UDP alto em curto intervalo durante sessão ativa.
-		if packets >= 40 && bytesTotal >= 12000 {
-			estimatedFame := float64(packets * 150)
-			estimatedKills := float64(packets / 45)
-			if estimatedKills < 1 {
-				estimatedKills = 1
-			}
-
-			out = append(out, api.Observation{
-				Type:         "pve_fame",
-				ObservedAt:   now,
-				ValueNumeric: estimatedFame,
-				Payload: map[string]any{
-					"source":      "passive_network_heuristic",
-					"target_key":  "pve_fame",
-					"packets":     packets,
-					"bytes_total": bytesTotal,
-				},
-			})
-
-			// Também gera "mob_kill" para missões PvE de qualquer mob.
-			out = append(out, api.Observation{
-				Type:         "mob_kill",
-				ObservedAt:   now,
-				ValueNumeric: estimatedKills,
-				Payload: map[string]any{
-					"source":      "passive_network_heuristic",
-					"target_key":  "mob_kill",
-					"packets":     packets,
-					"bytes_total": bytesTotal,
-				},
-			})
-		}
-	}
-
-	return out
 }
 
 func deriveDynamicMobKillsFromFame(observations []api.Observation, thresholds []int) []api.Observation {

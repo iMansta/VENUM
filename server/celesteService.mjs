@@ -818,66 +818,7 @@ export async function ingestCelesteTelemetry(payload = {}) {
     return { clientId, inserted: 0 };
   }
 
-  const inferPassiveServerSide = (rows) => {
-    const alreadyHasPassivePve = rows.some(
-      (obs) =>
-        String(obs?.type || '') === 'pve_fame' &&
-        String(obs?.payload?.source || '').includes('passive_network_heuristic')
-    );
-    const alreadyHasPassiveMobKill = rows.some(
-      (obs) =>
-        String(obs?.type || '') === 'mob_kill' &&
-        String(obs?.payload?.source || '').includes('passive_network_heuristic')
-    );
-    if (alreadyHasPassivePve && alreadyHasPassiveMobKill) {
-      return [];
-    }
-
-    const inferred = [];
-    for (const obs of rows) {
-      if (String(obs?.type || '') !== 'net_udp_packets') continue;
-      const packets = Number(obs?.valueNumeric ?? 0);
-      const bytesTotal = Number(obs?.payload?.bytes_total ?? 0);
-      if (!Number.isFinite(packets) || !Number.isFinite(bytesTotal)) continue;
-      if (packets < 40 || bytesTotal < 12000) continue;
-
-      const observedAt = obs?.observedAt || now;
-      const estimatedFame = packets * 150;
-      const estimatedKills = Math.max(1, Math.floor(packets / 45));
-
-      if (!alreadyHasPassivePve) {
-        inferred.push({
-          observedAt,
-          type: 'pve_fame',
-          valueNumeric: estimatedFame,
-          payload: {
-            source: 'server_passive_network_heuristic',
-            target_key: 'pve_fame',
-            packets,
-            bytes_total: bytesTotal,
-          },
-        });
-      }
-      if (!alreadyHasPassiveMobKill) {
-        inferred.push({
-          observedAt,
-          type: 'mob_kill',
-          valueNumeric: estimatedKills,
-          payload: {
-            source: 'server_passive_network_heuristic',
-            target_key: 'mob_kill',
-            packets,
-            bytes_total: bytesTotal,
-          },
-        });
-      }
-    }
-    return inferred;
-  };
-
-  const withDerived = observations.concat(inferPassiveServerSide(observations));
-
-  const capped = withDerived.slice(0, 200).map((obs) => ({
+  const capped = observations.slice(0, 200).map((obs) => ({
     client_id: clientId,
     observed_at: obs.observedAt || now,
     type: String(obs.type || 'raw'),
