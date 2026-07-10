@@ -57,6 +57,12 @@ func New() *Client {
 	}
 }
 
+// SharedHTTPClient expõe o cliente HTTP resiliente (IPv4 + timeouts) para
+// chamadas externas como a Albion Data API.
+func SharedHTTPClient() *http.Client {
+	return newResilientHTTPClient()
+}
+
 // doRequestWithRetry executa uma requisição com tentativas em erros transitórios
 // de rede (DNS/conexão). Não repete em erros HTTP de aplicação (>=400).
 func (c *Client) doRequestWithRetry(req *http.Request, bodyBytes []byte) (*http.Response, error) {
@@ -176,11 +182,15 @@ func (c *Client) Catalog() (*CatalogResponse, error) {
 
 func (c *Client) UploadPrices(rows []map[string]any) (int, error) {
 	var out struct {
-		OK   bool `json:"ok"`
-		Rows int  `json:"rows"`
+		OK    bool   `json:"ok"`
+		Rows  int    `json:"rows"`
+		Error string `json:"error"`
 	}
 	if err := c.do(http.MethodPost, "prices", map[string]any{"rows": rows}, &out); err != nil {
 		return 0, err
+	}
+	if out.Rows == 0 && out.Error != "" {
+		return 0, fmt.Errorf("%s", out.Error)
 	}
 	return out.Rows, nil
 }

@@ -3,7 +3,7 @@ package syncer
 import (
 	"encoding/json"
 	"fmt"
-	"net/http"
+	"io"
 	"os"
 	"sort"
 	"strings"
@@ -322,6 +322,12 @@ func toStr(v any) string {
 	return ""
 }
 
+var defaultCatalogItems = []string{
+	"T4_MAIN_SWORD", "T5_MAIN_SWORD", "T6_MAIN_SWORD", "T7_MAIN_SWORD", "T8_MAIN_SWORD",
+	"T4_BAG", "T5_BAG", "T6_BAG", "T7_BAG", "T8_BAG",
+	"T4_CAPE", "T5_CAPE", "T6_CAPE", "T7_CAPE", "T8_CAPE",
+}
+
 func syncPrices(client *api.Client) error {
 	catalog, err := client.Catalog()
 	if err != nil {
@@ -329,6 +335,11 @@ func syncPrices(client *api.Client) error {
 	}
 
 	itemIDs := catalog.ItemIDs
+	if len(itemIDs) == 0 {
+		itemIDs = append([]string(nil), defaultCatalogItems...)
+		logger.Warn("Catálogo do hub vazio; usando lista padrão (%d itens)", len(itemIDs))
+	}
+
 	locations := catalog.Locations
 	batchSize := catalog.BatchSize
 	if batchSize <= 0 {
@@ -340,7 +351,9 @@ func syncPrices(client *api.Client) error {
 
 	locParam := strings.Join(locations, ",")
 	total := 0
-	httpClient := &http.Client{Timeout: 60 * time.Second}
+	httpClient := api.SharedHTTPClient()
+	batches := (len(itemIDs) + batchSize - 1) / batchSize
+	logger.Info("Sincronizando preços: %d itens, %d lote(s)", len(itemIDs), batches)
 
 	for i := 0; i < len(itemIDs); i += batchSize {
 		end := i + batchSize
@@ -348,18 +361,27 @@ func syncPrices(client *api.Client) error {
 			end = len(itemIDs)
 		}
 		batch := itemIDs[i:end]
+		batchNo := i/batchSize + 1
 		url := fmt.Sprintf("%s/api/v2/stats/prices/%s.json?locations=%s&qualities=1",
 			config.AlbionDataBase, strings.Join(batch, ","), locParam)
 
 		res, err := httpClient.Get(url)
 		if err != nil {
-			logger.Warn("Lote %d: %v", i/batchSize+1, err)
+			logger.Warn("Lote %d: Albion Data: %v", batchNo, err)
+			continue
+		}
+
+		if res.StatusCode >= 400 {
+			body, _ := io.ReadAll(io.LimitReader(res.Body, 512))
+			res.Body.Close()
+			logger.Warn("Lote %d: Albion Data HTTP %d: %s", batchNo, res.StatusCode, strings.TrimSpace(string(body)))
 			continue
 		}
 
 		var prices []map[string]any
 		if err := json.NewDecoder(res.Body).Decode(&prices); err != nil {
 			res.Body.Close()
+			logger.Warn("Lote %d: resposta inválida da Albion Data: %v", batchNo, err)
 			continue
 		}
 		res.Body.Close()
@@ -373,11 +395,18 @@ func syncPrices(client *api.Client) error {
 			}
 			rows = append(rows, row)
 		}
+		if len(rows) == 0 {
+			logger.Warn("Lote %d: nenhum preço válido (%d entradas brutas)", batchNo, len(prices))
+			continue
+		}
 
 		n, err := client.UploadPrices(rows)
 		if err != nil {
-			logger.Warn("Upload lote %d: %v", i/batchSize+1, err)
+			logger.Warn("Upload lote %d: %v", batchNo, err)
 			continue
+		}
+		if n == 0 {
+			logger.Warn("Upload lote %d: hub persistiu 0 de %d linhas (verifique RPC no Supabase)", batchNo, len(rows))
 		}
 		total += n
 		time.Sleep(200 * time.Millisecond)

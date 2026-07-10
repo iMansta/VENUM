@@ -398,6 +398,7 @@ export async function upsertMarketPrices(rows) {
   const normalized = [...deduped.values()];
   const chunkSize = 25;
 
+  let firstError = null;
   for (let i = 0; i < normalized.length; i += chunkSize) {
     const chunk = normalized.slice(i, i + chunkSize);
     const results = await Promise.all(
@@ -415,11 +416,19 @@ export async function upsertMarketPrices(rows) {
       )
     );
     for (const res of results) {
-      if (!res.error) count += 1;
+      if (res.error) {
+        if (!firstError) firstError = res.error;
+        continue;
+      }
+      count += 1;
     }
   }
 
-  return { rows: count, accepted: normalized.length };
+  if (count === 0 && normalized.length > 0 && firstError) {
+    console.error('[celeste] upsertMarketPrices:', firstError.message || firstError);
+  }
+
+  return { rows: count, accepted: normalized.length, error: firstError?.message || null };
 }
 
 export async function aggregateCelesteObservations(limit = 500) {
