@@ -13,6 +13,7 @@ import (
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
 	"github.com/venum-i/anaconda/api"
+	"github.com/venum-i/anaconda/collector/photon"
 )
 
 var likelyAlbionPorts = map[uint16]bool{
@@ -22,18 +23,70 @@ var likelyAlbionPorts = map[uint16]bool{
 	5058: true,
 }
 
+// opJoinResponse é o opcode da operação Join do Albion (Protocol18). A resposta
+// (JoinResponse) traz o nome do personagem local no parâmetro 2 e a guilda no 58.
+const opJoinResponse = byte(2)
+
 type PassiveSniffer struct {
 	mu           sync.Mutex
 	localIPs     map[string]bool
 	npCapChecked bool
 	npCapReady   bool
 	npCapErr     error
+
+	photonParser  *photon.PhotonParser
+	detectedChar  string
+	detectedGuild string
 }
 
 func NewPassiveSniffer() *PassiveSniffer {
-	return &PassiveSniffer{
+	s := &PassiveSniffer{
 		localIPs: collectLocalIPs(),
 	}
+	// Parser Photon dedicado a identificar silenciosamente o personagem local.
+	s.photonParser = photon.NewPhotonParser(nil, s.onPhotonResponse, nil)
+	return s
+}
+
+// onPhotonResponse captura o nome do personagem local a partir da resposta da
+// operação Join. Não coleta dados de outros jogadores.
+func (s *PassiveSniffer) onPhotonResponse(opCode byte, _ int16, _ string, params map[byte]interface{}) {
+	if opCode != opJoinResponse || params == nil {
+		return
+	}
+	name, _ := params[2].(string)
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return
+	}
+	guild, _ := params[58].(string)
+
+	s.mu.Lock()
+	s.detectedChar = name
+	if g := strings.TrimSpace(guild); g != "" {
+		s.detectedGuild = g
+	}
+	s.mu.Unlock()
+}
+
+// DetectedCharacter retorna o nome do personagem Albion local identificado via
+// Photon (Join), ou "" se ainda não foi observado.
+func (s *PassiveSniffer) DetectedCharacter() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.detectedChar
+}
+
+// feedPhoton alimenta o parser Photon com um payload UDP, protegido contra
+// pânico em pacotes malformados (degrada de forma silenciosa).
+func (s *PassiveSniffer) feedPhoton(payload []byte) {
+	if s.photonParser == nil || len(payload) == 0 {
+		return
+	}
+	defer func() { _ = recover() }()
+	buf := make([]byte, len(payload))
+	copy(buf, payload)
+	s.photonParser.ReceivePacket(buf)
 }
 
 func (s *PassiveSniffer) Status() (ready bool, err error) {
@@ -118,6 +171,11 @@ func (s *PassiveSniffer) CaptureWindow(window time.Duration, maxPackets int) ([]
 		if likelyAlbionPorts[srcPort] || likelyAlbionPorts[dstPort] {
 			albionPackets++
 			albionBytes += payloadLen
+			// Porta 5056 = protocolo de jogo (Photon). Alimenta o parser para
+			// identificar o personagem local silenciosamente.
+			if srcPort == 5056 || dstPort == 5056 {
+				s.feedPhoton(udp.Payload)
+			}
 		}
 	}
 

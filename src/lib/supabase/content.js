@@ -98,6 +98,22 @@ export const createContentEvent = async (payload) => {
   }
 };
 
+// Encerrar content: arquiva o evento (is_active=false), movendo-o para o
+// Histórico. Permitido ao criador ou a staff/officer/admin (garantido por RLS).
+export const closeContentEvent = async (id) => {
+  try {
+    const { error } = await supabase
+      .from('discord_content_events')
+      .update({ is_active: false, closed_at: new Date().toISOString() })
+      .eq('id', id);
+    if (error) throw error;
+    return { success: true };
+  } catch (error) {
+    console.error('Close content event error:', error);
+    return { success: false, error: error.message };
+  }
+};
+
 export const deleteContentEvent = async (id) => {
   try {
     const { error } = await supabase

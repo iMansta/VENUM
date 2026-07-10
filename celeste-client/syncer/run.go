@@ -117,6 +117,18 @@ func runCycle(client *api.Client, clientID string, watcher *collector.Watcher, s
 	start := time.Now()
 	logger.Info("Iniciando ciclo de sincronização")
 
+	// Identidade do personagem Albion (env/arquivo). Usada para separar o
+	// progresso individual de cada usuário. Pode ser complementada pela
+	// detecção via Photon (Join) de ciclos anteriores ou deste ciclo.
+	albionName := collector.ResolveAlbionName()
+	if albionName == "" && sniffer != nil {
+		if detected := sniffer.DetectedCharacter(); detected != "" {
+			collector.PersistAlbionName(detected)
+			albionName = detected
+			logger.Info("Personagem Albion identificado via rede (Join): %s", albionName)
+		}
+	}
+
 	if shouldSyncPrices(clientID) {
 		if err := syncPrices(client); err != nil {
 			logger.Error("Preços: %v", err)
@@ -126,7 +138,11 @@ func runCycle(client *api.Client, clientID string, watcher *collector.Watcher, s
 	}
 
 	if time.Since(*lastGuild) >= config.GuildEvery {
-		guildSync, err := client.SyncGuild(clientID, os.Getenv("USERNAME"))
+		guildUser := albionName
+		if guildUser == "" {
+			guildUser = os.Getenv("USERNAME")
+		}
+		guildSync, err := client.SyncGuild(clientID, guildUser)
 		if err != nil {
 			logger.Error("Guilda: %v", err)
 		} else {
@@ -150,10 +166,30 @@ func runCycle(client *api.Client, clientID string, watcher *collector.Watcher, s
 	}
 
 	observations, err := watcher.ReadObservations(100)
+
+	// Detecção silenciosa do personagem local se ainda não tivermos a identidade.
+	if albionName == "" {
+		if detected := watcher.LikelyLocalPlayer(); detected != "" {
+			collector.PersistAlbionName(detected)
+			albionName = detected
+			logger.Info("Personagem Albion identificado automaticamente: %s", albionName)
+		}
+	}
+
+	hostUser := os.Getenv("USERNAME")
+	identity := albionName
+	if identity == "" {
+		// Fallback temporário até detectar o personagem; o hub tenta casar por
+		// nome de usuário/personagem e, quando falha, mantém a observação sem perfil.
+		identity = hostUser
+	}
+
 	meta := map[string]any{
 		"version":     config.Version,
 		"hostName":    os.Getenv("COMPUTERNAME"),
-		"username":    os.Getenv("USERNAME"),
+		"username":    identity,
+		"albionName":  albionName,
+		"hostUser":    hostUser,
 		"gameLogPath": watcher.Path(),
 	}
 	if sniffer != nil {
@@ -172,7 +208,15 @@ func runCycle(client *api.Client, clientID string, watcher *collector.Watcher, s
 		logger.Warn("Anaconda detectou Player.log. Esse arquivo normalmente não contém kills/fama detalhados; a contagem de missões pode não atualizar.")
 	}
 	if sniffer != nil {
-		netObs, netErr := sniffer.CaptureWindow(800*time.Millisecond, 500)
+		// Enquanto não soubermos o personagem, captura uma janela maior para
+		// aumentar a chance de observar um Join (troca de zona) e identificá-lo.
+		captureWindow := 800 * time.Millisecond
+		captureMax := 500
+		if albionName == "" {
+			captureWindow = 3 * time.Second
+			captureMax = 2000
+		}
+		netObs, netErr := sniffer.CaptureWindow(captureWindow, captureMax)
 		if netErr != nil {
 			logger.Warn("Captura passiva: %v", netErr)
 		} else if len(netObs) > 0 {
@@ -193,6 +237,24 @@ func runCycle(client *api.Client, clientID string, watcher *collector.Watcher, s
 	}
 
 	meta["mob_fame_thresholds"] = getMobFameThresholds()
+
+	// Finaliza a identidade com a detecção via Photon (Join) capturada neste
+	// ciclo — fonte mais confiável que a heurística de logs.
+	if albionName == "" && sniffer != nil {
+		if detected := sniffer.DetectedCharacter(); detected != "" {
+			collector.PersistAlbionName(detected)
+			albionName = detected
+			identity = detected
+			meta["username"] = identity
+			meta["albionName"] = albionName
+			logger.Info("Personagem Albion identificado via rede (Join): %s", albionName)
+		}
+	}
+
+	// Carimba a identidade em todas as observações (inclui heurísticas de rede
+	// e mob kills dinâmicos que não trazem o personagem no log) para que o hub
+	// consiga atribuir o progresso ao perfil correto.
+	stampObservationIdentity(observations, identity)
 
 	if err != nil {
 		if err == collector.ErrGameLogNotFound {
@@ -239,6 +301,27 @@ func runCycle(client *api.Client, clientID string, watcher *collector.Watcher, s
 
 	lastOK.Store(time.Now().Unix())
 	logger.Info("Ciclo concluído em %.1fs — Watching Albion", time.Since(start).Seconds())
+}
+
+func stampObservationIdentity(obs []api.Observation, username string) {
+	if strings.TrimSpace(username) == "" {
+		return
+	}
+	for i := range obs {
+		if obs[i].Payload == nil {
+			obs[i].Payload = map[string]any{}
+		}
+		if v, ok := obs[i].Payload["username"]; !ok || strings.TrimSpace(toStr(v)) == "" {
+			obs[i].Payload["username"] = username
+		}
+	}
+}
+
+func toStr(v any) string {
+	if s, ok := v.(string); ok {
+		return s
+	}
+	return ""
 }
 
 func syncPrices(client *api.Client) error {

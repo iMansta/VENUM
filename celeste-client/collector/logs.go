@@ -18,6 +18,7 @@ type Watcher struct {
 	warnedNoLog       bool
 	warnedPlayerLog   bool
 	playerLogWarnedAt bool
+	actorCounts       map[string]int
 }
 
 var ErrGameLogNotFound = errors.New("albion game.log nao encontrado")
@@ -28,7 +29,36 @@ var killTargetRx = regexp.MustCompile(`(?:killed|slain|matou)\s+([A-Za-z0-9_\- '
 var actorPrefixRx = regexp.MustCompile(`^([A-Za-z0-9_\-]+)\s+(?:killed|slain|matou)\b`)
 
 func NewWatcher() *Watcher {
-	return &Watcher{}
+	return &Watcher{actorCounts: make(map[string]int)}
+}
+
+// trackActor acumula a frequência de nomes de ator (killer/self) para inferir
+// silenciosamente o personagem local — normalmente o que mais aparece como ator.
+func (w *Watcher) trackActor(name string) {
+	name = strings.TrimSpace(name)
+	if len(name) < 3 || len(name) > 24 {
+		return
+	}
+	if w.actorCounts == nil {
+		w.actorCounts = make(map[string]int)
+	}
+	w.actorCounts[name]++
+}
+
+// LikelyLocalPlayer retorna o ator mais frequente observado nos logs, com um
+// mínimo de recorrência para reduzir falsos positivos. "" se indefinido.
+func (w *Watcher) LikelyLocalPlayer() string {
+	best := ""
+	bestN := 0
+	for name, n := range w.actorCounts {
+		if n > bestN {
+			best, bestN = name, n
+		}
+	}
+	if bestN < 3 {
+		return ""
+	}
+	return best
 }
 
 func (w *Watcher) Path() string {
@@ -114,6 +144,11 @@ func (w *Watcher) ReadObservations(max int) ([]api.Observation, error) {
 		o, ok := parseLine(line)
 		if !ok {
 			continue
+		}
+		if o.Payload != nil {
+			if actor, isStr := o.Payload["character"].(string); isStr {
+				w.trackActor(actor)
+			}
 		}
 		obs = append(obs, o)
 		if len(obs) >= max {

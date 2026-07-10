@@ -14,12 +14,14 @@ import {
   History,
   ChevronDown,
   ChevronUp,
+  CircleSlash,
 } from 'lucide-react';
 import {
   getContentEvents,
   getContentHistory,
   createContentEvent,
   deleteContentEvent,
+  closeContentEvent,
   CONTENT_ROLE_PRESETS,
   CONTENT_TYPE_SUGGESTIONS,
 } from '@/lib/supabase/content';
@@ -158,6 +160,21 @@ const Content = ({ userId, userRole }) => {
     if (success) {
       loadEvents();
       setHistoryLoaded(false);
+    }
+  };
+
+  const handleClose = async (id) => {
+    const confirmed = window.confirm(
+      'Encerrar este content? Ele será movido para o Histórico.'
+    );
+    if (!confirmed) return;
+    const { success, error } = await closeContentEvent(id);
+    if (success) {
+      setFeedback({ type: 'success', msg: 'Content encerrado e movido para o Histórico.' });
+      loadEvents();
+      setHistoryLoaded(false);
+    } else {
+      setFeedback({ type: 'error', msg: error || 'Falha ao encerrar o content.' });
     }
   };
 
@@ -417,7 +434,14 @@ const Content = ({ userId, userRole }) => {
         ) : (
           <div className="grid md:grid-cols-2 gap-4">
             {events.map((ev) => (
-              <ContentCard key={ev.id} ev={ev} isOfficer={isOfficer} onDelete={handleDelete} />
+              <ContentCard
+                key={ev.id}
+                ev={ev}
+                isOfficer={isOfficer}
+                userId={userId}
+                onDelete={handleDelete}
+                onClose={handleClose}
+              />
             ))}
           </div>
         )
@@ -441,11 +465,13 @@ const Content = ({ userId, userRole }) => {
   );
 };
 
-const ContentCard = ({ ev, isOfficer, onDelete, archived = false }) => {
+const ContentCard = ({ ev, isOfficer, userId, onDelete, onClose, archived = false }) => {
   const [showParticipants, setShowParticipants] = useState(false);
   const signups = ev.discord_content_signups || [];
   const evRoles = Array.isArray(ev.roles) ? ev.roles : [];
   const noRole = signups.filter((s) => !evRoles.some((r) => r.id === s.role_id));
+  const isCreator = userId && ev.created_by && userId === ev.created_by;
+  const canClose = !archived && (isOfficer || isCreator);
 
   return (
     <div
@@ -475,8 +501,21 @@ const ContentCard = ({ ev, isOfficer, onDelete, archived = false }) => {
           ) : (
             <span className="text-xs text-yellow-400">Enviando...</span>
           )}
+          {canClose && (
+            <button
+              onClick={() => onClose(ev.id)}
+              title="Encerrar content (move para o Histórico)"
+              className="flex items-center gap-1 text-xs px-2 py-1 rounded-md bg-amber-500/10 text-amber-400 border border-amber-500/30 hover:bg-amber-500/20 transition-colors"
+            >
+              <CircleSlash className="w-3.5 h-3.5" /> Encerrar
+            </button>
+          )}
           {isOfficer && (
-            <button onClick={() => onDelete(ev.id)} className="text-gray-500 hover:text-red-400">
+            <button
+              onClick={() => onDelete(ev.id)}
+              title="Excluir content"
+              className="text-gray-500 hover:text-red-400"
+            >
               <Trash2 className="w-4 h-4" />
             </button>
           )}

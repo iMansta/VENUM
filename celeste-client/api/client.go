@@ -2,9 +2,11 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"time"
 
@@ -17,12 +19,63 @@ type Client struct {
 	http  *http.Client
 }
 
+// newResilientHTTPClient cria um http.Client que prefere IPv4 para evitar
+// falhas intermitentes de resolução (AAAA) em redes/Windows com IPv6 quebrado,
+// que aparecem como "no such host". Também reduz reuso agressivo de conexões
+// que podem disparar WSAEACCES por firewall/antivírus.
+func newResilientHTTPClient() *http.Client {
+	baseDialer := &net.Dialer{
+		Timeout:   15 * time.Second,
+		KeepAlive: 30 * time.Second,
+	}
+	transport := &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			// Força IPv4; se falhar, tenta a resolução padrão como fallback.
+			if conn, err := baseDialer.DialContext(ctx, "tcp4", addr); err == nil {
+				return conn, nil
+			}
+			return baseDialer.DialContext(ctx, network, addr)
+		},
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          10,
+		IdleConnTimeout:       60 * time.Second,
+		TLSHandshakeTimeout:   15 * time.Second,
+		ExpectContinueTimeout: 2 * time.Second,
+	}
+	return &http.Client{
+		Timeout:   120 * time.Second,
+		Transport: transport,
+	}
+}
+
 func New() *Client {
 	return &Client{
 		base:  config.APIBase,
 		token: config.AgentToken,
-		http:  &http.Client{Timeout: 120 * time.Second},
+		http:  newResilientHTTPClient(),
 	}
+}
+
+// doRequestWithRetry executa uma requisição com tentativas em erros transitórios
+// de rede (DNS/conexão). Não repete em erros HTTP de aplicação (>=400).
+func (c *Client) doRequestWithRetry(req *http.Request, bodyBytes []byte) (*http.Response, error) {
+	const attempts = 3
+	var lastErr error
+	for i := 0; i < attempts; i++ {
+		if i > 0 {
+			time.Sleep(time.Duration(i) * 1500 * time.Millisecond)
+			if bodyBytes != nil {
+				req.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+			}
+		}
+		res, err := c.http.Do(req)
+		if err == nil {
+			return res, nil
+		}
+		lastErr = err
+	}
+	return nil, lastErr
 }
 
 func (c *Client) url(action string) string {
@@ -31,11 +84,13 @@ func (c *Client) url(action string) string {
 
 func (c *Client) do(method, action string, body any, out any) error {
 	var reader io.Reader
+	var bodyBytes []byte
 	if body != nil {
 		b, err := json.Marshal(body)
 		if err != nil {
 			return err
 		}
+		bodyBytes = b
 		reader = bytes.NewReader(b)
 	}
 
@@ -46,7 +101,7 @@ func (c *Client) do(method, action string, body any, out any) error {
 	req.Header.Set("Authorization", "Bearer "+c.token)
 	req.Header.Set("Content-Type", "application/json")
 
-	res, err := c.http.Do(req)
+	res, err := c.doRequestWithRetry(req, bodyBytes)
 	if err != nil {
 		return err
 	}
@@ -71,7 +126,7 @@ func (c *Client) Ping() error {
 	}
 	req.Header.Set("Authorization", "Bearer "+c.token)
 
-	res, err := c.http.Do(req)
+	res, err := c.doRequestWithRetry(req, nil)
 	if err != nil {
 		return err
 	}

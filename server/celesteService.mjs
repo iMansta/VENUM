@@ -186,7 +186,13 @@ async function getPlayerPveMissionThresholds(supabase, username) {
     }));
 }
 
-async function syncGuildMetricsSnapshot({ supabase, guildId, guildName, memberCount }) {
+async function syncGuildMetricsSnapshot({
+  supabase,
+  guildId,
+  guildName,
+  memberCount,
+  overrides = {},
+}) {
   let detail = null;
   try {
     detail = await fetchJsonWithRetry(`${GAMEINFO_BASE}/guilds/${guildId}`, {
@@ -197,42 +203,71 @@ async function syncGuildMetricsSnapshot({ supabase, guildId, guildName, memberCo
     detail = null;
   }
 
+  // Último snapshot para carregar valores que a API pública não expõe de forma
+  // confiável (prata da guild e pontos de temporada). Assim os cards não zeram
+  // quando a GameInfo retorna null.
+  let previous = null;
+  try {
+    const { data } = await supabase
+      .from('guild_metrics_snapshots')
+      .select(
+        'silver_amount, season_points, alliance_tag, alliance_name, hideout_count, territory_count, headquarters'
+      )
+      .order('collected_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    previous = data || null;
+  } catch {
+    previous = null;
+  }
+
   const source = detail || {};
-  const silverAmount = toNullableNumber(
-    source.SilverAmount ??
-      source.silverAmount ??
-      source.Silver ??
-      source.silver ??
-      source.GuildSilver
-  );
-  const seasonPoints = toNullableNumber(
-    source.SeasonPoints ??
-      source.seasonPoints ??
-      source.RankingPoints ??
-      source.rankingPoints
-  );
+  const silverAmount =
+    toNullableNumber(overrides.silverAmount) ??
+    toNullableNumber(
+      source.SilverAmount ??
+        source.silverAmount ??
+        source.Silver ??
+        source.silver ??
+        source.GuildSilver
+    ) ??
+    toNullableNumber(previous?.silver_amount);
+  const seasonPoints =
+    toNullableNumber(overrides.seasonPoints) ??
+    toNullableNumber(
+      source.SeasonPoints ??
+        source.seasonPoints ??
+        source.RankingPoints ??
+        source.rankingPoints
+    ) ??
+    toNullableNumber(previous?.season_points);
   const killFame = toNullableNumber(source.KillFame ?? source.killFame);
   const deathFame = toNullableNumber(source.DeathFame ?? source.deathFame);
   const totalFame = toNullableNumber(source.Fame ?? source.fame ?? source.TotalFame);
 
   // Aliança
-  const allianceTag = source.AllianceTag || source.allianceTag || null;
-  const allianceName = source.AllianceName || source.allianceName || null;
+  const allianceTag =
+    source.AllianceTag || source.allianceTag || previous?.alliance_tag || null;
+  const allianceName =
+    source.AllianceName || source.allianceName || previous?.alliance_name || null;
 
   // Propriedades da guild (Hideouts / Territórios / QG). A GameInfo nem sempre
   // expõe estes dados no detalhe da guild; coletamos de forma resiliente.
   const countOf = (v) => (Array.isArray(v) ? v.length : toNullableNumber(v));
-  const hideoutCount = countOf(
-    source.Hideouts ?? source.hideouts ?? source.HideoutCount ?? source.hideoutCount
-  );
-  const territoryCount = countOf(
-    source.Territories ?? source.territories ?? source.TerritoryCount ?? source.territoryCount
-  );
+  const hideoutCount =
+    countOf(
+      source.Hideouts ?? source.hideouts ?? source.HideoutCount ?? source.hideoutCount
+    ) ?? toNullableNumber(previous?.hideout_count);
+  const territoryCount =
+    countOf(
+      source.Territories ?? source.territories ?? source.TerritoryCount ?? source.territoryCount
+    ) ?? toNullableNumber(previous?.territory_count);
   const headquarters =
     source.Headquarters ||
     source.HeadquartersName ||
     source.HQ ||
     (Array.isArray(source.Hideouts) && source.Hideouts[0]?.Name) ||
+    previous?.headquarters ||
     null;
 
   const snapshot = {
