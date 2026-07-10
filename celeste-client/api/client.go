@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/venum-i/anaconda/config"
@@ -61,6 +62,47 @@ func New() *Client {
 // chamadas externas como a Albion Data API.
 func SharedHTTPClient() *http.Client {
 	return newResilientHTTPClient()
+}
+
+// GetJSONWithRetry faz GET com cliente resiliente e tentativas em falhas de rede.
+func GetJSONWithRetry(url string, out any) error {
+	client := newResilientHTTPClient()
+	const attempts = 3
+	var lastErr error
+	for i := 0; i < attempts; i++ {
+		if i > 0 {
+			time.Sleep(time.Duration(i) * 1500 * time.Millisecond)
+		}
+		req, err := http.NewRequest(http.MethodGet, url, nil)
+		if err != nil {
+			return err
+		}
+		res, err := client.Do(req)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		raw, readErr := io.ReadAll(res.Body)
+		res.Body.Close()
+		if readErr != nil {
+			lastErr = readErr
+			continue
+		}
+		if res.StatusCode >= 400 {
+			lastErr = fmt.Errorf("HTTP %d: %s", res.StatusCode, strings.TrimSpace(string(raw)))
+			continue
+		}
+		if out != nil {
+			if err := json.Unmarshal(raw, out); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	if lastErr == nil {
+		lastErr = fmt.Errorf("falha ao consultar URL")
+	}
+	return lastErr
 }
 
 // doRequestWithRetry executa uma requisição com tentativas em erros transitórios
@@ -187,6 +229,23 @@ func (c *Client) UploadPrices(rows []map[string]any) (int, error) {
 		Error string `json:"error"`
 	}
 	if err := c.do(http.MethodPost, "prices", map[string]any{"rows": rows}, &out); err != nil {
+		return 0, err
+	}
+	if out.Rows == 0 && out.Error != "" {
+		return 0, fmt.Errorf("%s", out.Error)
+	}
+	return out.Rows, nil
+}
+
+// SyncPricesViaHub pede ao servidor que busque preços na Albion Data API e
+// persista no cache — fallback quando o cliente local não consegue alcançar a API.
+func (c *Client) SyncPricesViaHub() (int, error) {
+	var out struct {
+		OK    bool   `json:"ok"`
+		Rows  int    `json:"rows"`
+		Error string `json:"error"`
+	}
+	if err := c.do(http.MethodPost, "prices-sync", map[string]string{"action": "prices-sync"}, &out); err != nil {
 		return 0, err
 	}
 	if out.Rows == 0 && out.Error != "" {

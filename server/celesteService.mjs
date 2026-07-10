@@ -431,6 +431,41 @@ export async function upsertMarketPrices(rows) {
   return { rows: count, accepted: normalized.length, error: firstError?.message || null };
 }
 
+/** Busca preços na Albion Data API (servidor) e persiste no cache — fallback quando o cliente local falha. */
+export async function syncMarketPricesFromAlbionData() {
+  const itemIds = await getCatalogItemIds();
+  const locations = [...ROYAL_CITIES, BM_CITY];
+  const locParam = locations.join(',');
+  const batchSize = 40;
+  let total = 0;
+  const batches = Math.max(1, Math.ceil(itemIds.length / batchSize));
+
+  for (let i = 0; i < itemIds.length; i += batchSize) {
+    const batch = itemIds.slice(i, i + batchSize);
+    const batchNo = Math.floor(i / batchSize) + 1;
+    const url = `${ALBION_DATA_BASE}/api/v2/stats/prices/${batch.join(',')}.json?locations=${encodeURIComponent(locParam)}&qualities=1`;
+
+    try {
+      const prices = await fetchJsonWithRetry(url);
+      const rows = (Array.isArray(prices) ? prices : []).filter((r) => r?.item_id && r?.city);
+      if (!rows.length) {
+        console.warn(`[celeste] prices-sync lote ${batchNo}/${batches}: nenhum preço válido`);
+        continue;
+      }
+      const result = await upsertMarketPrices(rows);
+      total += Number(result?.rows || 0);
+    } catch (err) {
+      console.warn(`[celeste] prices-sync lote ${batchNo}/${batches}:`, err?.message || err);
+    }
+
+    if (i + batchSize < itemIds.length) {
+      await sleep(200);
+    }
+  }
+
+  return { rows: total, batches, items: itemIds.length };
+}
+
 export async function aggregateCelesteObservations(limit = 500) {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase.rpc('process_celeste_observations', {

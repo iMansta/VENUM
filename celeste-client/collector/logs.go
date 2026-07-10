@@ -82,31 +82,80 @@ func (w *Watcher) DetectPath() string {
 		filepath.Join(os.Getenv("LOCALAPPDATA"), "Albion Online Client", "game.log"),
 		filepath.Join(os.Getenv("USERPROFILE"), "AppData", "LocalLow", "Sandbox Interactive GmbH", "Albion Online", "game.log"),
 		filepath.Join(os.Getenv("USERPROFILE"), "AppData", "LocalLow", "Sandbox Interactive GmbH", "Albion Online Client", "game.log"),
-		filepath.Join(os.Getenv("USERPROFILE"), "AppData", "LocalLow", "Sandbox Interactive GmbH", "Albion Online", "Player.log"),
-		filepath.Join(os.Getenv("USERPROFILE"), "AppData", "LocalLow", "Sandbox Interactive GmbH", "Albion Online Client", "Player.log"),
+		filepath.Join(os.Getenv("ProgramFiles(x86)"), "AlbionOnline", "game", "AlbionOnline_Data", "game.log"),
+		filepath.Join(os.Getenv("ProgramFiles"), "Albion Online", "game", "AlbionOnline_Data", "game.log"),
 	}
 
+	var gameLogPath, playerLogPath string
 	for _, p := range candidates {
 		if strings.TrimSpace(p) == "" {
 			continue
 		}
-		if info, err := os.Stat(p); err == nil {
-			w.path = p
-			if w.offset == 0 {
-				// Lê um trecho recente para captar eventos já ocorridos antes da inicialização.
-				const recentWindow = int64(2 * 1024 * 1024)
-				if info.Size() > recentWindow {
-					w.offset = info.Size() - recentWindow
-				} else {
-					w.offset = 0
-				}
+		if _, err := os.Stat(p); err == nil {
+			lower := strings.ToLower(p)
+			if strings.HasSuffix(lower, "game.log") && gameLogPath == "" {
+				gameLogPath = p
 			}
-			w.warnedNoLog = false
-			if strings.HasSuffix(strings.ToLower(p), "player.log") && !w.warnedPlayerLog {
-				w.warnedPlayerLog = true
+			if strings.HasSuffix(lower, "player.log") && playerLogPath == "" {
+				playerLogPath = p
 			}
-			return p
 		}
+	}
+
+	// Varre pastas do Albion em busca de game.log (preferido) ou Player.log.
+	if gameLogPath == "" {
+		searchRoots := []string{
+			filepath.Join(os.Getenv("USERPROFILE"), "AppData", "LocalLow", "Sandbox Interactive GmbH"),
+			filepath.Join(os.Getenv("LOCALAPPDATA"), "Albion Online Client"),
+			filepath.Join(os.Getenv("LOCALAPPDATA"), "Albion Online"),
+			filepath.Join(os.Getenv("ProgramFiles(x86)"), "AlbionOnline"),
+			filepath.Join(os.Getenv("ProgramFiles"), "Albion Online"),
+		}
+		for _, root := range searchRoots {
+			if strings.TrimSpace(root) == "" {
+				continue
+			}
+			_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+				if err != nil || d.IsDir() {
+					return nil
+				}
+				base := strings.ToLower(d.Name())
+				if base == "game.log" && gameLogPath == "" {
+					gameLogPath = path
+					return filepath.SkipAll
+				}
+				if base == "player.log" && playerLogPath == "" {
+					playerLogPath = path
+				}
+				return nil
+			})
+			if gameLogPath != "" {
+				break
+			}
+		}
+	}
+
+	chosen := gameLogPath
+	if chosen == "" {
+		chosen = playerLogPath
+	}
+	if chosen == "" {
+		return ""
+	}
+
+	if info, err := os.Stat(chosen); err == nil {
+		w.path = chosen
+		if w.offset == 0 {
+			const recentWindow = int64(2 * 1024 * 1024)
+			if info.Size() > recentWindow {
+				w.offset = info.Size() - recentWindow
+			}
+		}
+		w.warnedNoLog = false
+		if strings.HasSuffix(strings.ToLower(chosen), "player.log") && !w.warnedPlayerLog {
+			w.warnedPlayerLog = true
+		}
+		return chosen
 	}
 	return ""
 }

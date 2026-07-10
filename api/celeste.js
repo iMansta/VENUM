@@ -3,6 +3,7 @@ import {
   celestePing,
   getCatalogBundle,
   upsertMarketPrices,
+  syncMarketPricesFromAlbionData,
   aggregateCelesteObservations,
   getCelesteOperationalStatus,
   syncGuildMembers,
@@ -74,6 +75,11 @@ export default async function handler(req, res) {
       case 'prices': {
         const rows = req.body?.rows || req.body?.prices || [];
         const result = await upsertMarketPrices(rows);
+        res.status(200).json({ ok: true, ...result });
+        break;
+      }
+      case 'prices-sync': {
+        const result = await syncMarketPricesFromAlbionData();
         res.status(200).json({ ok: true, ...result });
         break;
       }
