@@ -15,6 +15,7 @@ import {
   SHOP_CATALOG_GROUPS,
 } from '@/lib/supabase/catalog';
 import { cleanItemName } from '@/utils/itemTranslator';
+import { normalizeAlbionAssetUrl } from '@/utils/albionIcon';
 
 const GROUP_OPTIONS = Object.entries(SHOP_CATALOG_GROUPS).map(([key, cfg]) => ({
   value: key,
@@ -262,7 +263,7 @@ const ShopManagement = () => {
                   }`}
                 >
                   <img
-                    src={item.image_url}
+                    src={normalizeAlbionAssetUrl(item.image_url)}
                     alt={item.name_pt}
                     className="w-full h-14 object-contain rounded bg-slate-900/70 mb-1"
                     loading="lazy"
@@ -288,7 +289,7 @@ const ShopManagement = () => {
             <div className="md:col-span-2 flex items-center gap-3 bg-slate-900/60 border border-slate-800 rounded-lg p-3">
               {form.image_url ? (
                 <img
-                  src={form.image_url}
+                  src={normalizeAlbionAssetUrl(form.image_url)}
                   alt={form.name}
                   className="w-12 h-12 object-contain rounded bg-slate-900"
                 />
@@ -453,7 +454,7 @@ const ShopManagement = () => {
               <div className="flex items-center gap-3 min-w-0">
                 {item.resolved_image_url ? (
                   <img
-                    src={item.resolved_image_url}
+                    src={normalizeAlbionAssetUrl(item.resolved_image_url)}
                     alt={item.resolved_name || item.name}
                     className="w-12 h-12 rounded object-contain bg-slate-900"
                   />

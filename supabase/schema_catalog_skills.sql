@@ -39,7 +39,7 @@ COMMENT ON COLUMN public.market_items.subcategory IS
 COMMENT ON COLUMN public.market_items.slot IS
   'Slot de equipamento: MAIN_HAND, OFF_HAND, HEAD, ARMOR, SHOES, CAPE, BAG, FOOD, POTION, MOUNT, TRINKET';
 COMMENT ON COLUMN public.market_items.image_url IS
-  'URL canônica do render do item (https://render.albiononline.com/v1/item/<item_id>.png)';
+  'URL interna do cache de ícone (/api/albion-render?type=item&id=<item_id>)';
 COMMENT ON COLUMN public.market_items.active_skills IS
   'Array JSONB de habilidades ativas: [{key:"Q", name_pt:"...", description_pt:"..."}]';
 COMMENT ON COLUMN public.market_items.passive_skills IS
@@ -249,5 +249,5 @@ UPDATE public.market_items
  WHERE slot IS NULL;
 
 UPDATE public.market_items
-   SET image_url = 'https://render.albiononline.com/v1/item/' || item_id || '.png'
+   SET image_url = '/api/albion-render?type=item&id=' || item_id
  WHERE image_url IS NULL;

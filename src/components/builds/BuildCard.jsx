@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Package, User } from 'lucide-react';
-import { getAlbionIconUrl } from '@/utils/albionIcon';
+import { getAlbionIconUrl, normalizeAlbionAssetUrl } from '@/utils/albionIcon';
 import { translateItem } from '@/utils/itemTranslator';
 import { getItemWithSkills } from '@/lib/supabase/catalog';
 import ItemIcon from '@/components/market/ItemIcon';
@@ -111,7 +111,7 @@ const BuildCard = ({ build }) => {
         id: `${slotKey}-${abilityKey}-${idx}`,
         abilityKey,
         label: found ? skillName(found) : String(value),
-        icon: found?.icon_url || null,
+        icon: normalizeAlbionAssetUrl(found?.icon_url),
       };
     });
   };

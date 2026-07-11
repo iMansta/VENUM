@@ -1,6 +1,7 @@
 import { supabase } from './client';
 import { getLocalItemsForSlot } from '@/lib/albion/slotItems';
 import { translateItem, cleanItemName } from '@/utils/itemTranslator';
+import { getAlbionIconUrl, normalizeAlbionAssetUrl } from '@/utils/albionIcon';
 
 /**
  * Busca itens para um slot do build picker.
@@ -18,9 +19,7 @@ export const getItemsForSlot = async ({
     name_pt: cleanItemName(row.name_pt, row.item_id) || translateItem(row.item_id, { includeTier: true }),
     tier: row.tier ?? tier,
     family: row.family,
-    image_url:
-      row.image_url ||
-      `https://render.albiononline.com/v1/item/${encodeURIComponent(row.item_id)}.png`,
+    image_url: normalizeAlbionAssetUrl(row.image_url, getAlbionIconUrl(row.item_id)),
   });
 
   // 1) RPC Supabase (fonte canônica)
@@ -162,7 +161,10 @@ export const getCatalogItemsMeta = async (itemIds = []) => {
   }
 
   return (data || []).reduce((acc, row) => {
-    acc[row.item_id] = row;
+    acc[row.item_id] = {
+      ...row,
+      image_url: normalizeAlbionAssetUrl(row.image_url, getAlbionIconUrl(row.item_id)),
+    };
     return acc;
   }, {});
 };
@@ -224,9 +226,7 @@ export const searchCatalogItemsForShop = async ({
   return (data || []).map((row) => ({
     item_id: row.item_id,
     name_pt: cleanItemName(row.name_pt, row.item_id) || translateItem(row.item_id, { includeTier: true }),
-    image_url:
-      row.image_url ||
-      `https://render.albiononline.com/v1/item/${encodeURIComponent(row.item_id)}.png`,
+    image_url: normalizeAlbionAssetUrl(row.image_url, getAlbionIconUrl(row.item_id)),
     slot: row.slot,
     category: row.category,
     subcategory: row.subcategory,

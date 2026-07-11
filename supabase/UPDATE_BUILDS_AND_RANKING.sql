@@ -100,7 +100,7 @@ AS $$
     COALESCE(mi.name_pt, mi.item_id) AS name_pt,
     COALESCE(
       mi.image_url,
-      'https://render.albiononline.com/v1/item/' || mi.item_id || '.png'
+      '/api/albion-render?type=item&id=' || mi.item_id
     ) AS image_url
   FROM public.market_items mi
   WHERE mi.enchantment = 0
@@ -157,7 +157,7 @@ AS $$
     mi.tier,
     mi.family,
     mi.slot,
-    COALESCE(mi.image_url, 'https://render.albiononline.com/v1/item/' || mi.item_id || '.png'),
+    COALESCE(mi.image_url, '/api/albion-render?type=item&id=' || mi.item_id),
     COALESCE(mi.active_skills, '[]'::jsonb),
     COALESCE(mi.passive_skills, '[]'::jsonb)
   FROM public.market_items mi

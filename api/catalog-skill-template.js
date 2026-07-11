@@ -26,8 +26,13 @@ const getAdmin = () => {
   return createClient(url, key);
 };
 
-const spellIcon = (spellId) =>
-  `https://render.albiononline.com/v1/spell/${encodeURIComponent(spellId)}.png`;
+const renderAssetUrl = (type, identifier) => {
+  const params = new URLSearchParams({ type, id: identifier });
+  return `/api/albion-render?${params.toString()}`;
+};
+
+const itemIcon = (itemId) => renderAssetUrl('item', itemId);
+const spellIcon = (spellId) => renderAssetUrl('spell', spellId);
 
 const pickLocale = (obj, key, fallback = '') => {
   if (!obj || typeof obj !== 'object') return fallback;
@@ -215,7 +220,7 @@ const mapSpell = (spellId) => {
     description_pt:
       localizedDescByTag ||
       pickLocale(s.LocalizedDescriptions, 'description', s.description || ''),
-    icon_url: s.iconUrl || spellIcon(spellId),
+    icon_url: spellIcon(spellId),
   };
 };
 
@@ -238,7 +243,7 @@ const upsertTemplateForItem = async (admin, itemId) => {
       gameInfoName ||
       itemNameByTag ||
       pickLocale(item.LocalizedNames, 'name', itemId),
-    image_url: `https://render.albiononline.com/v1/item/${encodeURIComponent(itemId)}.png`,
+    image_url: itemIcon(itemId),
     active_skills: activeSkills,
     passive_skills: passiveSkills,
     updated_at: new Date().toISOString(),

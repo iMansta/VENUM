@@ -1,17 +1,29 @@
 /**
- * Albion Online - URL canônica dos ícones de item.
+ * URLs internas para assets renderizados do Albion.
  *
- * Endpoint oficial usado pelo app.albiononline.com e pela wiki:
- *   https://render.albiononline.com/v1/item/[ITEM_ID].png
- *
- * - Substitui `_` por espaço? Não — o ID vai RAW na URL.
- * - Encantamentos: T8_MAIN_SWORD@1 → a API renderiza automaticamente o
- *   ícone com a runa do encantamento.
- * - Items sem ícone oficial (recursos crus) recebem 404; o componente
- *   consumidor deve cair num fallback.
+ * O navegador não deve consultar render.albiononline.com diretamente. A rota
+ * /api/albion-render lê do cache do Supabase Storage e só busca no Render
+ * Service em cache miss.
  */
 
-const ALBION_ICON_BASE = 'https://render.albiononline.com/v1/item';
+const ALBION_RENDER_RE = /^https:\/\/render\.albiononline\.com\/v1\/(item|spell|wardrobe|destiny)\/([^/?#]+)\.png/i;
+
+export const getAlbionRenderAssetUrl = ({
+  type = 'item',
+  identifier,
+  size = null,
+  quality = null,
+} = {}) => {
+  if (!identifier || typeof identifier !== 'string' || !identifier.trim()) return null;
+
+  const params = new URLSearchParams({
+    type,
+    id: identifier.trim(),
+  });
+  if (size) params.set('size', String(size));
+  if (quality) params.set('quality', String(quality));
+  return `/api/albion-render?${params.toString()}`;
+};
 
 /**
  * Retorna a URL do ícone do item no Albion Online.
@@ -20,7 +32,30 @@ const ALBION_ICON_BASE = 'https://render.albiononline.com/v1/item';
  */
 export const getAlbionIconUrl = (itemId) => {
   if (!itemId || typeof itemId !== 'string' || !itemId.trim()) return null;
-  return `${ALBION_ICON_BASE}/${encodeURIComponent(itemId)}.png`;
+  return getAlbionRenderAssetUrl({ type: 'item', identifier: itemId });
+};
+
+export const getAlbionSpellIconUrl = (spellId) =>
+  getAlbionRenderAssetUrl({ type: 'spell', identifier: spellId });
+
+export const normalizeAlbionAssetUrl = (url, fallback = null) => {
+  if (!url || typeof url !== 'string') return fallback;
+  if (url.startsWith('/api/albion-render')) return url;
+
+  const match = url.match(ALBION_RENDER_RE);
+  if (!match) return url;
+
+  try {
+    const parsed = new URL(url);
+    return getAlbionRenderAssetUrl({
+      type: match[1].toLowerCase(),
+      identifier: decodeURIComponent(match[2]),
+      size: parsed.searchParams.get('size'),
+      quality: parsed.searchParams.get('quality'),
+    });
+  } catch {
+    return fallback;
+  }
 };
 
 export default getAlbionIconUrl;

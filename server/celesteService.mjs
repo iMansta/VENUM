@@ -11,6 +11,7 @@ const GAMEINFO_BASE =
 const ALBION_GUILD_ID = process.env.ALBION_GUILD_ID || '';
 const ROYAL_CITIES = ['Martlock', 'Thetford', 'Fort Sterling', 'Lymhurst', 'Bridgewatch'];
 const BM_CITY = 'Caerleon';
+const ALBION_RENDER_BUCKET = process.env.ALBION_RENDER_BUCKET || 'albion-render-assets';
 
 const FALLBACK_ITEMS = [
   'T4_MAIN_SWORD', 'T5_MAIN_SWORD', 'T6_MAIN_SWORD', 'T7_MAIN_SWORD', 'T8_MAIN_SWORD',
@@ -24,6 +25,47 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const toNullableNumber = (v) => {
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
+};
+
+const albionRenderAssetUrl = (type, identifier) => {
+  const id = String(identifier || '').trim();
+  if (!id) return null;
+  return `/api/albion-render?type=${encodeURIComponent(type)}&id=${encodeURIComponent(id)}`;
+};
+
+const normalizeAlbionRenderUrl = (value, type, fallbackId = '') => {
+  const raw = String(value || '').trim();
+  if (raw.startsWith('/api/albion-render')) return raw;
+
+  const match = raw.match(
+    /^https:\/\/render\.albiononline\.com\/v1\/(item|spell|wardrobe|destiny)\/([^/?#]+)\.png/i
+  );
+  if (match) {
+    return albionRenderAssetUrl(match[1].toLowerCase(), decodeURIComponent(match[2]));
+  }
+
+  if (!raw && fallbackId) {
+    return albionRenderAssetUrl(type, fallbackId);
+  }
+
+  return raw || null;
+};
+
+const normalizeSkillIcons = (skills = []) => {
+  if (!Array.isArray(skills)) return { value: [], changed: false };
+
+  let changed = false;
+  const value = skills.map((skill) => {
+    if (!skill || typeof skill !== 'object') return skill;
+    const nextIcon = normalizeAlbionRenderUrl(skill.icon_url, 'spell', skill.key);
+    if (nextIcon !== (skill.icon_url || null)) {
+      changed = true;
+      return { ...skill, icon_url: nextIcon };
+    }
+    return skill;
+  });
+
+  return { value, changed };
 };
 
 async function fetchJsonWithRetry(url, { attempts = 3, timeoutMs = 20000 } = {}) {
@@ -722,6 +764,83 @@ export async function getCatalogBundle() {
   const itemIds = await getCatalogItemIds();
   const locations = [...ROYAL_CITIES, BM_CITY];
   return { itemIds, locations, batchSize: 40 };
+}
+
+export async function migrateAlbionRenderAssetCache({ limit = 1000 } = {}) {
+  const supabase = getSupabaseAdmin();
+  const bucket = { name: ALBION_RENDER_BUCKET, ok: false, created: false, error: null };
+
+  try {
+    const { data: existing } = await supabase.storage.getBucket(ALBION_RENDER_BUCKET);
+    if (existing) {
+      bucket.ok = true;
+    } else {
+      const { error } = await supabase.storage.createBucket(ALBION_RENDER_BUCKET, {
+        public: false,
+        fileSizeLimit: 1024 * 1024,
+        allowedMimeTypes: ['image/png'],
+      });
+      if (error) throw error;
+      bucket.ok = true;
+      bucket.created = true;
+    }
+  } catch (err) {
+    bucket.error = err?.message || String(err);
+  }
+
+  let scanned = 0;
+  let updated = 0;
+  let failed = 0;
+  const failures = [];
+  const pageSize = 200;
+  const maxRows = Math.max(1, Math.min(Number(limit) || 1000, 5000));
+
+  for (let offset = 0; offset < maxRows; offset += pageSize) {
+    const { data: rows, error } = await supabase
+      .from('market_items')
+      .select('item_id, image_url, active_skills, passive_skills')
+      .range(offset, Math.min(offset + pageSize - 1, maxRows - 1));
+
+    if (error) throw error;
+    if (!rows?.length) break;
+
+    for (const row of rows) {
+      scanned += 1;
+      const patch = {};
+
+      const nextImageUrl = normalizeAlbionRenderUrl(row.image_url, 'item', row.item_id);
+      if (nextImageUrl !== (row.image_url || null)) {
+        patch.image_url = nextImageUrl;
+      }
+
+      const active = normalizeSkillIcons(row.active_skills);
+      if (active.changed) patch.active_skills = active.value;
+
+      const passive = normalizeSkillIcons(row.passive_skills);
+      if (passive.changed) patch.passive_skills = passive.value;
+
+      if (Object.keys(patch).length === 0) continue;
+
+      const { error: updateError } = await supabase
+        .from('market_items')
+        .update({ ...patch, updated_at: new Date().toISOString() })
+        .eq('item_id', row.item_id);
+
+      if (updateError) {
+        failed += 1;
+        if (failures.length < 20) {
+          failures.push({ itemId: row.item_id, error: updateError.message });
+        }
+        continue;
+      }
+
+      updated += 1;
+    }
+
+    if (rows.length < pageSize) break;
+  }
+
+  return { bucket, scanned, updated, failed, failures };
 }
 
 export function getAlbionPriceUrl(itemIds, locations) {

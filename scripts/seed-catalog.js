@@ -33,6 +33,9 @@ if (!supabaseUrl || !supabaseServiceKey) {
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+const renderAssetUrl = (type, identifier) =>
+  `/api/albion-render?type=${encodeURIComponent(type)}&id=${encodeURIComponent(identifier)}`;
+
 // Mapeamento de slot canônico baseado em padrões de item_id
 const SLOT_MAPPING = {
   BAG: ['BAG'],
@@ -145,7 +148,7 @@ function processItemSkills(item, spellsMap) {
           key: slot,
           name_pt: spell.name || slot,
           description_pt: spell.description || '',
-          icon_url: spell.iconUrl || ''
+          icon_url: renderAssetUrl('spell', slot)
         });
       }
     }
@@ -159,7 +162,8 @@ function processItemSkills(item, spellsMap) {
         passiveSkills.push({
           key: slot,
           name_pt: spell.name || slot,
-          description_pt: spell.description || ''
+          description_pt: spell.description || '',
+          icon_url: renderAssetUrl('spell', slot)
         });
       }
     }
@@ -188,7 +192,7 @@ function processItem(item, spellsMap) {
     subcategory: subcategory,
     slot: slot,
     name_pt: item.LocalizedNames?.['pt-BR'] || item.LocalizedNames?.['en-US'] || item.UniqueName,
-    image_url: `https://render.albiononline.com/v1/item/${item.UniqueName}.png`,
+    image_url: renderAssetUrl('item', item.UniqueName),
     active_skills: activeSkills,
     passive_skills: passiveSkills
   };

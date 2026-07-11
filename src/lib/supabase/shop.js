@@ -1,6 +1,7 @@
 import { supabase } from './client';
 import { getCatalogItemsMeta } from './catalog';
 import { cleanItemName } from '@/utils/itemTranslator';
+import { normalizeAlbionAssetUrl } from '@/utils/albionIcon';
 
 /**
  * Shop operations for VENUM MARKET
@@ -15,7 +16,7 @@ const enrichWithCatalog = async (items = []) => {
     return {
       ...item,
       resolved_name: cleanItemName(meta?.name_pt || item.name, item.catalog_item_id),
-      resolved_image_url: meta?.image_url || item.image_url,
+      resolved_image_url: normalizeAlbionAssetUrl(meta?.image_url || item.image_url),
       resolved_description: item.description || meta?.subcategory || '',
     };
   });
@@ -23,7 +24,12 @@ const enrichWithCatalog = async (items = []) => {
 
 const withCatalogDefaults = async (payload = {}) => {
   const itemId = payload.catalog_item_id;
-  if (!itemId) return payload;
+  if (!itemId) {
+    return {
+      ...payload,
+      image_url: normalizeAlbionAssetUrl(payload.image_url),
+    };
+  }
   const catalog = await getCatalogItemsMeta([itemId]);
   const row = catalog[itemId];
   if (!row) return payload;
@@ -31,7 +37,7 @@ const withCatalogDefaults = async (payload = {}) => {
   return {
     ...payload,
     name: payload.name || row.name_pt || itemId,
-    image_url: payload.image_url || row.image_url || null,
+    image_url: normalizeAlbionAssetUrl(payload.image_url || row.image_url),
     description: payload.description || row.subcategory || payload.description || null,
   };
 };

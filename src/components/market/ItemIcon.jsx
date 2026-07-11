@@ -1,14 +1,16 @@
 import { useState } from 'react';
 import { Package } from 'lucide-react';
-import { getAlbionIconUrl } from '@/utils/albionIcon';
+import { getAlbionIconUrl, normalizeAlbionAssetUrl } from '@/utils/albionIcon';
 
 /**
- * Exibe ícone oficial do Albion Online (render.albiononline.com).
- * Usa URL com .png e encodeURIComponent — necessário para IDs com @.
+ * Exibe ícone oficial do Albion via cache interno /api/albion-render.
+ * O endpoint do hub evita consultas diretas do navegador ao Render Service.
  */
 const ItemIcon = ({ itemId, imageUrl = null, size = 32, className = '' }) => {
   const fallbackIconUrl = itemId ? getAlbionIconUrl(itemId) : null;
-  const [source, setSource] = useState(imageUrl || fallbackIconUrl || null);
+  const [source, setSource] = useState(
+    normalizeAlbionAssetUrl(imageUrl, fallbackIconUrl) || fallbackIconUrl || null
+  );
 
   const boxStyle = { width: size, height: size };
   const iconSize = size * 0.5;

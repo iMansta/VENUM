@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { X, ShoppingCart, Award, AlertCircle, Check } from 'lucide-react';
+import { normalizeAlbionAssetUrl } from '@/utils/albionIcon';
 
 /**
  * PurchaseModal component - Modal for confirming shop purchases
@@ -62,9 +63,9 @@ const PurchaseModal = ({ item, userPoints, onConfirm, onClose }) => {
           {/* Item Details */}
           <div className="flex items-start gap-4 mb-6">
             <div className="w-20 h-20 bg-slate-800 rounded-lg flex items-center justify-center flex-shrink-0">
-              {item.image_url ? (
+              {normalizeAlbionAssetUrl(item.image_url) ? (
                 <img
-                  src={item.image_url}
+                  src={normalizeAlbionAssetUrl(item.image_url)}
                   alt={item.name}
                   className="w-full h-full object-cover rounded-lg"
                 />

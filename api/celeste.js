@@ -4,6 +4,7 @@ import {
   getCatalogBundle,
   upsertMarketPrices,
   syncMarketPricesFromAlbionData,
+  migrateAlbionRenderAssetCache,
   aggregateCelesteObservations,
   getCelesteOperationalStatus,
   syncGuildMembers,
@@ -80,6 +81,11 @@ export default async function handler(req, res) {
       }
       case 'prices-sync': {
         const result = await syncMarketPricesFromAlbionData();
+        res.status(200).json({ ok: true, ...result });
+        break;
+      }
+      case 'assets-migrate': {
+        const result = await migrateAlbionRenderAssetCache({ limit: req.body?.limit });
         res.status(200).json({ ok: true, ...result });
         break;
       }

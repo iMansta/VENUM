@@ -1,7 +1,5 @@
-/**
- * Itens locais por slot — apenas IDs válidos do Albion (render API).
- */
 import { buildItemId } from '@/constants/marketItems';
+import { getAlbionIconUrl } from '@/utils/albionIcon';
 
 const SLOT_FAMILIES = {
   MAIN_HAND: [
@@ -44,7 +42,7 @@ export function getLocalItemsForSlot(slotKey, tier = 8, search = '') {
         name_pt: itemId.replace(/_/g, ' '),
         tier: selectedTier,
         family,
-        image_url: `https://render.albiononline.com/v1/item/${encodeURIComponent(itemId)}.png`,
+        image_url: getAlbionIconUrl(itemId),
       });
     }
   }

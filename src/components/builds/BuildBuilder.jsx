@@ -6,6 +6,7 @@ import { translateItem, parseItemId } from '@/utils/itemTranslator';
 import { getItemsForSlot, getItemWithSkills } from '@/lib/supabase/catalog';
 import { slotSupportsSkills } from '@/lib/albion/slotItems';
 import ItemIcon from '@/components/market/ItemIcon';
+import { getAlbionIconUrl, normalizeAlbionAssetUrl } from '@/utils/albionIcon';
 
 // =============================================================================
 // Normalização: o grid sempre mostra os 10 slots oficiais na ordem:
@@ -283,7 +284,7 @@ const ItemPickerCard = ({ item, onPick, selected = false }) => (
         : 'border-zinc-800 bg-zinc-900 hover:bg-zinc-800 hover:border-amber-500/50',
     ].join(' ')}
   >
-    <ItemIcon itemId={item.item_id} size={48} />
+    <ItemIcon itemId={item.item_id} imageUrl={item.image_url} size={48} />
     <span className="text-[10px] text-zinc-300 text-center line-clamp-1 w-full">
       {item.name_pt || translateItem(item.item_id, { includeTier: false })}
     </span>
@@ -297,7 +298,8 @@ const SkillChoiceButton = ({ skill, selected, onSelect, passive = false }) => {
   const value = label;
   const Icon = passive ? Shield : Swords;
   const [imgError, setImgError] = useState(false);
-  const showImg = skill?.icon_url && !imgError;
+  const skillIconUrl = normalizeAlbionAssetUrl(skill?.icon_url);
+  const showImg = skillIconUrl && !imgError;
 
   return (
     <button
@@ -313,7 +315,7 @@ const SkillChoiceButton = ({ skill, selected, onSelect, passive = false }) => {
     >
       {showImg ? (
         <img
-          src={skill.icon_url}
+          src={skillIconUrl}
           alt={label}
           onError={() => setImgError(true)}
           className="w-9 h-9 flex-shrink-0 rounded object-cover border border-zinc-600 bg-zinc-900"
@@ -367,7 +369,7 @@ const itemHasActiveSkills = (itemId) =>
 
 const ManualSkillEditor = ({ slotLabel, itemId, skills, onChange, onClose }) => {
   const hasActive = itemHasActiveSkills(itemId);
-  const itemIcon = `https://render.albiononline.com/v1/item/${encodeURIComponent(itemId)}.png`;
+  const itemIcon = getAlbionIconUrl(itemId);
 
   return (
     <div className="bg-zinc-900/60 rounded-lg border border-amber-500/30 p-4">

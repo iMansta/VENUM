@@ -1,4 +1,5 @@
 import { Package, Award, ShoppingCart, AlertCircle } from 'lucide-react';
+import { normalizeAlbionAssetUrl } from '@/utils/albionIcon';
 
 /**
  * ShopItem component - Individual shop item card
@@ -9,7 +10,7 @@ const ShopItem = ({ item, userPoints, onPurchase }) => {
   const outOfStock = item.stock !== -1 && item.stock <= 0;
   const itemName = item.resolved_name || item.name;
   const itemDescription = item.resolved_description || item.description;
-  const itemImage = item.resolved_image_url || item.image_url;
+  const itemImage = normalizeAlbionAssetUrl(item.resolved_image_url || item.image_url);
 
   const handlePurchase = () => {
     if (!canAfford) return;
