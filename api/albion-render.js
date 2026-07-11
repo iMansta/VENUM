@@ -87,7 +87,11 @@ const writeMetadata = async (admin, payload) => {
     const { error } = await admin.from('albion_render_assets').upsert(payload, {
       onConflict: 'asset_type,identifier,size,quality',
     });
-    if (error) console.warn('[albion-render] metadata:', error.message || error);
+    if (error) {
+      const message = error.message || String(error);
+      if (message.includes("public.albion_render_assets")) return;
+      console.warn('[albion-render] metadata:', message);
+    }
   } catch {
     // Migration ainda não aplicada: a imagem continua sendo entregue.
   }
@@ -111,9 +115,9 @@ const fetchRender = async (url) => {
   }
 };
 
-const sendPng = (res, bytes, cacheHit) => {
+const sendPng = (res, bytes, cacheState) => {
   res.setHeader('Content-Type', 'image/png');
-  res.setHeader('X-Albion-Render-Cache', cacheHit ? 'hit' : 'miss');
+  res.setHeader('X-Albion-Render-Cache', cacheState);
   res.setHeader(
     'Cache-Control',
     'public, max-age=86400, s-maxage=604800, stale-while-revalidate=2592000'
@@ -142,7 +146,7 @@ export default async function handler(req, res) {
     const key = cacheKey({ type, identifier, size, quality });
     const cached = await readCached(admin, key);
     if (cached) {
-      sendPng(res, req.method === 'HEAD' ? Buffer.alloc(0) : cached, true);
+      sendPng(res, req.method === 'HEAD' ? Buffer.alloc(0) : cached, 'hit');
       return;
     }
 
@@ -160,7 +164,7 @@ export default async function handler(req, res) {
       byte_size: bytes.length,
       cached_at: new Date().toISOString(),
     });
-    sendPng(res, req.method === 'HEAD' ? Buffer.alloc(0) : bytes, false);
+    sendPng(res, req.method === 'HEAD' ? Buffer.alloc(0) : bytes, 'stored');
   } catch (err) {
     console.error('[api/albion-render]', err);
     res.status(502).json({ ok: false, error: err.message || 'Falha ao renderizar asset' });
