@@ -355,7 +355,28 @@ const upsertTemplateForItem = async (admin, itemId) => {
     updated_at: new Date().toISOString(),
   };
 
-  const { error } = await admin.from('market_items').update(payload).eq('item_id', originalItemId);
+  let error = null;
+  if (originalItemId !== itemId) {
+    const { data: existing } = await admin
+      .from('market_items')
+      .select('item_id')
+      .eq('item_id', itemId)
+      .maybeSingle();
+
+    if (existing?.item_id) {
+      const update = await admin.from('market_items').update(payload).eq('item_id', itemId);
+      error = update.error;
+      if (!error) {
+        await admin.from('market_items').delete().eq('item_id', originalItemId);
+      }
+    } else {
+      const update = await admin.from('market_items').update(payload).eq('item_id', originalItemId);
+      error = update.error;
+    }
+  } else {
+    const update = await admin.from('market_items').update(payload).eq('item_id', itemId);
+    error = update.error;
+  }
   if (error) {
     return { ok: false, itemId, error: error.message || 'Erro ao atualizar item' };
   }
