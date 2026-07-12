@@ -186,3 +186,87 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 GRANT EXECUTE ON FUNCTION public.complete_transport_reservation TO authenticated;
+
+-- Corrige IDs legados gerados por famílias inexistentes no Albion Render/API.
+WITH mapped AS (
+  SELECT
+    item_id AS old_id,
+    regexp_replace(
+      regexp_replace(
+        regexp_replace(
+          regexp_replace(
+            regexp_replace(
+              regexp_replace(
+                regexp_replace(
+                  regexp_replace(
+                    regexp_replace(item_id, '^T([0-9]+)_MAIN_BOW(@.*)?$', 'T\1_2H_BOW\2'),
+                    '^T([0-9]+)_MAIN_CROSSBOW(@.*)?$', 'T\1_2H_CROSSBOW\2'
+                  ),
+                  '^T([0-9]+)_MAIN_QUARTERSTAFF(@.*)?$', 'T\1_2H_QUARTERSTAFF\2'
+                ),
+                '^T([0-9]+)_OFF_HORN(@.*)?$', 'T\1_OFF_HORN_KEEPER\2'
+              ),
+              '^T([0-9]+)_OFF_ORB(@.*)?$', 'T\1_OFF_ORB_MORGANA\2'
+            ),
+            '^T([0-9]+)_MOUNT_ARMOREDHORSE(@.*)?$', 'T\1_MOUNT_ARMORED_HORSE\2'
+          ),
+          '^T([0-9]+)_HEAD_(CLOTH|LEATHER|PLATE)(@.*)?$', 'T\1_HEAD_\2_SET1\3'
+        ),
+        '^T([0-9]+)_ARMOR_(CLOTH|LEATHER|PLATE)(@.*)?$', 'T\1_ARMOR_\2_SET1\3'
+      ),
+      '^T([0-9]+)_SHOES_(CLOTH|LEATHER|PLATE)(@.*)?$', 'T\1_SHOES_\2_SET1\3'
+    ) AS new_id
+  FROM public.market_items
+),
+changed AS (
+  SELECT old_id, new_id
+  FROM mapped
+  WHERE old_id <> new_id
+)
+DELETE FROM public.market_items mi
+USING changed c
+WHERE mi.item_id = c.old_id
+  AND EXISTS (SELECT 1 FROM public.market_items existing WHERE existing.item_id = c.new_id);
+
+WITH mapped AS (
+  SELECT
+    item_id AS old_id,
+    regexp_replace(
+      regexp_replace(
+        regexp_replace(
+          regexp_replace(
+            regexp_replace(
+              regexp_replace(
+                regexp_replace(
+                  regexp_replace(
+                    regexp_replace(item_id, '^T([0-9]+)_MAIN_BOW(@.*)?$', 'T\1_2H_BOW\2'),
+                    '^T([0-9]+)_MAIN_CROSSBOW(@.*)?$', 'T\1_2H_CROSSBOW\2'
+                  ),
+                  '^T([0-9]+)_MAIN_QUARTERSTAFF(@.*)?$', 'T\1_2H_QUARTERSTAFF\2'
+                ),
+                '^T([0-9]+)_OFF_HORN(@.*)?$', 'T\1_OFF_HORN_KEEPER\2'
+              ),
+              '^T([0-9]+)_OFF_ORB(@.*)?$', 'T\1_OFF_ORB_MORGANA\2'
+            ),
+            '^T([0-9]+)_MOUNT_ARMOREDHORSE(@.*)?$', 'T\1_MOUNT_ARMORED_HORSE\2'
+          ),
+          '^T([0-9]+)_HEAD_(CLOTH|LEATHER|PLATE)(@.*)?$', 'T\1_HEAD_\2_SET1\3'
+        ),
+        '^T([0-9]+)_ARMOR_(CLOTH|LEATHER|PLATE)(@.*)?$', 'T\1_ARMOR_\2_SET1\3'
+      ),
+      '^T([0-9]+)_SHOES_(CLOTH|LEATHER|PLATE)(@.*)?$', 'T\1_SHOES_\2_SET1\3'
+    ) AS new_id
+  FROM public.market_items
+),
+changed AS (
+  SELECT old_id, new_id
+  FROM mapped
+  WHERE old_id <> new_id
+)
+UPDATE public.market_items mi
+SET item_id = c.new_id,
+    image_url = '/api/albion-render?type=item&id=' || replace(c.new_id, '@', '%40'),
+    updated_at = NOW()
+FROM changed c
+WHERE mi.item_id = c.old_id
+  AND NOT EXISTS (SELECT 1 FROM public.market_items existing WHERE existing.item_id = c.new_id);

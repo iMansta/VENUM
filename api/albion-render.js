@@ -19,7 +19,27 @@ const normalizeType = (value) => {
   return SUPPORTED_TYPES.has(type) ? type : null;
 };
 
-const normalizeIdentifier = (value) => String(value || '').trim();
+const canonicalizeItemId = (itemId) => {
+  const raw = String(itemId || '').trim();
+  if (!raw) return '';
+  const [base, enchantment] = raw.split('@');
+  const canonical = base
+    .replace(/^T(\d+)_MAIN_BOW$/, 'T$1_2H_BOW')
+    .replace(/^T(\d+)_MAIN_CROSSBOW$/, 'T$1_2H_CROSSBOW')
+    .replace(/^T(\d+)_MAIN_QUARTERSTAFF$/, 'T$1_2H_QUARTERSTAFF')
+    .replace(/^T(\d+)_OFF_HORN$/, 'T$1_OFF_HORN_KEEPER')
+    .replace(/^T(\d+)_OFF_ORB$/, 'T$1_OFF_ORB_MORGANA')
+    .replace(/^T(\d+)_MOUNT_ARMOREDHORSE$/, 'T$1_MOUNT_ARMORED_HORSE')
+    .replace(/^T(\d+)_HEAD_(CLOTH|LEATHER|PLATE)$/, 'T$1_HEAD_$2_SET1')
+    .replace(/^T(\d+)_ARMOR_(CLOTH|LEATHER|PLATE)$/, 'T$1_ARMOR_$2_SET1')
+    .replace(/^T(\d+)_SHOES_(CLOTH|LEATHER|PLATE)$/, 'T$1_SHOES_$2_SET1');
+  return enchantment ? `${canonical}@${enchantment}` : canonical;
+};
+
+const normalizeIdentifier = (value, type = 'item') => {
+  const identifier = String(value || '').trim();
+  return type === 'item' ? canonicalizeItemId(identifier) : identifier;
+};
 
 const normalizeOptionalInt = (value, min, max) => {
   if (value == null || value === '') return null;
@@ -142,7 +162,7 @@ export default async function handler(req, res) {
   }
 
   const type = normalizeType(req.query?.type);
-  const identifier = normalizeIdentifier(req.query?.id || req.query?.identifier);
+  const identifier = normalizeIdentifier(req.query?.id || req.query?.identifier, type);
   const size = normalizeOptionalInt(req.query?.size, 1, type === 'spell' ? 172 : 217);
   const quality = normalizeOptionalInt(req.query?.quality, 1, 5);
 

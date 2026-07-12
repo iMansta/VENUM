@@ -10,6 +10,24 @@
 const TIERS = [4, 5, 6, 7, 8];
 const ENCHANTMENTS = [0, 1, 2, 3];
 
+export const canonicalizeAlbionItemId = (itemId) => {
+  const raw = String(itemId || '').trim();
+  if (!raw) return '';
+  const [base, enchantment] = raw.split('@');
+  let canonical = base
+    .replace(/^T(\d+)_MAIN_BOW$/, 'T$1_2H_BOW')
+    .replace(/^T(\d+)_MAIN_CROSSBOW$/, 'T$1_2H_CROSSBOW')
+    .replace(/^T(\d+)_MAIN_QUARTERSTAFF$/, 'T$1_2H_QUARTERSTAFF')
+    .replace(/^T(\d+)_OFF_HORN$/, 'T$1_OFF_HORN_KEEPER')
+    .replace(/^T(\d+)_OFF_ORB$/, 'T$1_OFF_ORB_MORGANA')
+    .replace(/^T(\d+)_MOUNT_ARMOREDHORSE$/, 'T$1_MOUNT_ARMORED_HORSE')
+    .replace(/^T(\d+)_HEAD_(CLOTH|LEATHER|PLATE)$/, 'T$1_HEAD_$2_SET1')
+    .replace(/^T(\d+)_ARMOR_(CLOTH|LEATHER|PLATE)$/, 'T$1_ARMOR_$2_SET1')
+    .replace(/^T(\d+)_SHOES_(CLOTH|LEATHER|PLATE)$/, 'T$1_SHOES_$2_SET1');
+
+  return enchantment ? `${canonical}@${enchantment}` : canonical;
+};
+
 const EQUIPMENT_FAMILIES = [
   'MAIN_SWORD', 'MAIN_AXE', 'MAIN_MACE', 'MAIN_HAMMER', 'MAIN_SPEAR',
   '2H_BOW', '2H_CROSSBOW', 'MAIN_DAGGER', '2H_QUARTERSTAFF',
@@ -30,7 +48,7 @@ const EQUIPMENT_FAMILIES = [
  */
 export const buildItemId = (tier, family, enchantment = 0) => {
   const base = `T${tier}_${family}`;
-  return enchantment > 0 ? `${base}@${enchantment}` : base;
+  return canonicalizeAlbionItemId(enchantment > 0 ? `${base}@${enchantment}` : base);
 };
 
 const generateMarketItems = () => {

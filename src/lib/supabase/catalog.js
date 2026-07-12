@@ -1,5 +1,6 @@
 import { supabase } from './client';
 import { getLocalItemsForSlot } from '@/lib/albion/slotItems';
+import { canonicalizeAlbionItemId } from '@/constants/marketItems';
 import { translateItem, cleanItemName } from '@/utils/itemTranslator';
 import { getAlbionIconUrl, normalizeAlbionAssetUrl } from '@/utils/albionIcon';
 
@@ -15,11 +16,11 @@ export const getItemsForSlot = async ({
   offset = 0,
 }) => {
   const mapRow = (row) => ({
-    item_id: row.item_id,
-    name_pt: cleanItemName(row.name_pt, row.item_id) || translateItem(row.item_id, { includeTier: true }),
+    item_id: canonicalizeAlbionItemId(row.item_id),
+    name_pt: cleanItemName(row.name_pt, row.item_id) || translateItem(canonicalizeAlbionItemId(row.item_id), { includeTier: true }),
     tier: row.tier ?? tier,
     family: row.family,
-    image_url: normalizeAlbionAssetUrl(row.image_url, getAlbionIconUrl(row.item_id)),
+    image_url: normalizeAlbionAssetUrl(row.image_url, getAlbionIconUrl(canonicalizeAlbionItemId(row.item_id))),
   });
 
   // 1) RPC Supabase (fonte canônica)
@@ -121,7 +122,9 @@ export const getArbitrageCatalogItemIds = async (options = {}) => {
 
     if (error) throw error;
 
-    const ids = (data || []).map((row) => row.item_id || row).filter(Boolean);
+    const ids = [
+      ...new Set((data || []).map((row) => canonicalizeAlbionItemId(row.item_id || row)).filter(Boolean)),
+    ];
     if (ids.length > 0) return ids;
   } catch (error) {
     console.warn('[CATALOG] RPC indisponível:', error?.message);
@@ -136,7 +139,7 @@ export const getArbitrageCatalogItemIds = async (options = {}) => {
       .limit(limit);
 
     if (!error && data?.length) {
-      return data.map((r) => r.item_id);
+      return [...new Set(data.map((r) => canonicalizeAlbionItemId(r.item_id)).filter(Boolean))];
     }
   } catch {
     /* ignore */
@@ -161,9 +164,11 @@ export const getCatalogItemsMeta = async (itemIds = []) => {
   }
 
   return (data || []).reduce((acc, row) => {
-    acc[row.item_id] = {
+    const itemId = canonicalizeAlbionItemId(row.item_id);
+    acc[itemId] = {
       ...row,
-      image_url: normalizeAlbionAssetUrl(row.image_url, getAlbionIconUrl(row.item_id)),
+      item_id: itemId,
+      image_url: normalizeAlbionAssetUrl(row.image_url, getAlbionIconUrl(itemId)),
     };
     return acc;
   }, {});

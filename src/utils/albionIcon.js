@@ -6,6 +6,8 @@
  * Service em cache miss.
  */
 
+import { canonicalizeAlbionItemId } from '@/constants/marketItems';
+
 const ALBION_RENDER_RE = /^https:\/\/render\.albiononline\.com\/v1\/(item|spell|wardrobe|destiny)\/([^/?#]+)\.png/i;
 
 export const getAlbionRenderAssetUrl = ({
@@ -32,7 +34,7 @@ export const getAlbionRenderAssetUrl = ({
  */
 export const getAlbionIconUrl = (itemId) => {
   if (!itemId || typeof itemId !== 'string' || !itemId.trim()) return null;
-  return getAlbionRenderAssetUrl({ type: 'item', identifier: itemId });
+  return getAlbionRenderAssetUrl({ type: 'item', identifier: canonicalizeAlbionItemId(itemId) });
 };
 
 export const getAlbionSpellIconUrl = (spellId) =>
@@ -49,7 +51,9 @@ export const normalizeAlbionAssetUrl = (url, fallback = null) => {
     const parsed = new URL(url);
     return getAlbionRenderAssetUrl({
       type: match[1].toLowerCase(),
-      identifier: decodeURIComponent(match[2]),
+      identifier: match[1].toLowerCase() === 'item'
+        ? canonicalizeAlbionItemId(decodeURIComponent(match[2]))
+        : decodeURIComponent(match[2]),
       size: parsed.searchParams.get('size'),
       quality: parsed.searchParams.get('quality'),
     });

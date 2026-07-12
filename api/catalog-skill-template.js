@@ -34,6 +34,23 @@ const renderAssetUrl = (type, identifier) => {
 const itemIcon = (itemId) => renderAssetUrl('item', itemId);
 const spellIcon = (spellId) => renderAssetUrl('spell', spellId);
 
+const canonicalizeItemId = (itemId) => {
+  const raw = String(itemId || '').trim();
+  if (!raw) return '';
+  const [base, enchantment] = raw.split('@');
+  const canonical = base
+    .replace(/^T(\d+)_MAIN_BOW$/, 'T$1_2H_BOW')
+    .replace(/^T(\d+)_MAIN_CROSSBOW$/, 'T$1_2H_CROSSBOW')
+    .replace(/^T(\d+)_MAIN_QUARTERSTAFF$/, 'T$1_2H_QUARTERSTAFF')
+    .replace(/^T(\d+)_OFF_HORN$/, 'T$1_OFF_HORN_KEEPER')
+    .replace(/^T(\d+)_OFF_ORB$/, 'T$1_OFF_ORB_MORGANA')
+    .replace(/^T(\d+)_MOUNT_ARMOREDHORSE$/, 'T$1_MOUNT_ARMORED_HORSE')
+    .replace(/^T(\d+)_HEAD_(CLOTH|LEATHER|PLATE)$/, 'T$1_HEAD_$2_SET1')
+    .replace(/^T(\d+)_ARMOR_(CLOTH|LEATHER|PLATE)$/, 'T$1_ARMOR_$2_SET1')
+    .replace(/^T(\d+)_SHOES_(CLOTH|LEATHER|PLATE)$/, 'T$1_SHOES_$2_SET1');
+  return enchantment ? `${canonical}@${enchantment}` : canonical;
+};
+
 const pickLocale = (obj, key, fallback = '') => {
   if (!obj || typeof obj !== 'object') return fallback;
   return (
@@ -306,6 +323,8 @@ const mapSpell = (spellId, slot = null) => {
 };
 
 const upsertTemplateForItem = async (admin, itemId) => {
+  const originalItemId = itemId;
+  itemId = canonicalizeItemId(itemId);
   const item = cache.itemsById.get(itemId);
   if (!item) {
     return { ok: false, itemId, error: 'Item não encontrado no ao-data' };
@@ -336,7 +355,7 @@ const upsertTemplateForItem = async (admin, itemId) => {
     updated_at: new Date().toISOString(),
   };
 
-  const { error } = await admin.from('market_items').update(payload).eq('item_id', itemId);
+  const { error } = await admin.from('market_items').update(payload).eq('item_id', originalItemId);
   if (error) {
     return { ok: false, itemId, error: error.message || 'Erro ao atualizar item' };
   }
@@ -344,6 +363,7 @@ const upsertTemplateForItem = async (admin, itemId) => {
   return {
     ok: true,
     itemId,
+    originalItemId,
     activeCount: activeSkills.length,
     passiveCount: passiveSkills.length,
   };

@@ -19,6 +19,23 @@ const FALLBACK_ITEMS = [
   'T4_CAPE', 'T5_CAPE', 'T6_CAPE', 'T7_CAPE', 'T8_CAPE',
 ];
 
+const canonicalizeItemId = (itemId) => {
+  const raw = String(itemId || '').trim();
+  if (!raw) return '';
+  const [base, enchantment] = raw.split('@');
+  const canonical = base
+    .replace(/^T(\d+)_MAIN_BOW$/, 'T$1_2H_BOW')
+    .replace(/^T(\d+)_MAIN_CROSSBOW$/, 'T$1_2H_CROSSBOW')
+    .replace(/^T(\d+)_MAIN_QUARTERSTAFF$/, 'T$1_2H_QUARTERSTAFF')
+    .replace(/^T(\d+)_OFF_HORN$/, 'T$1_OFF_HORN_KEEPER')
+    .replace(/^T(\d+)_OFF_ORB$/, 'T$1_OFF_ORB_MORGANA')
+    .replace(/^T(\d+)_MOUNT_ARMOREDHORSE$/, 'T$1_MOUNT_ARMORED_HORSE')
+    .replace(/^T(\d+)_HEAD_(CLOTH|LEATHER|PLATE)$/, 'T$1_HEAD_$2_SET1')
+    .replace(/^T(\d+)_ARMOR_(CLOTH|LEATHER|PLATE)$/, 'T$1_ARMOR_$2_SET1')
+    .replace(/^T(\d+)_SHOES_(CLOTH|LEATHER|PLATE)$/, 'T$1_SHOES_$2_SET1');
+  return enchantment ? `${canonical}@${enchantment}` : canonical;
+};
+
 const normalizeGuild = (s) => String(s || '').replace(/\s+/g, '').toUpperCase();
 const toNumber = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -403,7 +420,7 @@ export async function getCatalogItemIds() {
       p_limit: 500,
     });
     if (!error && data?.length) {
-      return data.map((r) => r.item_id || r).filter(Boolean);
+      return [...new Set(data.map((r) => canonicalizeItemId(r.item_id || r)).filter(Boolean))];
     }
   } catch {
     /* fallback */
@@ -416,12 +433,12 @@ export async function getCatalogItemIds() {
       .gte('tier', 4)
       .lte('tier', 8)
       .limit(500);
-    if (rows?.length) return rows.map((r) => r.item_id).filter(Boolean);
+    if (rows?.length) return [...new Set(rows.map((r) => canonicalizeItemId(r.item_id)).filter(Boolean))];
   } catch {
     /* fallback */
   }
 
-  return FALLBACK_ITEMS;
+  return [...new Set(FALLBACK_ITEMS.map(canonicalizeItemId).filter(Boolean))];
 }
 
 export async function upsertMarketPrices(rows) {
