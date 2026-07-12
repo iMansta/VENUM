@@ -19,6 +19,8 @@ type Watcher struct {
 	warnedPlayerLog   bool
 	playerLogWarnedAt bool
 	actorCounts       map[string]int
+	lastLinesRead     int
+	lastParsedCount   int
 }
 
 var ErrGameLogNotFound = errors.New("albion game.log nao encontrado")
@@ -63,6 +65,10 @@ func (w *Watcher) LikelyLocalPlayer() string {
 
 func (w *Watcher) Path() string {
 	return w.path
+}
+
+func (w *Watcher) LastReadStats() (linesRead int, parsed int) {
+	return w.lastLinesRead, w.lastParsedCount
 }
 
 func (w *Watcher) DetectPath() string {
@@ -187,9 +193,11 @@ func (w *Watcher) ReadObservations(max int) ([]api.Observation, error) {
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 0, 1024*64), 1024*1024)
 	obs := make([]api.Observation, 0, max)
+	linesRead := 0
 
 	for sc.Scan() {
 		line := sc.Text()
+		linesRead++
 		o, ok := parseLine(line)
 		if !ok {
 			continue
@@ -207,6 +215,8 @@ func (w *Watcher) ReadObservations(max int) ([]api.Observation, error) {
 
 	pos, _ := f.Seek(0, 1)
 	w.offset = pos
+	w.lastLinesRead = linesRead
+	w.lastParsedCount = len(obs)
 	if sc.Err() != nil {
 		return obs, sc.Err()
 	}

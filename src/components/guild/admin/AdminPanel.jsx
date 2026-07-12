@@ -8,6 +8,7 @@ import BuildManagement from './BuildManagement';
 import ShopManagement from './ShopManagement';
 import AnnouncementManagement from './AnnouncementManagement';
 import BotControl from './BotControl';
+import GuildAdminMetricsPanel from './GuildAdminMetricsPanel';
 import CelesteDownload from '@/components/common/CelesteDownload';
 
 const AdminPanel = ({ userId, userRole }) => {
@@ -120,7 +121,17 @@ const AdminPanel = ({ userId, userRole }) => {
         {activeTab === 'points' && <PointsManagement userId={userId} userRole={userRole} />}
         {activeTab === 'builds' && <BuildManagement />}
         {activeTab === 'discord' && <BotControl userId={userId} />}
-        {activeTab === 'celeste' && <CelesteDownload />}
+        {activeTab === 'celeste' && (
+          <div className="space-y-8">
+            <GuildAdminMetricsPanel />
+            <div>
+              <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">
+                Anaconda para membros
+              </h3>
+              <CelesteDownload variant="member" />
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

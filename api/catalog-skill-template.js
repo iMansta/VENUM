@@ -192,7 +192,7 @@ const hasVisibleSpellIcon = (spell) =>
   !String(spell?.['@hidespelleffecticon'] || spell?.hideSpellEffectIcon || '').toLowerCase().includes('true');
 
 const isInternalSpell = (spellId) =>
-  /(_EFFECT|_CONDITION|_VFX|_UNLOCK|_CHARGES|_STACK|_AURA|KILL_EMOTE|AVATARRING|TOKENLOCKED)/i.test(spellId);
+  /(^MOB_|^TEST_|^BUFFSHRINE_|^HERETIC_|^UNIQUE_|^T\d+_|CITY_FORTRESS|_EFFECT|_CONDITION|_VFX|_UNLOCK|_CHARGES|_STACK|_AURA|KILL_EMOTE|AVATARRING|TOKENLOCKED)/i.test(spellId);
 
 const inferSpellRefsForItem = (item, itemId) => {
   const category = inferCategory(item, itemId);

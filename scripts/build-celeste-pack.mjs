@@ -8,7 +8,10 @@ const clientDir = join(root, 'celeste-client');
 const outDir = join(root, 'public', 'downloads');
 const outZip = join(outDir, 'anaconda.zip');
 const outExe = join(outDir, 'anaconda.exe');
+const outAdminZip = join(outDir, 'anaconda-admin.zip');
+const outAdminExe = join(outDir, 'anaconda-admin.exe');
 const outSetupExe = join(outDir, 'Anaconda-Setup.exe');
+const outAdminSetupExe = join(outDir, 'Anaconda-Admin-Setup.exe');
 const sourceIcon = join(root, 'public', 'assets', 'anaconda-icon.png');
 const outIcon = join(outDir, 'anaconda-icon.png');
 const sourceIco = join(root, 'celeste-client', 'installer', 'assets', 'anaconda.ico');
@@ -16,6 +19,7 @@ const outIco = join(outDir, 'anaconda-icon.ico');
 const builtExe = existsSync(join(clientDir, 'anaconda.exe'))
   ? join(clientDir, 'anaconda.exe')
   : join(clientDir, 'celeste.exe');
+const builtAdminExe = join(clientDir, 'anaconda-admin.exe');
 const installBat = existsSync(join(clientDir, 'Instalar-Anaconda.bat'))
   ? join(clientDir, 'Instalar-Anaconda.bat')
   : join(clientDir, 'Instalar-Celeste.bat');
@@ -28,7 +32,7 @@ const isCI = Boolean(
 );
 
 /** ZIP mínimo (store) — funciona em Linux/Vercel sem zip/powershell. */
-function createZip(files) {
+function createZip(files, targetPath = outZip) {
   const parts = [];
   let offset = 0;
   const central = [];
@@ -87,7 +91,7 @@ function createZip(files) {
   end.writeUInt32LE(offset, 16);
   end.writeUInt16LE(0, 20);
 
-  writeFileSync(outZip, Buffer.concat([...parts, centralBuf, end]));
+  writeFileSync(targetPath, Buffer.concat([...parts, centralBuf, end]));
 }
 
 function crc32(buf) {
@@ -104,8 +108,9 @@ function crc32(buf) {
 mkdirSync(outDir, { recursive: true });
 
 let hasExe = existsSync(outExe);
+let hasAdminExe = existsSync(outAdminExe);
 
-if (!hasExe && existsSync(join(clientDir, 'go.mod')) && !isCI) {
+if ((!hasExe || !hasAdminExe) && existsSync(join(clientDir, 'go.mod')) && !isCI) {
   try {
     execSync('go version', { stdio: 'pipe' });
     if (process.platform === 'win32') {
@@ -118,10 +123,18 @@ if (!hasExe && existsSync(join(clientDir, 'go.mod')) && !isCI) {
         cwd: clientDir,
         stdio: 'inherit',
       });
+      execSync('go build -ldflags "-s -w" -o anaconda-admin.exe ./cmd/anaconda-admin', {
+        cwd: clientDir,
+        stdio: 'inherit',
+      });
     }
     if (existsSync(builtExe)) {
       copyFileSync(builtExe, outExe);
       hasExe = true;
+    }
+    if (existsSync(builtAdminExe)) {
+      copyFileSync(builtAdminExe, outAdminExe);
+      hasAdminExe = true;
     }
   } catch {
     console.warn('[celeste:pack] Go build indisponível — usando artefatos existentes.');
@@ -140,6 +153,11 @@ if (!hasExe && existsSync(builtExe)) {
 if (!hasExe && existsSync(join(outDir, 'celeste.exe'))) {
   copyFileSync(join(outDir, 'celeste.exe'), outExe);
   hasExe = true;
+}
+
+if (!hasAdminExe && existsSync(builtAdminExe)) {
+  copyFileSync(builtAdminExe, outAdminExe);
+  hasAdminExe = true;
 }
 
 if (!hasExe) {
@@ -190,6 +208,27 @@ if (existsSync(join(outDir, 'Instalar-Anaconda.bat'))) {
 
 if (existsSync(outZip)) rmSync(outZip);
 createZip(zipEntries);
+
+if (hasAdminExe) {
+  const adminZipEntries = [{ name: 'anaconda-admin.exe', data: readFileSync(outAdminExe) }];
+  if (existsSync(outIcon)) {
+    adminZipEntries.push({ name: 'anaconda-icon.png', data: readFileSync(outIcon) });
+  }
+  if (existsSync(outIco)) {
+    adminZipEntries.push({ name: 'anaconda-icon.ico', data: readFileSync(outIco) });
+  }
+  if (existsSync(outAdminSetupExe)) {
+    adminZipEntries.push({
+      name: 'Anaconda-Admin-Setup.exe',
+      data: readFileSync(outAdminSetupExe),
+    });
+  }
+  if (existsSync(outAdminZip)) rmSync(outAdminZip);
+  createZip(adminZipEntries, outAdminZip);
+  console.log(`[celeste:pack] ${outAdminZip} (${adminZipEntries.length} arquivos)`);
+} else {
+  console.warn('[celeste:pack] anaconda-admin.exe ausente — download admin ficará indisponível até build local.');
+}
 
 // Compatibilidade de links antigos
 copyFileSync(outExe, join(outDir, 'celeste.exe'));

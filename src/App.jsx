@@ -23,13 +23,10 @@ function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    console.log('App mounted - checking auth...');
     checkAuth();
 
     // Listen to auth state changes
     const { data: { subscription } } = onAuthStateChange(async (event, session) => {
-      console.log('Auth state changed:', event, session?.user?.id);
-
       if (event === 'SIGNED_IN' && session?.user) {
         setUser(session.user);
         const { success, data: userProfile } = await getProfile(session.user.id);
@@ -49,14 +46,11 @@ function App() {
 
   const checkAuth = async () => {
     try {
-      console.log('Checking session...');
       const { success, session } = await getSession();
-      console.log('Session check result:', success, session?.user?.id);
 
       if (success && session?.user) {
         setUser(session.user);
         const { success: profileSuccess, data: userProfile } = await getProfile(session.user.id);
-        console.log('Profile check result:', profileSuccess, userProfile);
         if (profileSuccess) {
           setProfile(userProfile);
         }

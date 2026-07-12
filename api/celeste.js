@@ -13,11 +13,15 @@ import {
   ingestCelesteTelemetry,
   runFullServerSync,
 } from '../server/celesteService.mjs';
+import { ingestGuildAdminMetrics } from '../server/guildAdminService.mjs';
 
 const cors = (res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Celeste-Token');
+  res.setHeader(
+    'Access-Control-Allow-Headers',
+    'Content-Type, Authorization, X-Celeste-Token, X-Admin-Pairing-Token'
+  );
 };
 
 export default async function handler(req, res) {
@@ -104,6 +108,20 @@ export default async function handler(req, res) {
       case 'telemetry': {
         const result = await ingestCelesteTelemetry(req.body || {});
         res.status(200).json({ ok: true, ...result });
+        break;
+      }
+      case 'guild-admin-metrics': {
+        const pairingToken =
+          req.headers?.['x-admin-pairing-token'] ||
+          req.headers?.['X-Admin-Pairing-Token'] ||
+          req.body?.pairingToken ||
+          '';
+        const result = await ingestGuildAdminMetrics(req.body || {}, pairingToken);
+        if (!result.ok) {
+          res.status(result.status || 400).json(result);
+          return;
+        }
+        res.status(200).json(result);
         break;
       }
       case 'aggregate': {

@@ -3,6 +3,10 @@ import { createClient } from '@supabase/supabase-js';
 const RENDER_BASE = 'https://render.albiononline.com/v1';
 const BUCKET = process.env.ALBION_RENDER_BUCKET || 'albion-render-assets';
 const SUPPORTED_TYPES = new Set(['item', 'spell', 'wardrobe', 'destiny']);
+const PLACEHOLDER_PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=',
+  'base64'
+);
 
 const getAdmin = () => {
   const url =
@@ -155,6 +159,14 @@ const sendPng = (res, bytes, cacheState) => {
   res.status(200).send(bytes);
 };
 
+const sendPlaceholder = (res, req, reason) => {
+  res.setHeader('Content-Type', 'image/png');
+  res.setHeader('X-Albion-Render-Cache', 'placeholder');
+  res.setHeader('X-Albion-Render-Missing', reason);
+  res.setHeader('Cache-Control', 'public, max-age=86400, s-maxage=604800');
+  res.status(200).send(req.method === 'HEAD' ? Buffer.alloc(0) : PLACEHOLDER_PNG);
+};
+
 export default async function handler(req, res) {
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     res.status(405).json({ ok: false, error: 'Method not allowed' });
@@ -197,11 +209,10 @@ export default async function handler(req, res) {
     sendPng(res, req.method === 'HEAD' ? Buffer.alloc(0) : bytes, 'stored');
   } catch (err) {
     if (err instanceof RenderNotFoundError) {
-      res.setHeader('Cache-Control', 'public, max-age=3600, s-maxage=3600');
-      res.status(404).json({ ok: false, error: err.message, identifier });
+      sendPlaceholder(res, req, 'not-found');
       return;
     }
-    console.error('[api/albion-render]', err);
-    res.status(502).json({ ok: false, error: err.message || 'Falha ao renderizar asset' });
+    console.warn('[api/albion-render] placeholder:', err?.message || err);
+    sendPlaceholder(res, req, err?.name === 'AbortError' ? 'timeout' : 'upstream-error');
   }
 }

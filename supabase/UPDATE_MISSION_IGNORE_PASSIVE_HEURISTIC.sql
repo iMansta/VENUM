@@ -47,7 +47,8 @@ BEGIN
 
   -- Telemetria de rede e heurísticas sintéticas não contam para missões/fama.
   IF v_type IN ('net_udp_packets', 'net_udp_albion')
-     OR COALESCE(v_obs.payload->>'source', '') LIKE '%passive_network_heuristic%' THEN
+     OR COALESCE(v_obs.payload->>'source', '') LIKE '%passive_network_heuristic%'
+     OR COALESCE(v_obs.payload->>'source', '') LIKE '%fame_delta_dynamic_threshold%' THEN
     UPDATE public.celeste_observations
     SET processed_at = NOW(),
         aggregated_cycle = p_cycle

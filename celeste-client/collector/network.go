@@ -37,6 +37,9 @@ type PassiveSniffer struct {
 	photonParser  *photon.PhotonParser
 	detectedChar  string
 	detectedGuild string
+
+	lastTotalFameFix int64
+	combatObs        []api.Observation
 }
 
 func NewPassiveSniffer() *PassiveSniffer {
@@ -44,7 +47,7 @@ func NewPassiveSniffer() *PassiveSniffer {
 		localIPs: collectLocalIPs(),
 	}
 	// Parser Photon dedicado a identificar silenciosamente o personagem local.
-	s.photonParser = photon.NewPhotonParser(nil, s.onPhotonResponse, nil)
+	s.photonParser = photon.NewPhotonParser(nil, s.onPhotonResponse, s.onPhotonEvent)
 	return s
 }
 
@@ -130,6 +133,10 @@ func (s *PassiveSniffer) CaptureWindow(window time.Duration, maxPackets int) ([]
 	packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
 	packetSource.NoCopy = true
 
+	s.mu.Lock()
+	s.combatObs = nil
+	s.mu.Unlock()
+
 	deadline := time.Now().Add(window)
 	totalPackets := 0
 	totalBytes := 0
@@ -205,6 +212,14 @@ func (s *PassiveSniffer) CaptureWindow(window time.Duration, maxPackets int) ([]
 			},
 		})
 	}
+
+	s.mu.Lock()
+	if len(s.combatObs) > 0 {
+		combat := make([]api.Observation, len(s.combatObs))
+		copy(combat, s.combatObs)
+		obs = append(obs, combat...)
+	}
+	s.mu.Unlock()
 
 	return obs, nil
 }

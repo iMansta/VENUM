@@ -20,6 +20,7 @@ import { supabase } from './client';
  */
 
 const CACHE_TTL = 60 * 60 * 1000; // 1 hora
+const DEBUG_MARKET_CACHE = import.meta.env.DEV;
 
 // Track which RPCs are missing so we only warn once per session per RPC.
 const missingRpcWarned = new Set();
@@ -95,7 +96,7 @@ export const getCachedMarketPricesByLocation = async (itemIds) => {
       });
     });
 
-    if (data && data.length > 0) {
+    if (DEBUG_MARKET_CACHE && data && data.length > 0) {
       console.log(
         `[SUPABASE CACHE BY LOCATION] Retrieved ${data.length} rows for ${itemIds.length} items`
       );
@@ -154,7 +155,7 @@ export const setCachedMarketPricesByLocation = async (entries) => {
     const ok = await setCachedMarketPriceByLocation(entry.itemId, entry.location, entry.priceData);
     if (ok) successCount++;
   }
-  if (successCount > 0 && !missingRpcWarned.has('set_cached_market_price_by_location')) {
+  if (DEBUG_MARKET_CACHE && successCount > 0 && !missingRpcWarned.has('set_cached_market_price_by_location')) {
     console.log(
       `[SUPABASE CACHE BY LOCATION] Persisted ${successCount}/${entries.length} (item, location) rows`
     );
@@ -176,7 +177,9 @@ export const clearExpiredMarketCacheByLocation = async () => {
       }
       throw error;
     }
-    console.log(`[SUPABASE CACHE BY LOCATION] Cleared ${data} expired rows`);
+    if (DEBUG_MARKET_CACHE) {
+      console.log(`[SUPABASE CACHE BY LOCATION] Cleared ${data} expired rows`);
+    }
     return data;
   } catch (error) {
     console.error('[SUPABASE CACHE BY LOCATION] Error clearing expired cache:', error);

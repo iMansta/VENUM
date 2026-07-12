@@ -632,33 +632,9 @@ export async function syncGuildMembers(options = {}) {
       fameSynced += 1;
     }
 
-    if (pveDelta > 0) {
-      missionUpdates += await applyMissionContributionDelta({
-        supabase,
-        profileId: profile.id,
-        missionType: 'pve',
-        acceptedTargets: ['pve_fame', 'fame'],
-        delta: pveDelta,
-      });
-    }
-    if (gatherDelta > 0) {
-      missionUpdates += await applyMissionContributionDelta({
-        supabase,
-        profileId: profile.id,
-        missionType: 'gathering',
-        acceptedTargets: ['gather_any'],
-        delta: gatherDelta,
-      });
-    }
-    if (killDelta > 0) {
-      missionUpdates += await applyMissionContributionDelta({
-        supabase,
-        profileId: profile.id,
-        missionType: 'pvp',
-        acceptedTargets: ['player_kill', 'pvp_kill'],
-        delta: killDelta,
-      });
-    }
+    // GameInfo entrega contadores absolutos e atrasados. Usamos esses valores
+    // somente como baseline do perfil; progresso de missão precisa vir de
+    // observações locais reais do Anaconda para não concluir missões sem jogo.
   }
 
   try {

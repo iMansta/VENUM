@@ -299,3 +299,39 @@ func (c *Client) SendTelemetry(payload TelemetryPayload) (int, error) {
 	}
 	return out.Inserted, nil
 }
+
+func (c *Client) SubmitGuildAdminMetrics(body any, pairingToken string, out any) error {
+	var bodyBytes []byte
+	if body != nil {
+		b, err := json.Marshal(body)
+		if err != nil {
+			return err
+		}
+		bodyBytes = b
+	}
+
+	req, err := http.NewRequest(http.MethodPost, c.url("guild-admin-metrics"), bytes.NewReader(bodyBytes))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.token)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Admin-Pairing-Token", strings.TrimSpace(pairingToken))
+
+	res, err := c.doRequestWithRetry(req, bodyBytes)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+
+	raw, _ := io.ReadAll(res.Body)
+	if res.StatusCode >= 400 {
+		return fmt.Errorf("HTTP %d: %s", res.StatusCode, string(raw))
+	}
+	if out != nil && len(raw) > 0 {
+		if err := json.Unmarshal(raw, out); err != nil {
+			return err
+		}
+	}
+	return nil
+}

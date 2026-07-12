@@ -208,8 +208,8 @@ func runCycle(client *api.Client, clientID string, watcher *collector.Watcher, s
 	if sniffer != nil {
 		// Enquanto não soubermos o personagem, captura uma janela maior para
 		// aumentar a chance de observar um Join (troca de zona) e identificá-lo.
-		captureWindow := 800 * time.Millisecond
-		captureMax := 500
+		captureWindow := 2 * time.Second
+		captureMax := 1500
 		if albionName == "" {
 			captureWindow = 3 * time.Second
 			captureMax = 2000
@@ -218,18 +218,19 @@ func runCycle(client *api.Client, clientID string, watcher *collector.Watcher, s
 		if netErr != nil {
 			logger.Warn("Captura passiva: %v", netErr)
 		} else if len(netObs) > 0 {
-			// Telemetria de rede apenas (identidade Photon + diagnóstico).
-			// Não inferimos kills/fama a partir de tráfego UDP — isso gerava
-			// progresso falso em missões sem o jogador estar em combate.
 			observations = append(observations, netObs...)
-			logger.Info("Captura passiva: %d evento(s) UDP coletado(s)", len(netObs))
+			combatCount := 0
+			for _, o := range netObs {
+				if o.Type == "pve_fame" || o.Type == "mob_kill" {
+					combatCount++
+				}
+			}
+			if combatCount > 0 {
+				logger.Info("Captura passiva: %d evento(s) UDP, %d combate/fama via Photon", len(netObs), combatCount)
+			} else {
+				logger.Info("Captura passiva: %d evento(s) UDP coletado(s)", len(netObs))
+			}
 		}
-	}
-
-	dynamicMobKills := deriveDynamicMobKillsFromFame(observations, getMobFameThresholds())
-	if len(dynamicMobKills) > 0 {
-		observations = append(observations, dynamicMobKills...)
-		logger.Info("PvE dinâmico: %d abate(s) inferido(s) por delta de fama", len(dynamicMobKills))
 	}
 
 	meta["mob_fame_thresholds"] = getMobFameThresholds()
@@ -247,10 +248,28 @@ func runCycle(client *api.Client, clientID string, watcher *collector.Watcher, s
 		}
 	}
 
+	if extra := deriveDynamicMobKillsFromFame(observations, getMobFameThresholds()); len(extra) > 0 {
+		observations = append(observations, extra...)
+		logger.Info("Photon: %d kill(s) inferido(s) por fama PvE", len(extra))
+	}
+
 	// Carimba a identidade em todas as observações (inclui heurísticas de rede
 	// e mob kills dinâmicos que não trazem o personagem no log) para que o hub
 	// consiga atribuir o progresso ao perfil correto.
 	stampObservationIdentity(observations, identity)
+
+	if logPath := watcher.Path(); logPath != "" {
+		lines, parsed := watcher.LastReadStats()
+		logger.Info("Log Albion: %s — %d linha(s) novas, %d evento(s) parseado(s)", logPath, lines, parsed)
+	}
+
+	if len(observations) > 0 {
+		types := map[string]int{}
+		for _, o := range observations {
+			types[o.Type]++
+		}
+		logger.Info("Tipos de observação neste ciclo: %v", types)
+	}
 
 	if err != nil {
 		if err == collector.ErrGameLogNotFound {
@@ -466,11 +485,13 @@ func deriveDynamicMobKillsFromFame(observations []api.Observation, thresholds []
 			continue
 		}
 
-		// Ignora sinais sintéticos de rede (já têm heurística própria de mob_kill).
-		if obs.Payload != nil {
-			if source, ok := obs.Payload["source"].(string); ok && strings.Contains(source, "passive_network_heuristic") {
-				continue
-			}
+		// Só converte fama Photon confiável em mob_kill (não heurísticas de rede/log).
+		if obs.Payload == nil {
+			continue
+		}
+		source, _ := obs.Payload["source"].(string)
+		if source != "photon_event" {
+			continue
 		}
 
 		delta := 0
@@ -518,7 +539,7 @@ func deriveDynamicMobKillsFromFame(observations []api.Observation, thresholds []
 		}
 
 		payload := map[string]any{
-			"source":             "fame_delta_dynamic_threshold",
+			"source":             "photon_event",
 			"target_key":         "mob_kill",
 			"fame_delta":         delta,
 			"fame_previous":      prevTotal,

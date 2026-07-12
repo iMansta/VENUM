@@ -30,6 +30,40 @@ const formatDate = (value) => {
   return d.toLocaleDateString('pt-BR');
 };
 
+const formatDateTime = (value) => {
+  if (!value) return '-';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '-';
+  return d.toLocaleString('pt-BR');
+};
+
+const formatAge = (value) => {
+  if (!value) return 'sem data';
+  const ts = new Date(value).getTime();
+  if (!Number.isFinite(ts)) return 'sem data';
+  const diffMs = Date.now() - ts;
+  const minutes = Math.max(0, Math.floor(diffMs / 60000));
+  if (minutes < 1) return 'agora';
+  if (minutes < 60) return `há ${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 48) return `há ${hours} h`;
+  const days = Math.floor(hours / 24);
+  return `há ${days} dia(s)`;
+};
+
+const formatSourceLabel = (source) => {
+  switch (source) {
+    case 'admin_anaconda':
+      return 'Anaconda Admin';
+    case 'gameinfo_guild_detail':
+      return 'GameInfo API';
+    case 'guild_sync_fallback':
+      return 'Sincronização automática';
+    default:
+      return source || 'desconhecida';
+  }
+};
+
 const Guild = () => {
   const [latest, setLatest] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -105,6 +139,19 @@ const Guild = () => {
           {latest?.guild_name && (
             <p className="text-sm text-slate-500 mt-2">
               Guilda: <span className="text-slate-300">{latest.guild_name}</span>
+            </p>
+          )}
+          {latest?.collected_at && (
+            <p className="text-xs text-slate-500 mt-2">
+              Última atualização {formatAge(latest.collected_at)} ·{' '}
+              {formatDateTime(latest.collected_at)} · fonte{' '}
+              <span className="text-slate-300">{formatSourceLabel(latest.source)}</span>
+              {latest.submitted_by_username ? (
+                <>
+                  {' '}
+                  · por <span className="text-slate-300">{latest.submitted_by_username}</span>
+                </>
+              ) : null}
             </p>
           )}
         </div>
@@ -203,7 +250,10 @@ const Guild = () => {
             </p>
           ) : (
             <p className="text-xs text-slate-500 mt-4">
-              Última coleta: {formatDate(latest.collected_at)} · fonte {latest.source || '-'}
+              Última coleta: {formatDateTime(latest.collected_at)} · fonte{' '}
+              {formatSourceLabel(latest.source)}
+              {latest.verified_by_admin ? ' · confirmado por administrador' : ''}
+              {latest.submitted_by_username ? ` · por ${latest.submitted_by_username}` : ''}
             </p>
           )}
         </div>
@@ -226,8 +276,8 @@ const Guild = () => {
           ))}
         </div>
         <p className="text-xs text-slate-500 mt-4">
-          Coletado pela Anaconda a partir dos dados da guild na GameInfo. Campos indisponíveis
-          aparecem como "-".
+          Membros e fama podem vir da GameInfo. Prata e pontos de temporada confiáveis vêm da
+          Anaconda Admin com confirmação manual. Campos indisponíveis aparecem como "-".
         </p>
       </div>
     </div>

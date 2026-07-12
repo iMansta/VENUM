@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Anaconda Admin — Métricas da Guilda</title>
+  <style>
+    :root { color-scheme: dark; }
+    body {
+      margin: 0;
+      font-family: Segoe UI, system-ui, sans-serif;
+      background: #0b1220;
+      color: #e5e7eb;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+    }
+    .card {
+      width: min(520px, 100%);
+      background: #111827;
+      border: 1px solid #1f2937;
+      border-radius: 16px;
+      padding: 24px;
+      box-shadow: 0 20px 60px rgba(0,0,0,.35);
+    }
+    h1 { margin: 0 0 8px; font-size: 1.4rem; }
+    p { margin: 0 0 16px; color: #9ca3af; line-height: 1.5; }
+    label { display: block; font-size: .85rem; color: #cbd5e1; margin-bottom: 6px; }
+    input, textarea {
+      width: 100%;
+      box-sizing: border-box;
+      background: #0f172a;
+      border: 1px solid #334155;
+      color: #f8fafc;
+      border-radius: 10px;
+      padding: 10px 12px;
+      margin-bottom: 14px;
+      font-size: 1rem;
+    }
+    textarea { min-height: 72px; resize: vertical; }
+    button {
+      width: 100%;
+      border: 0;
+      border-radius: 10px;
+      padding: 12px 16px;
+      background: #d97706;
+      color: #111827;
+      font-weight: 700;
+      cursor: pointer;
+      font-size: 1rem;
+    }
+    button:hover { background: #f59e0b; }
+    .meta { font-size: .75rem; color: #64748b; margin-top: 16px; }
+    .alert {
+      border-radius: 10px;
+      padding: 10px 12px;
+      margin-bottom: 14px;
+      font-size: .9rem;
+    }
+    .error { background: rgba(239,68,68,.12); border: 1px solid rgba(239,68,68,.35); color: #fecaca; }
+    .success { background: rgba(16,185,129,.12); border: 1px solid rgba(16,185,129,.35); color: #bbf7d0; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Anaconda Admin</h1>
+    <p>Abra a tela da guilda no Albion, confira os valores e envie o snapshot confirmado para o hub.</p>
+
+    {{if .Error}}<div class="alert error">{{.Error}}</div>{{end}}
+    {{if .Success}}<div class="alert success">{{.Success}}</div>{{end}}
+
+    <form method="post" action="/submit">
+      <label for="pairingToken">Token de pareamento (gerado no painel admin)</label>
+      <input id="pairingToken" name="pairingToken" placeholder="Ex: AB12CD34" autocomplete="off" />
+
+      <label for="silverAmount">Prata da guilda</label>
+      <input id="silverAmount" name="silverAmount" inputmode="numeric" placeholder="Ex: 125000000" value="{{.SilverAmount}}" />
+
+      <label for="seasonPoints">Pontos de temporada</label>
+      <input id="seasonPoints" name="seasonPoints" inputmode="numeric" placeholder="Ex: 84250" value="{{.SeasonPoints}}" />
+
+      <label for="memberCount">Membros (opcional)</label>
+      <input id="memberCount" name="memberCount" inputmode="numeric" placeholder="Ex: 87" value="{{.MemberCount}}" />
+
+      <label for="note">Observação (opcional)</label>
+      <textarea id="note" name="note" placeholder="Ex: conferido na tela da guilda às 21:30">{{.Note}}</textarea>
+
+      <button type="submit">Confirmar e enviar</button>
+    </form>
+
+    <div class="meta">
+      Hub: {{.APIBase}} · Cliente: {{.ClientID}} · Token salvo: {{.TokenMasked}} · v{{.Version}}
+    </div>
+  </div>
+</body>
+</html>

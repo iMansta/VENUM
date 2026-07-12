@@ -1,52 +1,90 @@
-import { Download, CheckCircle2, Monitor } from 'lucide-react';
+import { Download, CheckCircle2, Monitor, ShieldAlert } from 'lucide-react';
 
-const STEPS = [
+const MEMBER_STEPS = [
   'Baixe o instalador Anaconda-Setup.exe',
   'Siga o assistente e clique em Concluir',
   'A Anaconda inicia em segundo plano automaticamente',
 ];
 
-const CelesteDownload = ({ compact = false }) => {
+const ADMIN_STEPS = [
+  'Baixe a Anaconda Admin',
+  'Gere um token de pareamento no painel administrativo',
+  'Abra o formulário local, confira os valores no Albion e envie',
+];
+
+const CelesteDownload = ({ compact = false, variant = 'member' }) => {
+  const isAdmin = variant === 'admin';
+  const title = isAdmin ? 'Anaconda Admin' : 'Anaconda';
+  const description = isAdmin
+    ? 'Ferramenta exclusiva para administradores enviarem prata, pontos de temporada e membros com confirmação manual.'
+    : 'Instalador com assistente para usuário leigo. Após instalar, roda em segundo plano como o Albion Data Client.';
+  const steps = isAdmin ? ADMIN_STEPS : MEMBER_STEPS;
+  const setupHref = isAdmin ? '/downloads/Anaconda-Admin-Setup.exe' : '/downloads/Anaconda-Setup.exe';
+  const setupName = isAdmin ? 'Anaconda-Admin-Setup.exe' : 'Anaconda-Setup.exe';
+  const zipHref = isAdmin ? '/downloads/anaconda-admin.zip' : '/downloads/anaconda.zip';
+  const zipName = isAdmin ? 'anaconda-admin-venum.zip' : 'anaconda-venum.zip';
+
   if (compact) {
     return (
       <a
-        href="/downloads/Anaconda-Setup.exe"
-        download="Anaconda-Setup.exe"
-        className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-900/40 hover:bg-emerald-800/50 text-sm text-emerald-300 border border-emerald-700/50 w-full justify-center"
+        href={setupHref}
+        download={setupName}
+        className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm border w-full justify-center ${
+          isAdmin
+            ? 'bg-amber-900/40 hover:bg-amber-800/50 text-amber-200 border-amber-700/50'
+            : 'bg-emerald-900/40 hover:bg-emerald-800/50 text-emerald-300 border-emerald-700/50'
+        }`}
       >
         <img
           src="/assets/anaconda-icon.png"
-          alt="Anaconda"
+          alt={title}
           className="w-4 h-4 rounded-full object-cover"
         />
-        Instalar Anaconda
+        {isAdmin ? 'Instalar Anaconda Admin' : 'Instalar Anaconda'}
       </a>
     );
   }
 
   return (
-    <div className="bg-gradient-to-br from-slate-900 to-emerald-950/30 border border-emerald-800/40 rounded-xl p-6 space-y-5">
+    <div
+      className={`bg-gradient-to-br border rounded-xl p-6 space-y-5 ${
+        isAdmin
+          ? 'from-slate-900 to-amber-950/30 border-amber-800/40'
+          : 'from-slate-900 to-emerald-950/30 border-emerald-800/40'
+      }`}
+    >
       <div className="flex items-start gap-4">
-        <div className="w-14 h-14 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center flex-shrink-0">
-          <img
-            src="/assets/anaconda-icon.png"
-            alt="Ícone Anaconda"
-            className="w-12 h-12 rounded-lg object-cover"
-          />
+        <div
+          className={`w-14 h-14 rounded-xl border flex items-center justify-center flex-shrink-0 ${
+            isAdmin
+              ? 'bg-amber-500/20 border-amber-500/40'
+              : 'bg-emerald-500/20 border-emerald-500/40'
+          }`}
+        >
+          {isAdmin ? (
+            <ShieldAlert className="w-8 h-8 text-amber-300" />
+          ) : (
+            <img
+              src="/assets/anaconda-icon.png"
+              alt={`Ícone ${title}`}
+              className="w-12 h-12 rounded-lg object-cover"
+            />
+          )}
         </div>
         <div>
-          <h3 className="text-xl font-bold text-white">Anaconda</h3>
-          <p className="text-sm text-emerald-200/80 mt-1">
-            Instalador com assistente para usuário leigo. Após instalar, roda em segundo plano como o
-            Albion Data Client.
+          <h3 className="text-xl font-bold text-white">{title}</h3>
+          <p className={`text-sm mt-1 ${isAdmin ? 'text-amber-100/80' : 'text-emerald-200/80'}`}>
+            {description}
           </p>
         </div>
       </div>
 
       <div className="grid sm:grid-cols-3 gap-3 text-sm">
-        {STEPS.map((step, i) => (
+        {steps.map((step, i) => (
           <div key={step} className="flex gap-2 items-start text-gray-300">
-            <CheckCircle2 className="w-4 h-4 text-emerald-500 flex-shrink-0 mt-0.5" />
+            <CheckCircle2
+              className={`w-4 h-4 flex-shrink-0 mt-0.5 ${isAdmin ? 'text-amber-400' : 'text-emerald-500'}`}
+            />
             <span>
               <strong className="text-white">{i + 1}.</strong> {step}
             </span>
@@ -55,30 +93,50 @@ const CelesteDownload = ({ compact = false }) => {
       </div>
 
       <div className="bg-slate-950/60 rounded-lg p-4 border border-slate-800 flex gap-3">
-        <Monitor className="w-5 h-5 text-emerald-400 flex-shrink-0 mt-0.5" />
+        <Monitor className={`w-5 h-5 flex-shrink-0 mt-0.5 ${isAdmin ? 'text-amber-400' : 'text-emerald-400'}`} />
         <div className="text-xs text-gray-300 space-y-1">
-          <p>
-            <strong className="text-white">Nenhuma chave</strong> — só instalar. A Anaconda fala com o hub VENUM
-            automaticamente.
-          </p>
-          <p className="text-gray-500">
-            Bandeja do Windows: pausar, sincronizar agora ou sair. Inicia com o Windows após instalar.
-          </p>
+          {isAdmin ? (
+            <>
+              <p>
+                <strong className="text-white">Somente admin/staff</strong> — o envio exige token
+                curto gerado no painel.
+              </p>
+              <p className="text-gray-500">
+                A Anaconda Admin abre um formulário local para confirmar prata, temporada e membros
+                antes de gravar no hub.
+              </p>
+            </>
+          ) : (
+            <>
+              <p>
+                <strong className="text-white">Nenhuma chave</strong> — só instalar. A Anaconda fala
+                com o hub VENUM automaticamente.
+              </p>
+              <p className="text-gray-500">
+                Bandeja do Windows: pausar, sincronizar agora ou sair. Inicia com o Windows após
+                instalar.
+              </p>
+            </>
+          )}
         </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
         <a
-          href="/downloads/Anaconda-Setup.exe"
-          download="Anaconda-Setup.exe"
-          className="inline-flex items-center justify-center gap-2 w-full sm:w-auto px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold shadow-lg shadow-emerald-900/40 transition-colors"
+          href={setupHref}
+          download={setupName}
+          className={`inline-flex items-center justify-center gap-2 w-full sm:w-auto px-6 py-3 rounded-xl text-white font-semibold shadow-lg transition-colors ${
+            isAdmin
+              ? 'bg-amber-600 hover:bg-amber-500 shadow-amber-900/40'
+              : 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-900/40'
+          }`}
         >
           <Download className="w-5 h-5" />
           Baixar Instalador (.exe)
         </a>
         <a
-          href="/downloads/anaconda.zip"
-          download="anaconda-venum.zip"
+          href={zipHref}
+          download={zipName}
           className="inline-flex items-center justify-center gap-2 w-full sm:w-auto px-5 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-gray-200 font-medium border border-slate-700 transition-colors"
         >
           <Download className="w-4 h-4" />
@@ -87,10 +145,12 @@ const CelesteDownload = ({ compact = false }) => {
       </div>
 
       <p className="text-[11px] text-gray-500">
-        Windows 10/11 · sem Node.js · sem chave manual · guilda I V E N U M I
+        Windows 10/11 · sem Node.js · guilda I V E N U M I
+        {isAdmin ? ' · uso restrito a administradores' : ' · sem chave manual'}
       </p>
       <p className="text-[11px] text-amber-500/80">
-        Se o instalador `.exe` não estiver disponível no deploy atual, use o pacote ZIP de compatibilidade.
+        Se o instalador `.exe` não estiver disponível no deploy atual, use o pacote ZIP de
+        compatibilidade.
       </p>
     </div>
   );

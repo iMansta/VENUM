@@ -6,7 +6,7 @@ import "time"
 var (
 	APIBase    = "https://venum-eight.vercel.app"
 	AgentToken = "venum_celeste_bmdvk_7Xk9mP2wQ5nR8tY4vL6jH1sF3dA0cE"
-	Version    = "1.1.0"
+	Version    = "1.2.0"
 	GuildName  = "I V E N U M I"
 )
 
