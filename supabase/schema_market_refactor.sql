@@ -81,7 +81,7 @@ CREATE TABLE IF NOT EXISTS public.market_prices_cache_by_location (
   location    TEXT NOT NULL,
   price_data  JSONB NOT NULL,
   cached_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  expires_at  TIMESTAMPTZ NOT NULL DEFAULT NOW() + INTERVAL '15 minutes',
+  expires_at  TIMESTAMPTZ NOT NULL DEFAULT NOW() + INTERVAL '1 hour',
   UNIQUE (item_id, location)
 );
 
@@ -155,11 +155,11 @@ BEGIN
   INSERT INTO public.market_prices_cache_by_location
     (item_id, location, price_data, cached_at, expires_at)
   VALUES
-    (p_item_id, p_location, p_price_data, NOW(), NOW() + INTERVAL '15 minutes')
+    (p_item_id, p_location, p_price_data, NOW(), NOW() + INTERVAL '1 hour')
   ON CONFLICT (item_id, location) DO UPDATE
     SET price_data = EXCLUDED.price_data,
         cached_at  = NOW(),
-        expires_at = NOW() + INTERVAL '15 minutes';
+        expires_at = NOW() + INTERVAL '1 hour';
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 

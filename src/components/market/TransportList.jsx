@@ -14,6 +14,13 @@ import ItemIcon from './ItemIcon';
 import { getItemName } from '@/lib/i18n/itemNames';
 import { safeTranslate as translateItem } from '@/utils/itemTranslator';
 
+const cleanupMarketLifecycle = async () => {
+  const { error } = await supabase.rpc('cleanup_market_lifecycle');
+  if (error && error.code !== 'PGRST202') {
+    console.warn('[MARKET] Falha ao limpar lifecycle:', error.message || error);
+  }
+};
+
 /**
  * TransportList - lista as oportunidades de transporte do Black Market.
  *
@@ -64,6 +71,7 @@ const TransportList = ({
   const loadMyTransports = useCallback(async () => {
     if (!userId) return;
     try {
+      await cleanupMarketLifecycle();
       const { data, error } = await supabase
         .from('transport_reservations')
         .select('*')
@@ -97,7 +105,7 @@ const TransportList = ({
     }
 
     setReservingId(opportunity.itemId);
-    const expiresAt = new Date(Date.now() + 20 * 60 * 1000).toISOString();
+    const expiresAt = opportunity.expiresAt || new Date(Date.now() + 60 * 60 * 1000).toISOString();
 
     const previousOpportunities = opportunities;
     const itemName = translateItem(opportunity.itemId);
@@ -154,7 +162,7 @@ const TransportList = ({
     try {
       const { error } = await supabase
         .from('transport_reservations')
-        .update({ status: 'completed' })
+        .update({ status: 'completed', completed_at: new Date().toISOString() })
         .eq('id', transportId);
 
       if (error) throw error;

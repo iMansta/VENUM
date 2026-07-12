@@ -22,6 +22,32 @@ const formatSilver = (v) =>
 
 const formatPct = (v) => `${Number(v || 0).toFixed(1)}%`;
 
+const formatAge = (iso) => {
+  const time = new Date(iso || 0).getTime();
+  if (!Number.isFinite(time) || time <= 0) return 'agora';
+  const minutes = Math.max(0, Math.floor((Date.now() - time) / 60000));
+  if (minutes < 1) return 'agora';
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  return `${hours}h ${minutes % 60}min`;
+};
+
+const formatTimeLeft = (iso) => {
+  const time = new Date(iso || 0).getTime();
+  if (!Number.isFinite(time) || time <= Date.now()) return 'expirada';
+  const minutes = Math.ceil((time - Date.now()) / 60000);
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  return `${hours}h ${minutes % 60}min`;
+};
+
+const cleanupMarketLifecycle = async () => {
+  const { error } = await supabase.rpc('cleanup_market_lifecycle');
+  if (error && error.code !== 'PGRST202') {
+    console.warn('[MARKET] Falha ao limpar lifecycle:', error.message || error);
+  }
+};
+
 /**
  * Hub de mercado — comprar nas cidades reais, vender no Black Market.
  */
@@ -67,6 +93,7 @@ const MarketHub = ({ userId }) => {
       setMyBag([]);
       return;
     }
+    await cleanupMarketLifecycle();
     const { data, error } = await supabase
       .from('transport_reservations')
       .select('*')
@@ -78,11 +105,12 @@ const MarketHub = ({ userId }) => {
   }, [userId]);
 
   const loadReservedItemIds = useCallback(async () => {
+    await cleanupMarketLifecycle();
     const nowIso = new Date().toISOString();
     const { data, error } = await supabase
       .from('transport_reservations')
       .select('item_id, expires_at, status')
-      .eq('status', 'reserved');
+      .in('status', ['reserved', 'completed']);
 
     if (!error && Array.isArray(data)) {
       const ids = data
@@ -118,7 +146,7 @@ const MarketHub = ({ userId }) => {
     }
 
     setReservingId(opp.itemId);
-    const expiresAt = new Date(Date.now() + 20 * 60 * 1000).toISOString();
+    const expiresAt = opp.expiresAt || new Date(Date.now() + 60 * 60 * 1000).toISOString();
     const itemName = translateItem(opp.itemId);
 
     try {
@@ -134,7 +162,6 @@ const MarketHub = ({ userId }) => {
         return;
       }
 
-      setTab('bag');
       loadMyBag();
       loadReservedItemIds();
     } catch (e) {
@@ -147,7 +174,17 @@ const MarketHub = ({ userId }) => {
   const handleComplete = async (id) => {
     setCompletingId(id);
     try {
-      await supabase.from('transport_reservations').update({ status: 'completed' }).eq('id', id);
+      const { data, error } = await supabase.rpc('complete_transport_reservation', { p_id: id });
+      if (error) {
+        if (error.code === 'PGRST202') {
+          const fallback = await supabase.from('transport_reservations').update({ status: 'completed' }).eq('id', id);
+          if (fallback.error) throw fallback.error;
+        } else {
+          throw error;
+        }
+      } else if (data === false) {
+        throw new Error('Reserva nao encontrada ou ja finalizada.');
+      }
       loadMyBag();
       loadReservedItemIds();
     } catch {
@@ -320,6 +357,9 @@ const MarketHub = ({ userId }) => {
                   +{formatSilver(opp.netProfit)}
                 </p>
                 <p className="text-xs text-gray-400">{formatPct(opp.margin)} margem</p>
+                  <p className="text-[11px] text-amber-300 mt-1">
+                    Cruzado há {formatAge(opp.crossedAt)} · expira em {formatTimeLeft(opp.expiresAt)}
+                  </p>
               </div>
 
               <button

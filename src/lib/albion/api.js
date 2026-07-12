@@ -1,6 +1,7 @@
 import {
   getCachedMarketPricesByLocation,
   setCachedMarketPricesByLocation,
+  clearExpiredMarketCacheByLocation,
   isCacheValid,
 } from '@/lib/supabase/marketCacheByLocation';
 import { getMarketSettings } from '@/lib/supabase/marketSettings';
@@ -18,6 +19,7 @@ const ALL_LOCATIONS = [...ROYAL_CITIES, BM_CITY];
 const BATCH_SIZE = 40;
 const BM_SETUP_TAX = 0.065;
 const DEFAULT_QUALITY = 1;
+const OPPORTUNITY_TTL_MS = 60 * 60 * 1000;
 const ALLOW_REMOTE_MARKET_API = String(
   import.meta.env.VITE_MARKET_ALLOW_REMOTE_PRICE_API ?? 'true'
 )
@@ -34,6 +36,25 @@ const parseItemId = (itemId) => {
     tier: tierMatch ? Number(tierMatch[1]) : 0,
     enchantment: enchStr ? Number(enchStr) : 0,
   };
+};
+
+const parsePriceTimestamp = (value) => {
+  if (!value) return null;
+  const time = new Date(value).getTime();
+  return Number.isFinite(time) ? time : null;
+};
+
+const getPriceTimestamp = (priceData, field) => {
+  const candidates = [
+    priceData?.[`${field}_date`],
+    priceData?.[`${field}_updated_at`],
+    priceData?._cachedAt,
+  ];
+  for (const value of candidates) {
+    const time = parsePriceTimestamp(value);
+    if (time) return time;
+  }
+  return Date.now();
 };
 
 const chunk = (arr, size) => {
@@ -79,6 +100,10 @@ const groupByItem = (rows) => {
       buy_price_max: row.buy_price_max,
       sell_price_min: row.sell_price_min,
       sell_price_max: row.sell_price_max,
+      buy_price_min_date: row.buy_price_min_date,
+      buy_price_max_date: row.buy_price_max_date,
+      sell_price_min_date: row.sell_price_min_date,
+      sell_price_max_date: row.sell_price_max_date,
     };
 
     if (!map[itemId]) map[itemId] = {};
@@ -94,7 +119,11 @@ const cacheToCityMap = (cachedRows) => {
   const map = {};
   (cachedRows || []).forEach((row) => {
     if (row.location && row.priceData) {
-      map[row.location] = row.priceData;
+      map[row.location] = {
+        ...row.priceData,
+        _cachedAt: row.cachedAt,
+        _expiresAt: row.expiresAt,
+      };
     }
   });
   return map;
@@ -107,6 +136,7 @@ const computeOpportunity = (itemId, cityPrices, settings) => {
   let lowestCity = null;
   let lowestPrice = Infinity;
   let cityBuyStrategy = 'instant_buy_city';
+  let cityBuyTimestampField = 'sell_price_min';
 
   for (const city of ROYAL_CITIES) {
     const pd = cityPrices[city];
@@ -120,10 +150,10 @@ const computeOpportunity = (itemId, cityPrices, settings) => {
     // - compra por ordem (buy_price_max)
     const candidatePrices = [];
     if (instantBuyPrice > 0) {
-      candidatePrices.push({ mode: 'instant_buy_city', price: instantBuyPrice });
+      candidatePrices.push({ mode: 'instant_buy_city', price: instantBuyPrice, timestampField: 'sell_price_min' });
     }
     if (buyOrderPrice > 0) {
-      candidatePrices.push({ mode: 'buy_order_city', price: buyOrderPrice });
+      candidatePrices.push({ mode: 'buy_order_city', price: buyOrderPrice, timestampField: 'buy_price_max' });
     }
     if (candidatePrices.length === 0) continue;
 
@@ -135,6 +165,7 @@ const computeOpportunity = (itemId, cityPrices, settings) => {
       lowestPrice = cityBest.price;
       lowestCity = city;
       cityBuyStrategy = cityBest.mode;
+      cityBuyTimestampField = cityBest.timestampField;
     }
   }
 
@@ -163,6 +194,7 @@ const computeOpportunity = (itemId, cityPrices, settings) => {
           netProfit: orderProfit,
           margin: orderMargin,
           quantity: Number(bmData?.sell_price_min_count) || 1,
+        bmTimestampField: 'sell_price_min',
         }
       : {
           mode: 'instant_sell_to_bm',
@@ -170,6 +202,7 @@ const computeOpportunity = (itemId, cityPrices, settings) => {
           netProfit: instantProfit,
           margin: instantMargin,
           quantity: Number(bmData?.buy_price_max_count) || 1,
+        bmTimestampField: 'buy_price_max',
         };
 
   const minProfit = settings.minProfit ?? 10000;
@@ -181,6 +214,12 @@ const computeOpportunity = (itemId, cityPrices, settings) => {
   const expectedProfit = calculateExpectedProfit(bestStrategy.netProfit, risk.value);
   const travelTime = getTravelTime(lowestCity, BM_CITY);
   const { enchantment } = parseItemId(itemId);
+  const cityTimestamp = getPriceTimestamp(cityPrices[lowestCity], cityBuyTimestampField);
+  const bmTimestamp = getPriceTimestamp(bmData, bestStrategy.bmTimestampField);
+  const crossedAtMs = Math.min(cityTimestamp, bmTimestamp);
+  if (Date.now() - crossedAtMs > OPPORTUNITY_TTL_MS) return null;
+  const crossedAt = new Date(crossedAtMs).toISOString();
+  const expiresAt = new Date(crossedAtMs + OPPORTUNITY_TTL_MS).toISOString();
 
   return {
     itemId,
@@ -197,6 +236,8 @@ const computeOpportunity = (itemId, cityPrices, settings) => {
     quantity: bestStrategy.quantity,
     cityBuyStrategy,
     strategy: bestStrategy.mode,
+    crossedAt,
+    expiresAt,
   };
 };
 
@@ -237,6 +278,7 @@ export const fetchTopOpportunities = async (
   let loaded = 0;
 
   onProgress?.({ loaded: 0, total: ids.length, phase: 'cache' });
+  await clearExpiredMarketCacheByLocation();
 
   for (const batch of batches) {
     let batchPrices = {};

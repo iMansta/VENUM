@@ -127,6 +127,85 @@ const splitSpellRefs = (refs) => {
   };
 };
 
+const SPELL_TOKEN_BY_CATEGORY = {
+  sword: 'SWORD',
+  axe: 'AXE',
+  mace: 'MACE',
+  hammer: 'HAMMER',
+  spear: 'SPEAR',
+  bow: 'BOW',
+  crossbow: 'CROSSBOW',
+  dagger: 'DAGGER',
+  quarterstaff: 'QUARTERSTAFF',
+  firestaff: 'FIRE',
+  froststaff: 'FROST',
+  holystaff: 'HOLY',
+  naturestaff: 'NATURE',
+  arcanestaff: 'ARCANE',
+  cursedstaff: 'CURSE',
+  shield: 'SHIELD',
+  torch: 'TORCH',
+  horn: 'HORN',
+  book: 'BOOK',
+  orb: 'ORB',
+  cloth: 'CLOTH',
+  leather: 'LEATHER',
+  plate: 'PLATE',
+};
+
+const inferCategory = (item, itemId) => {
+  const candidates = [
+    item?.['@craftingcategory'],
+    item?.['@shopsubcategory1'],
+    item?.['@shopsubcategory2'],
+    item?.categoryId,
+    itemId,
+  ].filter(Boolean).map((value) => String(value).toLowerCase());
+
+  for (const candidate of candidates) {
+    for (const key of Object.keys(SPELL_TOKEN_BY_CATEGORY)) {
+      if (candidate.includes(key)) return key;
+    }
+  }
+  return null;
+};
+
+const hasVisibleSpellIcon = (spell) =>
+  Boolean(spell?.['@uisprite'] || spell?.uiSprite) &&
+  !String(spell?.['@hidespelleffecticon'] || spell?.hideSpellEffectIcon || '').toLowerCase().includes('true');
+
+const isInternalSpell = (spellId) =>
+  /(_EFFECT|_CONDITION|_VFX|_UNLOCK|_CHARGES|_STACK|_AURA|KILL_EMOTE|AVATARRING|TOKENLOCKED)/i.test(spellId);
+
+const inferSpellRefsForItem = (item, itemId) => {
+  const category = inferCategory(item, itemId);
+  const token = SPELL_TOKEN_BY_CATEGORY[category];
+  if (!token) return { active: [], passive: [] };
+
+  const active = [];
+  const passive = [];
+  for (const [spellId, spell] of cache.spellsById.entries()) {
+    const upper = String(spellId).toUpperCase();
+    if (!upper.includes(token) || isInternalSpell(upper) || !hasVisibleSpellIcon(spell)) {
+      continue;
+    }
+    if (upper.startsWith('PASSIVE_')) {
+      passive.push(spellId);
+    } else if (spell?.['@namelocatag'] || spell?.name || spell?.LocalizedNames) {
+      active.push(spellId);
+    }
+  }
+
+  const slotOrder = ['Q', 'W', 'E'];
+  return {
+    active: [...new Set(active)].slice(0, 18).map((id, index) => ({
+      id,
+      slot: slotOrder[index % slotOrder.length],
+    })),
+    passive: [...new Set(passive)].slice(0, 8).map((id) => ({ id, slot: 'P' })),
+  };
+};
+
 const pickLocalizedByTag = (tag) => {
   if (!tag) return '';
   const row = cache.localizationByTag.get(tag);
@@ -197,11 +276,12 @@ const loadData = async () => {
   cache = { loadedAt: now, itemsById, spellsById, localizationByTag };
 };
 
-const mapSpell = (spellId) => {
+const mapSpell = (spellId, slot = null) => {
   const s = cache.spellsById.get(spellId);
   if (!s) {
     return {
       key: spellId,
+      slot,
       name_pt: spellId,
       description_pt: '',
       icon_url: spellIcon(spellId),
@@ -214,6 +294,7 @@ const mapSpell = (spellId) => {
 
   return {
     key: spellId,
+    slot,
     name_pt:
       localizedNameByTag ||
       pickLocale(s.LocalizedNames, 'name', s.name || spellId),
@@ -231,9 +312,15 @@ const upsertTemplateForItem = async (admin, itemId) => {
   }
 
   const refs = collectSpellRefs(item, cache.spellsById);
-  const { active, passive } = splitSpellRefs(refs);
-  const activeSkills = active.map(mapSpell);
-  const passiveSkills = passive.map(mapSpell);
+  const direct = splitSpellRefs(refs);
+  const inferred = direct.active.length + direct.passive.length > 0
+    ? {
+        active: direct.active.map((id, index) => ({ id, slot: ['Q', 'W', 'E'][index % 3] })),
+        passive: direct.passive.map((id) => ({ id, slot: 'P' })),
+      }
+    : inferSpellRefsForItem(item, itemId);
+  const activeSkills = inferred.active.map((entry) => mapSpell(entry.id, entry.slot));
+  const passiveSkills = inferred.passive.map((entry) => mapSpell(entry.id, entry.slot));
   const gameInfoName = await fetchGameInfoItemName(itemId);
   const itemNameByTag = pickLocalizedByTag(locTagFromNode(item, 'name'));
 

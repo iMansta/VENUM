@@ -19,7 +19,7 @@ import { supabase } from './client';
  *     The arbitrage pipeline must keep running with or without cache.
  */
 
-const CACHE_TTL = 15 * 60 * 1000; // 15 minutes
+const CACHE_TTL = 60 * 60 * 1000; // 1 hora
 
 // Track which RPCs are missing so we only warn once per session per RPC.
 const missingRpcWarned = new Set();

@@ -8,7 +8,7 @@ const ALBION_DATA_BASE =
   process.env.VITE_ALBION_DATA_BASE || 'https://west.albion-online-data.com';
 const GAMEINFO_BASE =
   process.env.VITE_GAMEINFO_BASE || 'https://gameinfo.albiononline.com/api/gameinfo';
-const ALBION_GUILD_ID = process.env.ALBION_GUILD_ID || '';
+const ALBION_GUILD_ID = process.env.ALBION_GUILD_ID || '-TW40MAhRHGsv3ow5h_Zdw';
 const ROYAL_CITIES = ['Martlock', 'Thetford', 'Fort Sterling', 'Lymhurst', 'Bridgewatch'];
 const BM_CITY = 'Caerleon';
 const ALBION_RENDER_BUCKET = process.env.ALBION_RENDER_BUCKET || 'albion-render-assets';
@@ -453,6 +453,10 @@ export async function upsertMarketPrices(rows) {
             buy_price_max: row.buy_price_max,
             sell_price_min: row.sell_price_min,
             sell_price_max: row.sell_price_max,
+            buy_price_min_date: row.buy_price_min_date,
+            buy_price_max_date: row.buy_price_max_date,
+            sell_price_min_date: row.sell_price_min_date,
+            sell_price_max_date: row.sell_price_max_date,
           },
         })
       )

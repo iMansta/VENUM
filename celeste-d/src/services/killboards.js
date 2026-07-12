@@ -79,6 +79,32 @@ function playerLine(player) {
   return { name, guildText, ip };
 }
 
+const equipmentValue = (player) => {
+  const equipment = player?.Equipment || player?.equipment || {};
+  return Object.values(equipment).reduce((sum, item) => {
+    if (!item) return sum;
+    return sum + asNumber(item.EstimatedMarketValue || item.estimatedMarketValue);
+  }, 0);
+};
+
+const equipmentLine = (player) => {
+  const equipment = player?.Equipment || player?.equipment || {};
+  const slots = [
+    ['Mão', equipment.MainHand],
+    ['Off', equipment.OffHand],
+    ['Cabeça', equipment.Head],
+    ['Peito', equipment.Armor],
+    ['Bota', equipment.Shoes],
+    ['Capa', equipment.Cape],
+    ['Montaria', equipment.Mount],
+  ];
+  return slots
+    .filter(([, item]) => item?.Type)
+    .slice(0, 7)
+    .map(([label, item]) => `${label}: \`${item.Type}\``)
+    .join('\n') || 'Sem equipamento';
+};
+
 function buildKillEmbed(kill, gid) {
   const id = String(kill?.EventId || kill?.id || '');
   const killer = playerLine(kill?.Killer);
@@ -89,6 +115,7 @@ function buildKillEmbed(kill, gid) {
       (Array.isArray(kill?.Participants) ? kill.Participants.length : 0) ||
       (Array.isArray(kill?.GroupMembers) ? kill.GroupMembers.length : 1)
   );
+  const victimValue = equipmentValue(kill?.Victim);
 
   const killerIsUs = normalize(kill?.Killer?.GuildId) === gid;
   const color = killerIsUs ? 0x16a34a : 0xdc2626; // verde = vitória, vermelho = baixa
@@ -118,8 +145,13 @@ function buildKillEmbed(kill, gid) {
       },
       {
         name: '📊 Combate',
-        value: `Fama: **${fmt(fame)}**\nParticipantes: **${participants}**`,
+        value: `Fama: **${fmt(fame)}**\nParticipantes: **${participants}**\nValor vítima: **${fmt(victimValue)}**`,
         inline: true,
+      },
+      {
+        name: 'Equipamentos do abatido',
+        value: equipmentLine(kill?.Victim),
+        inline: false,
       }
     )
     .setFooter({ text: 'Albion • Killboard' })

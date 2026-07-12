@@ -97,11 +97,21 @@ const writeMetadata = async (admin, payload) => {
   }
 };
 
+class RenderNotFoundError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'RenderNotFoundError';
+  }
+}
+
 const fetchRender = async (url) => {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 12000);
   try {
     const response = await fetch(url, { signal: controller.signal });
+    if (response.status === 404) {
+      throw new RenderNotFoundError('Render Service HTTP 404');
+    }
     if (!response.ok) {
       throw new Error(`Render Service HTTP ${response.status}`);
     }
@@ -166,6 +176,11 @@ export default async function handler(req, res) {
     });
     sendPng(res, req.method === 'HEAD' ? Buffer.alloc(0) : bytes, 'stored');
   } catch (err) {
+    if (err instanceof RenderNotFoundError) {
+      res.setHeader('Cache-Control', 'public, max-age=3600, s-maxage=3600');
+      res.status(404).json({ ok: false, error: err.message, identifier });
+      return;
+    }
     console.error('[api/albion-render]', err);
     res.status(502).json({ ok: false, error: err.message || 'Falha ao renderizar asset' });
   }

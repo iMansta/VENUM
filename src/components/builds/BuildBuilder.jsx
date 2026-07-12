@@ -514,8 +514,13 @@ const SkillSelectorDynamic = ({ slotLabel, itemId, skills, onChange, onClose }) 
   const activeSkills = itemData.active_skills || [];
   const passiveSkills = itemData.passive_skills || [];
   const groupedActive = activeSkills.reduce((acc, skill) => {
-    const raw = String(skill?.key || '').toUpperCase();
-    const group = ['Q', 'W', 'E'].includes(raw[0]) ? raw[0] : 'ACTIVE';
+    const rawSlot = String(skill?.slot || '').toUpperCase();
+    const rawKey = String(skill?.key || '').toUpperCase();
+    const group = ['Q', 'W', 'E'].includes(rawSlot)
+      ? rawSlot
+      : ['Q', 'W', 'E'].includes(rawKey[0])
+        ? rawKey[0]
+        : 'ACTIVE';
     if (!acc[group]) acc[group] = [];
     acc[group].push(skill);
     return acc;
