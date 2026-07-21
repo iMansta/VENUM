@@ -75,6 +75,7 @@ export async function createGuildAdminPairingToken(accessToken) {
 
   let token = '';
   let inserted = null;
+  let lastError = '';
   for (let attempt = 0; attempt < 5; attempt += 1) {
     token = generatePairingCode();
     const { data, error } = await supabase
@@ -91,10 +92,15 @@ export async function createGuildAdminPairingToken(accessToken) {
       inserted = data;
       break;
     }
+    lastError = error?.message || lastError;
   }
 
   if (!inserted) {
-    return { ok: false, status: 500, error: 'Falha ao gerar token de pareamento' };
+    return {
+      ok: false,
+      status: 500,
+      error: `Falha ao gerar token de pareamento${lastError ? `: ${lastError}` : ''}`,
+    };
   }
 
   return {
@@ -139,6 +145,109 @@ async function resolvePairingToken(pairingToken) {
   return { ok: true, tokenRow: data, profile };
 }
 
+async function loadPreviousGuildSnapshot(supabase) {
+  try {
+    const { data } = await supabase
+      .from('guild_metrics_snapshots')
+      .select(
+        'collected_at, member_count, silver_amount, season_points, kill_fame, death_fame, total_fame, alliance_tag, alliance_name, hideout_count, territory_count, headquarters, payload'
+      )
+      .order('collected_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    return data || null;
+  } catch {
+    return null;
+  }
+}
+
+function buildGuildMetricsSnapshot(profile, payload, previous, meta = {}) {
+  const silverAmount = toNullableNumber(payload.silverAmount ?? payload.silver_amount);
+  const seasonPoints = toNullableNumber(payload.seasonPoints ?? payload.season_points);
+  const memberCount = toNullableNumber(payload.memberCount ?? payload.member_count);
+  const note = String(payload.note || payload.admin_note || '').trim().slice(0, 500);
+  const clientId = String(payload.clientId || payload.client_id || '').trim().slice(0, 120);
+
+  return {
+    guild_id: ALBION_GUILD_ID,
+    guild_name: GUILD_NAME,
+    member_count: memberCount ?? toNumber(previous?.member_count),
+    silver_amount: silverAmount ?? toNullableNumber(previous?.silver_amount),
+    season_points: seasonPoints ?? toNullableNumber(previous?.season_points),
+    kill_fame: toNullableNumber(previous?.kill_fame),
+    death_fame: toNullableNumber(previous?.death_fame),
+    total_fame: toNullableNumber(previous?.total_fame),
+    alliance_tag: previous?.alliance_tag || null,
+    alliance_name: previous?.alliance_name || null,
+    hideout_count: toNullableNumber(previous?.hideout_count),
+    territory_count: toNullableNumber(previous?.territory_count),
+    headquarters: previous?.headquarters || null,
+    properties: previous?.payload || null,
+    source: meta.source || 'admin_panel',
+    payload: {
+      submitted_via: meta.submittedVia || 'admin_panel',
+      note: note || null,
+      previous_snapshot_at: previous?.collected_at || null,
+    },
+    submitted_by: profile.id,
+    submitted_by_username: profile.username || profile.full_name || null,
+    client_id: clientId || null,
+    admin_note: note || null,
+    verified_by_admin: true,
+    collected_at: new Date().toISOString(),
+  };
+}
+
+async function persistGuildMetricsSnapshot(supabase, snapshot) {
+  const { data: inserted, error } = await supabase
+    .from('guild_metrics_snapshots')
+    .insert(snapshot)
+    .select('id, collected_at, silver_amount, season_points, member_count, source, submitted_by_username')
+    .single();
+
+  if (error) {
+    return { ok: false, status: 500, error: error.message || 'Falha ao gravar snapshot' };
+  }
+
+  return {
+    ok: true,
+    snapshotId: inserted.id,
+    collectedAt: inserted.collected_at,
+    silverAmount: inserted.silver_amount,
+    seasonPoints: inserted.season_points,
+    memberCount: inserted.member_count,
+    source: inserted.source,
+    submittedBy: inserted.submitted_by_username,
+  };
+}
+
+/** Envio direto pelo painel web (admin logado) — fluxo recomendado. */
+export async function submitGuildAdminMetricsFromSession(accessToken, payload = {}) {
+  const auth = await getProfileFromAccessToken(accessToken);
+  if (!auth.ok) return auth;
+
+  const silverAmount = toNullableNumber(payload.silverAmount ?? payload.silver_amount);
+  const seasonPoints = toNullableNumber(payload.seasonPoints ?? payload.season_points);
+  const memberCount = toNullableNumber(payload.memberCount ?? payload.member_count);
+
+  if (silverAmount == null && seasonPoints == null && memberCount == null) {
+    return {
+      ok: false,
+      status: 400,
+      error: 'Informe ao menos prata, pontos de temporada ou quantidade de membros',
+    };
+  }
+
+  const supabase = getSupabaseAdmin();
+  const previous = await loadPreviousGuildSnapshot(supabase);
+  const snapshot = buildGuildMetricsSnapshot(auth.profile, payload, previous, {
+    source: 'admin_panel',
+    submittedVia: 'admin_panel',
+  });
+
+  return persistGuildMetricsSnapshot(supabase, snapshot);
+}
+
 export async function ingestGuildAdminMetrics(payload = {}, pairingToken = '') {
   const pairing = await resolvePairingToken(pairingToken);
   if (!pairing.ok) return pairing;
@@ -158,75 +267,19 @@ export async function ingestGuildAdminMetrics(payload = {}, pairingToken = '') {
   }
 
   const supabase = getSupabaseAdmin();
-
-  let previous = null;
-  try {
-    const { data } = await supabase
-      .from('guild_metrics_snapshots')
-      .select(
-        'collected_at, member_count, silver_amount, season_points, kill_fame, death_fame, total_fame, alliance_tag, alliance_name, hideout_count, territory_count, headquarters, payload'
-      )
-      .order('collected_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    previous = data || null;
-  } catch {
-    previous = null;
-  }
-
-  const snapshot = {
-    guild_id: ALBION_GUILD_ID,
-    guild_name: GUILD_NAME,
-    member_count: memberCount ?? toNumber(previous?.member_count),
-    silver_amount: silverAmount ?? toNullableNumber(previous?.silver_amount),
-    season_points: seasonPoints ?? toNullableNumber(previous?.season_points),
-    kill_fame: toNullableNumber(previous?.kill_fame),
-    death_fame: toNullableNumber(previous?.death_fame),
-    total_fame: toNullableNumber(previous?.total_fame),
-    alliance_tag: previous?.alliance_tag || null,
-    alliance_name: previous?.alliance_name || null,
-    hideout_count: toNullableNumber(previous?.hideout_count),
-    territory_count: toNullableNumber(previous?.territory_count),
-    headquarters: previous?.headquarters || null,
-    properties: previous?.payload || null,
+  const previous = await loadPreviousGuildSnapshot(supabase);
+  const snapshot = buildGuildMetricsSnapshot(pairing.profile, payload, previous, {
     source: 'admin_anaconda',
-    payload: {
-      submitted_via: 'anaconda_admin',
-      note: note || null,
-      previous_snapshot_at: previous?.collected_at || null,
-    },
-    submitted_by: pairing.profile.id,
-    submitted_by_username:
-      pairing.profile.username || pairing.profile.full_name || pairing.tokenRow.username || null,
-    client_id: clientId || null,
-    admin_note: note || null,
-    verified_by_admin: true,
-    collected_at: new Date().toISOString(),
-  };
+    submittedVia: 'anaconda_admin',
+  });
 
-  const { data: inserted, error } = await supabase
-    .from('guild_metrics_snapshots')
-    .insert(snapshot)
-    .select('id, collected_at, silver_amount, season_points, member_count, source, submitted_by_username')
-    .single();
-
-  if (error) {
-    return { ok: false, status: 500, error: error.message || 'Falha ao gravar snapshot' };
-  }
+  const result = await persistGuildMetricsSnapshot(supabase, snapshot);
+  if (!result.ok) return result;
 
   await supabase
     .from('guild_admin_pairing_tokens')
     .update({ used_at: new Date().toISOString() })
     .eq('id', pairing.tokenRow.id);
 
-  return {
-    ok: true,
-    snapshotId: inserted.id,
-    collectedAt: inserted.collected_at,
-    silverAmount: inserted.silver_amount,
-    seasonPoints: inserted.season_points,
-    memberCount: inserted.member_count,
-    source: inserted.source,
-    submittedBy: inserted.submitted_by_username,
-  };
+  return result;
 }

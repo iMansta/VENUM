@@ -954,54 +954,306 @@ export async function ingestCelesteTelemetry(payload = {}) {
   const clientId = String(payload.clientId || '').trim();
   const observations = Array.isArray(payload.observations) ? payload.observations : [];
   const meta = payload.meta && typeof payload.meta === 'object' ? payload.meta : {};
+  const warnings = [];
 
   if (!clientId) {
     throw new Error('clientId obrigatório');
   }
 
   const now = new Date().toISOString();
+  const profileId = String(meta.profileId || meta.profile_id || '').trim() || null;
+  const username = String(meta.username || meta.albionName || '').trim() || null;
+  const hostUser = String(meta.hostUser || '').trim() || null;
 
-  await supabase.from('celeste_clients').upsert(
-    {
-      client_id: clientId,
-      last_seen_at: now,
-      app_version: String(meta.version || ''),
-      host_name: String(meta.hostName || ''),
-      game_log_path: String(meta.gameLogPath || ''),
-      username: String(meta.username || '').trim() || null,
-      guild_name: GUILD_NAME,
-    },
-    { onConflict: 'client_id' }
-  );
-
-  if (observations.length === 0) {
-    return { clientId, inserted: 0 };
+  if (!profileId && !username) {
+    warnings.push({
+      code: 'identity_missing',
+      message:
+        'Personagem não identificado. Vincule sua conta no menu da Anaconda ou defina ANACONDA_ALBION_NAME.',
+    });
+  } else if (!profileId && username && hostUser && username.toLowerCase() === hostUser.toLowerCase()) {
+    warnings.push({
+      code: 'identity_suspicious',
+      message:
+        'Nome enviado coincide com o usuário Windows — progresso pode não ser atribuído. Vincule a conta VENUM.',
+    });
   }
 
-  const capped = observations.slice(0, 200).map((obs) => ({
+  const clientRow = {
     client_id: clientId,
-    observed_at: obs.observedAt || now,
-    type: String(obs.type || 'raw'),
-    value_numeric:
-      Number.isFinite(Number(obs.valueNumeric)) ? Number(obs.valueNumeric) : null,
-    payload:
+    last_seen_at: now,
+    app_version: String(meta.version || ''),
+    host_name: String(meta.hostName || ''),
+    game_log_path: String(meta.gameLogPath || ''),
+    username,
+    guild_name: GUILD_NAME,
+  };
+  if (profileId) {
+    clientRow.profile_id = profileId;
+  }
+
+  await supabase.from('celeste_clients').upsert(clientRow, { onConflict: 'client_id' });
+
+  if (observations.length === 0) {
+    return { clientId, inserted: 0, warnings };
+  }
+
+  const missionRelevant = new Set([
+    'pve_fame',
+    'fame',
+    'mob_kill',
+    'gathering',
+    'pvp_kill',
+    'big_chest',
+    'chest',
+    'outpost_capture',
+    'outpost',
+    'castle_capture',
+    'castle',
+    'objective',
+  ]);
+
+  const capped = observations.slice(0, 200).map((obs) => {
+    const obsUsername =
+      obs.payload?.username || username || null;
+    const payload =
       obs.payload && typeof obs.payload === 'object'
         ? {
             ...obs.payload,
             client_id: clientId,
-            username: obs.payload?.username || String(meta.username || '').trim() || null,
+            username: obsUsername,
           }
         : {
             raw: String(obs.raw || ''),
             client_id: clientId,
-            username: String(meta.username || '').trim() || null,
-          },
-  }));
+            username: obsUsername,
+          };
+    if (profileId) {
+      payload.profile_id = profileId;
+    }
+    return {
+      client_id: clientId,
+      observed_at: obs.observedAt || now,
+      type: String(obs.type || 'raw'),
+      value_numeric:
+        Number.isFinite(Number(obs.valueNumeric)) ? Number(obs.valueNumeric) : null,
+      payload,
+      profile_id: profileId,
+      username: obsUsername,
+    };
+  });
+
+  const hasMissionObs = capped.some((obs) => missionRelevant.has(String(obs.type || '').toLowerCase()));
 
   const { error } = await supabase.from('celeste_observations').insert(capped);
   if (error) throw error;
 
   const aggregate = await aggregateCelesteObservations(800);
 
-  return { clientId, inserted: capped.length, aggregate };
+  if (hasMissionObs && !profileId && !username) {
+    warnings.push({
+      code: 'profile_unresolved',
+      message:
+        'Telemetria de missão recebida, mas nenhum perfil pôde ser identificado. Vincule a conta VENUM.',
+    });
+  } else if (hasMissionObs && profileId && Number(aggregate?.missionUpdates || 0) === 0) {
+    warnings.push({
+      code: 'mission_no_match',
+      message:
+        'Observações gravadas, mas nenhuma missão ativa casou com os eventos deste ciclo.',
+    });
+  } else if (hasMissionObs && !profileId && username && Number(aggregate?.missionUpdates || 0) === 0) {
+    warnings.push({
+      code: 'profile_unresolved',
+      message: `Personagem "${username}" não casou com nenhum perfil da guilda. Verifique o nome no Hub.`,
+    });
+  }
+
+  if (aggregate?.skipped) {
+    warnings.push({
+      code: 'aggregation_skipped',
+      message: aggregate.reason || 'Agregação de observações não executada.',
+    });
+  }
+
+  return { clientId, inserted: capped.length, aggregate, warnings };
+}
+
+/**
+ * Resolve profile_id a partir de pareamento (client_id), payload ou username.
+ * Mesma ordem de prioridade usada na agregação de observações Celeste.
+ */
+export async function resolveCelesteProfileId(supabase, options = {}) {
+  const clientId = String(options.clientId || '').trim();
+  let profileId = String(options.profileId || '').trim() || null;
+  let username = String(options.username || '').trim() || null;
+
+  if (profileId) {
+    return { profileId, username, source: 'payload' };
+  }
+
+  if (clientId) {
+    const { data: client } = await supabase
+      .from('celeste_clients')
+      .select('profile_id, username')
+      .eq('client_id', clientId)
+      .maybeSingle();
+
+    if (client?.profile_id) {
+      return {
+        profileId: client.profile_id,
+        username: username || client.username || null,
+        source: 'celeste_clients',
+      };
+    }
+    if (!username && client?.username) {
+      username = String(client.username).trim() || null;
+    }
+  }
+
+  if (username) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('id, username, albion_character_name')
+      .or(`username.ilike.${username},albion_character_name.ilike.${username}`)
+      .limit(1)
+      .maybeSingle();
+
+    if (profile?.id) {
+      return {
+        profileId: profile.id,
+        username: profile.username || profile.albion_character_name || username,
+        source: 'profiles_username',
+      };
+    }
+  }
+
+  return { profileId: null, username, source: null };
+}
+
+const parseSilverBalance = (payload = {}) => {
+  const raw =
+    payload.silverBalance ??
+    payload.silver_balance ??
+    payload.balance ??
+    payload.valueNumeric ??
+    payload.value_numeric;
+
+  if (raw == null || raw === '') {
+    return null;
+  }
+
+  if (typeof raw === 'bigint') {
+    return raw >= 0n ? raw : null;
+  }
+
+  const normalized = String(raw).trim().replace(/[^\d-]/g, '');
+  if (!/^-?\d+$/.test(normalized)) {
+    return null;
+  }
+
+  try {
+    const asBigInt = BigInt(normalized);
+    if (asBigInt < 0n) return null;
+    if (asBigInt > BigInt(Number.MAX_SAFE_INTEGER)) {
+      return asBigInt;
+    }
+    return Number(asBigInt);
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Recebe saldo de prata do Banco da Guilda detectado via sniffing passivo (Anaconda).
+ * Persiste em guild_bank_history via RPC com deduplicação temporal.
+ */
+export async function ingestGuildBankBalance(payload = {}) {
+  const supabase = getSupabaseAdmin();
+  const clientId = String(payload.clientId || payload.client_id || '').trim();
+  const meta = payload.meta && typeof payload.meta === 'object' ? payload.meta : {};
+  const guildId = String(
+    payload.guildId || payload.guild_id || meta.guildId || ALBION_GUILD_ID
+  ).trim();
+  const silverBalance = parseSilverBalance(payload);
+  const dedupeWindowSeconds = Number(payload.dedupeWindowSeconds || meta.dedupeWindowSeconds || 60);
+
+  if (!clientId) {
+    return { ok: false, status: 400, error: 'clientId obrigatório', code: 'client_id_missing' };
+  }
+
+  if (silverBalance == null) {
+    return {
+      ok: false,
+      status: 400,
+      error: 'silverBalance inválido ou ausente',
+      code: 'silver_balance_invalid',
+    };
+  }
+
+  const identity = await resolveCelesteProfileId(supabase, {
+    clientId,
+    profileId: payload.profileId || payload.profile_id || meta.profileId || meta.profile_id,
+    username:
+      payload.username ||
+      meta.username ||
+      meta.albionName ||
+      meta.albion_character_name,
+  });
+
+  if (!identity.profileId) {
+    return {
+      ok: false,
+      status: 422,
+      error:
+        'Não foi possível resolver profile_id a partir do client_id. Vincule a conta VENUM na Anaconda.',
+      code: 'profile_unresolved',
+      clientId,
+    };
+  }
+
+  const balanceForRpc =
+    typeof silverBalance === 'bigint' ? silverBalance.toString() : silverBalance;
+
+  const { data, error } = await supabase.rpc('record_guild_bank_balance', {
+    p_guild_id: guildId,
+    p_silver_balance: balanceForRpc,
+    p_collected_by_profile_id: identity.profileId,
+    p_dedupe_window_seconds: Number.isFinite(dedupeWindowSeconds)
+      ? Math.max(5, Math.min(300, Math.floor(dedupeWindowSeconds)))
+      : 60,
+  });
+
+  if (error) {
+    throw new Error(error.message || 'Falha ao gravar saldo do banco da guilda');
+  }
+
+  const row = Array.isArray(data) ? data[0] : data;
+  const inserted = Boolean(row?.inserted);
+  const historyId = row?.history_id || null;
+  const skippedReason = row?.skipped_reason || null;
+
+  // Mantém celeste_clients alinhado ao último collector conhecido.
+  await supabase.from('celeste_clients').upsert(
+    {
+      client_id: clientId,
+      profile_id: identity.profileId,
+      username: identity.username,
+      guild_name: GUILD_NAME,
+      last_seen_at: new Date().toISOString(),
+    },
+    { onConflict: 'client_id' }
+  );
+
+  return {
+    ok: true,
+    inserted,
+    historyId,
+    skippedReason,
+    silverBalance: balanceForRpc,
+    guildId,
+    collectedByProfileId: identity.profileId,
+    profileSource: identity.source,
+    clientId,
+  };
 }

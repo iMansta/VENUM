@@ -99,7 +99,12 @@ export const joinMission = async (missionId, profileId) => {
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      if (error.code === '23505') {
+        return { success: true, data: null, alreadyJoined: true };
+      }
+      throw error;
+    }
     return { success: true, data };
   } catch (error) {
     console.error('Join mission error:', error);

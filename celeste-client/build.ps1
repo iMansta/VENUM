@@ -25,7 +25,7 @@ $ldflags = @(
   "-H=windowsgui",
   "-X", "github.com/venum-i/anaconda/config.APIBase=https://venum-eight.vercel.app",
   "-X", "github.com/venum-i/anaconda/config.AgentToken=venum_celeste_bmdvk_7Xk9mP2wQ5nR8tY4vL6jH1sF3dA0cE",
-  "-X", "github.com/venum-i/anaconda/config.Version=1.2.0"
+  "-X", "github.com/venum-i/anaconda/config.Version=1.3.3"
 ) -join " "
 
 Write-Host "[anaconda] go mod tidy..."

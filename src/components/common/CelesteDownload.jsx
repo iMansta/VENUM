@@ -3,24 +3,25 @@ import { Download, CheckCircle2, Monitor, ShieldAlert } from 'lucide-react';
 const MEMBER_STEPS = [
   'Baixe o instalador Anaconda-Setup.exe',
   'Siga o assistente e clique em Concluir',
-  'A Anaconda inicia em segundo plano automaticamente',
+  'No painel Missões, gere um token e vincule via bandeja (Vincular conta VENUM)',
+  'A Anaconda inicia em segundo plano e rastreia progresso automaticamente',
 ];
 
 const ADMIN_STEPS = [
-  'Baixe a Anaconda Admin',
+  'Baixe a Anaconda Admin (mesma sincronização da versão comum)',
   'Gere um token de pareamento no painel administrativo',
-  'Abra o formulário local, confira os valores no Albion e envie',
+  'Use o menu da bandeja para enviar métricas da guilda e ver o log ao vivo',
 ];
 
 const CelesteDownload = ({ compact = false, variant = 'member' }) => {
   const isAdmin = variant === 'admin';
   const title = isAdmin ? 'Anaconda Admin' : 'Anaconda';
   const description = isAdmin
-    ? 'Ferramenta exclusiva para administradores enviarem prata, pontos de temporada e membros com confirmação manual.'
+    ? 'Versão completa da Anaconda (missões, preços, telemetria) com envio manual de prata, temporada e membros para administradores.'
     : 'Instalador com assistente para usuário leigo. Após instalar, roda em segundo plano como o Albion Data Client.';
   const steps = isAdmin ? ADMIN_STEPS : MEMBER_STEPS;
-  const setupHref = isAdmin ? '/downloads/Anaconda-Admin-Setup.exe' : '/downloads/Anaconda-Setup.exe';
-  const setupName = isAdmin ? 'Anaconda-Admin-Setup.exe' : 'Anaconda-Setup.exe';
+  const setupHref = isAdmin ? '/downloads/anaconda-admin.exe' : '/downloads/Anaconda-Setup.exe';
+  const setupName = isAdmin ? 'anaconda-admin.exe' : 'Anaconda-Setup.exe';
   const zipHref = isAdmin ? '/downloads/anaconda-admin.zip' : '/downloads/anaconda.zip';
   const zipName = isAdmin ? 'anaconda-admin-venum.zip' : 'anaconda-venum.zip';
 
@@ -102,15 +103,16 @@ const CelesteDownload = ({ compact = false, variant = 'member' }) => {
                 curto gerado no painel.
               </p>
               <p className="text-gray-500">
-                A Anaconda Admin abre um formulário local para confirmar prata, temporada e membros
-                antes de gravar no hub.
+                Inclui sync automática, missões PvE, preços e um formulário local para confirmar
+                prata/temporada antes de gravar no hub.
               </p>
             </>
           ) : (
             <>
               <p>
-                <strong className="text-white">Nenhuma chave</strong> — só instalar. A Anaconda fala
-                com o hub VENUM automaticamente.
+                <strong className="text-white">Vincule uma vez</strong> — gere um token no painel
+                Missões e cole na bandeja. Depois disso, o progresso individual não depende de
+                adivinhar o nome do personagem.
               </p>
               <p className="text-gray-500">
                 Bandeja do Windows: pausar, sincronizar agora ou sair. Inicia com o Windows após
@@ -145,8 +147,8 @@ const CelesteDownload = ({ compact = false, variant = 'member' }) => {
       </div>
 
       <p className="text-[11px] text-gray-500">
-        Windows 10/11 · sem Node.js · guilda I V E N U M I
-        {isAdmin ? ' · uso restrito a administradores' : ' · sem chave manual'}
+        Windows 10/11 · sem Node.js · guilda I V E N U M I · versão 1.3.3
+        {isAdmin ? ' · uso restrito a administradores' : ' · pareamento recomendado no painel Missões'}
       </p>
       <p className="text-[11px] text-amber-500/80">
         Se o instalador `.exe` não estiver disponível no deploy atual, use o pacote ZIP de

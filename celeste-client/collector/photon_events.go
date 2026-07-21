@@ -2,10 +2,89 @@ package collector
 
 import (
 	"math"
+	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/venum-i/anaconda/api"
 )
+
+// Constantes plugáveis — atualize após dump de rede ao abrir o banco da guilda.
+// Sobrescreva via ANACONDA_GUILD_BANK_EVENT_CODE e ANACONDA_GUILD_BANK_SILVER_KEY.
+var (
+	PhotonCodeGuildBankUpdate = envPhotonInt16("ANACONDA_GUILD_BANK_EVENT_CODE", 150)
+	GuildBankSilverKey        = byte(envPhotonInt("ANACONDA_GUILD_BANK_SILVER_KEY", 5))
+)
+
+// GuildBankEvent representa saldo extraído com sucesso do protocolo Photon.
+type GuildBankEvent struct {
+	SilverBalance int64
+	EventCode     int16
+	GuildID       string
+}
+
+// GuildBankChannel envia eventos detectados para o loop principal (envio imediato ao hub).
+var GuildBankChannel = make(chan GuildBankEvent, 10)
+
+func envPhotonInt16(key string, fallback int16) int16 {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return fallback
+	}
+	n, err := strconv.ParseInt(raw, 10, 16)
+	if err != nil {
+		return fallback
+	}
+	return int16(n)
+}
+
+func envPhotonInt(key string, fallback int) int {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return fallback
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil {
+		return fallback
+	}
+	return n
+}
+
+// ParseGuildBankUpdate extrai saldo a partir do dicionário decodificado pelo photon/parser.
+func ParseGuildBankUpdate(parameters map[byte]interface{}) (*GuildBankEvent, bool) {
+	if parameters == nil {
+		return nil, false
+	}
+
+	val, exists := parameters[GuildBankSilverKey]
+	if !exists {
+		return nil, false
+	}
+
+	raw := photonInt64Value(val)
+	if raw <= 0 {
+		return nil, false
+	}
+
+	silver := fixpointOrRawToSilver(raw)
+	if silver <= 0 {
+		silver = raw
+	}
+
+	return &GuildBankEvent{
+		SilverBalance: silver,
+		EventCode:     PhotonCodeGuildBankUpdate,
+	}, true
+}
+
+func pushGuildBankEvent(ev GuildBankEvent) {
+	select {
+	case GuildBankChannel <- ev:
+	default:
+		// Canal cheio — leitura permanece em guildBankReadings para drenagem no ciclo.
+	}
+}
 
 // Códigos de evento Photon do Albion (Protocol18). Valores extraídos do
 // protocolo público (albion-lens / albiondata-client).
@@ -36,6 +115,7 @@ func (s *PassiveSniffer) onPhotonEvent(code byte, params map[byte]interface{}) {
 	case evKillRewardedNoFame:
 		s.handlePhotonKillNoFame(params)
 	}
+	s.handleGuildBankPhotonEvent(code, params)
 }
 
 func (s *PassiveSniffer) handlePhotonUpdateFame(params map[byte]interface{}) {

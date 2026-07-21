@@ -23,6 +23,7 @@ const builtAdminExe = join(clientDir, 'anaconda-admin.exe');
 const installBat = existsSync(join(clientDir, 'Instalar-Anaconda.bat'))
   ? join(clientDir, 'Instalar-Anaconda.bat')
   : join(clientDir, 'Instalar-Celeste.bat');
+const debugBat = join(clientDir, 'Anaconda-Debug.bat');
 
 const isCI = Boolean(
   process.env.VERCEL ||
@@ -141,6 +142,27 @@ if ((!hasExe || !hasAdminExe) && existsSync(join(clientDir, 'go.mod')) && !isCI)
   }
 }
 
+if (existsSync(builtExe)) {
+  if (builtExe !== outExe) {
+    try {
+      copyFileSync(builtExe, outExe);
+    } catch (err) {
+      console.warn(`[celeste:pack] não foi possível copiar ${builtExe}: ${err.message}`);
+    }
+  }
+  hasExe = existsSync(outExe);
+}
+if (existsSync(builtAdminExe)) {
+  if (builtAdminExe !== outAdminExe) {
+    try {
+      copyFileSync(builtAdminExe, outAdminExe);
+    } catch (err) {
+      console.warn(`[celeste:pack] não foi possível copiar ${builtAdminExe}: ${err.message}`);
+    }
+  }
+  hasAdminExe = existsSync(outAdminExe);
+}
+
 if (!hasExe && existsSync(outExe)) {
   hasExe = true;
 }
@@ -171,6 +193,9 @@ if (!hasExe) {
 if (existsSync(installBat)) {
   copyFileSync(installBat, join(outDir, 'Instalar-Anaconda.bat'));
   copyFileSync(installBat, join(outDir, 'Instalar-Celeste.bat'));
+}
+if (existsSync(debugBat)) {
+  copyFileSync(debugBat, join(outDir, 'Anaconda-Debug.bat'));
 }
 
 if (existsSync(sourceIcon)) {
@@ -203,6 +228,12 @@ if (existsSync(join(outDir, 'Instalar-Anaconda.bat'))) {
   zipEntries.push({
     name: 'Instalar-Anaconda.bat',
     data: readFileSync(join(outDir, 'Instalar-Anaconda.bat')),
+  });
+}
+if (existsSync(join(outDir, 'Anaconda-Debug.bat'))) {
+  zipEntries.push({
+    name: 'Anaconda-Debug.bat',
+    data: readFileSync(join(outDir, 'Anaconda-Debug.bat')),
   });
 }
 

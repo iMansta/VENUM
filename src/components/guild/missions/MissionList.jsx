@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Target, Filter, History, Award, Users, User } from 'lucide-react';
-import { getActiveMissions, getUserMissionHistory } from '@/lib/supabase/missions';
+import { getActiveMissions, getUserMissionHistory, joinMission } from '@/lib/supabase/missions';
 import { getMissionTargetLabel } from '@/constants/missionTargets';
 import MissionCard from './MissionCard';
 
@@ -31,15 +31,31 @@ const MissionList = ({ userId, userRole }) => {
     setHistoryLoaded(true);
   };
 
+  const autoEnrollIndividualMissions = async (missionRows) => {
+    if (!userId) return missionRows;
+    const pending = (missionRows || []).filter(
+      (m) =>
+        m.mission_scope !== 'group' &&
+        !m.mission_participants?.some((p) => p.profile_id === userId)
+    );
+    if (pending.length === 0) return missionRows;
+
+    await Promise.all(pending.map((m) => joinMission(m.id, userId).catch(() => null)));
+
+    const { success, data } = await getActiveMissions();
+    return success ? data || missionRows : missionRows;
+  };
+
   const loadMissions = async () => {
     setLoading(true);
     try {
       const { success, data } = await getActiveMissions();
       if (success) {
+        const enrolled = await autoEnrollIndividualMissions(data);
         // Missões INDIVIDUAIS: quando o jogador atinge a própria meta, a missão some
         // da lista DELE (mas continua para os demais). Missões de GRUPO permanecem
         // visíveis para todos até a meta coletiva ser atingida (aí são arquivadas).
-        const visibleMissions = (data || []).filter((m) => {
+        const visibleMissions = (enrolled || []).filter((m) => {
           if (m.mission_scope === 'group') return true;
           const mine = m.mission_participants?.find((p) => p.profile_id === userId);
           const target = Number(m.target_quantity) || 0;

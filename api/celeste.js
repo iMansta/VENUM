@@ -11,8 +11,10 @@ import {
   syncGameEvents,
   syncMissionNotifications,
   ingestCelesteTelemetry,
+  ingestGuildBankBalance,
   runFullServerSync,
 } from '../server/celesteService.mjs';
+import { redeemCelestePairingToken } from '../server/celestePairingService.mjs';
 import { ingestGuildAdminMetrics } from '../server/guildAdminService.mjs';
 
 const cors = (res) => {
@@ -108,6 +110,24 @@ export default async function handler(req, res) {
       case 'telemetry': {
         const result = await ingestCelesteTelemetry(req.body || {});
         res.status(200).json({ ok: true, ...result });
+        break;
+      }
+      case 'guild-bank': {
+        const result = await ingestGuildBankBalance(req.body || {});
+        if (!result.ok) {
+          res.status(result.status || 400).json(result);
+          return;
+        }
+        res.status(200).json(result);
+        break;
+      }
+      case 'pair-redeem': {
+        const result = await redeemCelestePairingToken(req.body || {});
+        if (!result.ok) {
+          res.status(result.status || 400).json(result);
+          return;
+        }
+        res.status(200).json(result);
         break;
       }
       case 'guild-admin-metrics': {

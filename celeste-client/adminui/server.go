@@ -5,10 +5,12 @@ import (
 	"embed"
 	"fmt"
 	"html/template"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/venum-i/anaconda/api"
@@ -25,7 +27,14 @@ type Server struct {
 	clientID string
 	token    string
 	srv      *http.Server
+	mu       sync.Mutex
+	running  bool
+	baseURL  string
 }
+
+const defaultAdminPort = 17341
+
+var adminPortFallbacks = []int{17341, 17342, 17343, 17344}
 
 func New(client *api.Client, clientID, pairingToken string) *Server {
 	return &Server{
@@ -35,7 +44,47 @@ func New(client *api.Client, clientID, pairingToken string) *Server {
 	}
 }
 
+func (s *Server) SetToken(token string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.token = strings.TrimSpace(strings.ToUpper(token))
+}
+
+func (s *Server) Token() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.token
+}
+
+func (s *Server) BaseURL() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.baseURL != "" {
+		return s.baseURL
+	}
+	return fmt.Sprintf("http://127.0.0.1:%d/", defaultAdminPort)
+}
+
+func (s *Server) EnsureRunning(ctx context.Context) (string, error) {
+	s.mu.Lock()
+	running := s.running
+	url := s.baseURL
+	s.mu.Unlock()
+	if running && url != "" {
+		return url, nil
+	}
+	return s.Start(ctx)
+}
+
 func (s *Server) Start(ctx context.Context) (string, error) {
+	s.mu.Lock()
+	if s.running {
+		url := s.baseURL
+		s.mu.Unlock()
+		return url, nil
+	}
+	s.mu.Unlock()
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", s.handleForm)
 	mux.HandleFunc("/submit", s.handleSubmit)
@@ -44,8 +93,21 @@ func (s *Server) Start(ctx context.Context) (string, error) {
 		_, _ = w.Write([]byte("ok"))
 	})
 
+	var ln net.Listener
+	var listenErr error
+	for _, port := range adminPortFallbacks {
+		addr := fmt.Sprintf("127.0.0.1:%d", port)
+		ln, listenErr = net.Listen("tcp", addr)
+		if listenErr == nil {
+			break
+		}
+	}
+	if ln == nil {
+		return "", fmt.Errorf("não foi possível abrir porta local (%v)", listenErr)
+	}
+
+	baseURL := fmt.Sprintf("http://%s/", ln.Addr().String())
 	s.srv = &http.Server{
-		Addr:              "127.0.0.1:17341",
 		Handler:           mux,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
@@ -55,18 +117,36 @@ func (s *Server) Start(ctx context.Context) (string, error) {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
 		_ = s.srv.Shutdown(shutdownCtx)
+		_ = ln.Close()
+		s.mu.Lock()
+		s.running = false
+		s.baseURL = ""
+		s.mu.Unlock()
 	}()
 
 	go func() {
-		if err := s.srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logger.Warn("Painel admin local: %v", err)
+		if err := s.srv.Serve(ln); err != nil && err != http.ErrServerClosed {
+			logger.Error("Painel admin local encerrado: %v", err)
+			s.mu.Lock()
+			s.running = false
+			s.baseURL = ""
+			s.mu.Unlock()
 		}
 	}()
 
-	if err := waitUntilReady("http://127.0.0.1:17341/health", 2*time.Second); err != nil {
+	healthURL := baseURL + "health"
+	if err := waitUntilReady(healthURL, 8*time.Second); err != nil {
+		_ = s.srv.Close()
 		return "", err
 	}
-	return "http://127.0.0.1:17341/", nil
+
+	s.mu.Lock()
+	s.running = true
+	s.baseURL = baseURL
+	url := s.baseURL
+	s.mu.Unlock()
+	logger.Info("Painel admin local escutando em %s", url)
+	return url, nil
 }
 
 func waitUntilReady(url string, timeout time.Duration) error {
@@ -95,6 +175,7 @@ type formView struct {
 	SeasonPoints string
 	MemberCount  string
 	Note         string
+	PairingToken string
 }
 
 func (s *Server) handleForm(w http.ResponseWriter, r *http.Request) {
@@ -104,10 +185,11 @@ func (s *Server) handleForm(w http.ResponseWriter, r *http.Request) {
 	}
 
 	view := formView{
-		APIBase:     config.APIBase,
-		Version:     config.Version,
-		ClientID:    s.clientID,
-		TokenMasked: maskToken(s.token),
+		APIBase:      config.APIBase,
+		Version:      config.Version,
+		ClientID:     s.clientID,
+		TokenMasked:  maskToken(s.token),
+		PairingToken: s.token,
 	}
 	if msg := strings.TrimSpace(r.URL.Query().Get("error")); msg != "" {
 		view.Error = msg

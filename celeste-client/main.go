@@ -2,12 +2,13 @@ package main
 
 import (
 	"os"
-	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"syscall"
 
 	"github.com/getlantern/systray"
+	"github.com/venum-i/anaconda/api"
+	"github.com/venum-i/anaconda/appui"
 	"github.com/venum-i/anaconda/config"
 	"github.com/venum-i/anaconda/logger"
 	"github.com/venum-i/anaconda/syncer"
@@ -41,7 +42,9 @@ func onReady() {
 	systray.SetTooltip("Anaconda — I V E N U M I (rodando em segundo plano)")
 
 	mPanel := systray.AddMenuItem("Abrir Painel VENUM", "Abre o painel web da guilda")
-	mLogs := systray.AddMenuItem("Abrir pasta de logs", "Abre os logs locais da Anaconda")
+	mPair := systray.AddMenuItem("Vincular conta VENUM", "Cola token gerado no painel Missões")
+	mLogs := systray.AddMenuItem("Abrir arquivo de log", "Abre anaconda.log no Bloco de Notas (Ctrl+F para buscar)")
+	mLogsTail := systray.AddMenuItem("Ver log ao vivo (PowerShell)", "Tail do log em tempo real")
 	systray.AddSeparator()
 	mSync := systray.AddMenuItem("Sincronizar agora", "Força um ciclo")
 	mPause := systray.AddMenuItem("Pausar", "Pausa sincronização automática")
@@ -50,36 +53,9 @@ func onReady() {
 	systray.AddSeparator()
 	mQuit := systray.AddMenuItem("Sair", "Encerra a Anaconda")
 
-	go func() {
-		for {
-			select {
-			case <-mPanel.ClickedCh:
-				openURL(config.APIBase + "/admin")
-			case <-mLogs.ClickedCh:
-				openFolder(filepath.Join(os.Getenv("LOCALAPPDATA"), "VENUM-Anaconda", "logs"))
-			case <-mSync.ClickedCh:
-				logger.Info("Sincronização manual solicitada")
-				syncer.TriggerNow()
-			case <-mPause.ClickedCh:
-				p := syncer.IsPaused()
-				syncer.SetPaused(!p)
-				if syncer.IsPaused() {
-					mPause.SetTitle("Retomar")
-					mStatus.SetTitle("Status: Pausado")
-					logger.Info("Sincronização pausada")
-				} else {
-					mPause.SetTitle("Pausar")
-					mStatus.SetTitle("Status: Ativo")
-					logger.Info("Sincronização retomada")
-					syncer.TriggerNow()
-				}
-			case <-mQuit.ClickedCh:
-				logger.Info("Encerrando Anaconda")
-				systray.Quit()
-				os.Exit(0)
-			}
-		}
-	}()
+	hubClient := api.New()
+	appui.WirePairingMenu(mPair, hubClient)
+	appui.WireCommonTray(mPanel, mLogs, mLogsTail, mSync, mPause, mStatus, mQuit, config.APIBase+"/guild", nil)
 }
 
 func onExit() {}
@@ -101,21 +77,4 @@ func loadTrayIcon() []byte {
 		}
 	}
 	return nil
-}
-
-func openURL(url string) {
-	cmd := exec.Command("rundll32", "url.dll,FileProtocolHandler", url)
-	if err := cmd.Start(); err != nil {
-		logger.Warn("Não foi possível abrir painel no navegador: %v", err)
-	}
-}
-
-func openFolder(path string) {
-	if path == "" {
-		return
-	}
-	cmd := exec.Command("explorer.exe", path)
-	if err := cmd.Start(); err != nil {
-		logger.Warn("Não foi possível abrir pasta de logs: %v", err)
-	}
 }

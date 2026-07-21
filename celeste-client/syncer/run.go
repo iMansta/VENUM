@@ -69,14 +69,20 @@ func getMobFameThresholds() []int {
 
 func RunLoop(stop <-chan struct{}) {
 	client := api.New()
-	clientID := collector.EnsureClientID()
 	watcher := collector.NewWatcher()
 	sniffer := collector.NewPassiveSniffer()
 	lastGuild := time.Time{}
 
 	logger.Info("Anaconda — guilda %s", config.GuildName)
 	logger.Info("Hub: %s", config.APIBase)
-	logger.Info("Client ID: %s", clientID)
+	if link := collector.LoadProfileLink(); link != nil {
+		logger.Info("Conta VENUM vinculada: %s", link.Username)
+	} else {
+		logger.Warn("Conta VENUM não vinculada — gere um token no painel Missões e use 'Vincular conta VENUM' na bandeja.")
+	}
+	if collector.GuildBankDebugEnabled() {
+		logger.Info("Debug banco guilda: ON — busque [GuildBankDebug] no log (Bloco de Notas)")
+	}
 
 	if err := client.Ping(); err != nil {
 		logger.Error("Falha ao conectar ao hub: %v", err)
@@ -85,7 +91,10 @@ func RunLoop(stop <-chan struct{}) {
 		logger.Info("Conectado ao hub VENUM")
 	}
 
-	runCycle(client, clientID, watcher, sniffer, &lastGuild)
+	go collector.StartNetworkSniffer(sniffer, "", stop)
+	go runGuildBankListener(client, stop)
+
+	runCycle(client, watcher, sniffer, &lastGuild)
 
 	ticker := time.NewTicker(config.SyncInterval)
 	defer ticker.Stop()
@@ -96,13 +105,13 @@ func RunLoop(stop <-chan struct{}) {
 			return
 		case <-ticker.C:
 			if !paused.Load() {
-				runCycle(client, clientID, watcher, sniffer, &lastGuild)
+				runCycle(client, watcher, sniffer, &lastGuild)
 			}
 		}
 	}
 }
 
-func runCycle(client *api.Client, clientID string, watcher *collector.Watcher, sniffer *collector.PassiveSniffer, lastGuild *time.Time) {
+func runCycle(client *api.Client, watcher *collector.Watcher, sniffer *collector.PassiveSniffer, lastGuild *time.Time) {
 	if !running.CompareAndSwap(false, true) {
 		return
 	}
@@ -115,17 +124,26 @@ func runCycle(client *api.Client, clientID string, watcher *collector.Watcher, s
 	start := time.Now()
 	logger.Info("Iniciando ciclo de sincronização")
 
+	flushPendingTelemetry(client)
+	flushPendingGuildBank(client)
+
 	// Identidade do personagem Albion (env/arquivo). Usada para separar o
 	// progresso individual de cada usuário. Pode ser complementada pela
 	// detecção via Photon (Join) de ciclos anteriores ou deste ciclo.
 	albionName := collector.ResolveAlbionName()
 	if albionName == "" && sniffer != nil {
 		if detected := sniffer.DetectedCharacter(); detected != "" {
-			collector.PersistAlbionName(detected)
+			if collector.PersistAlbionName(detected) {
+				logger.Info("Personagem Albion alterado/detectado via rede (Join): %s", detected)
+			}
 			albionName = detected
 			logger.Info("Personagem Albion identificado via rede (Join): %s", albionName)
 		}
 	}
+
+	clientID := collector.EnsureClientID()
+	profileLink := collector.LoadProfileLink()
+	hostUser := os.Getenv("USERNAME")
 
 	if shouldSyncPrices(clientID) {
 		if err := syncPrices(client); err != nil {
@@ -137,8 +155,8 @@ func runCycle(client *api.Client, clientID string, watcher *collector.Watcher, s
 
 	if time.Since(*lastGuild) >= config.GuildEvery {
 		guildUser := albionName
-		if guildUser == "" {
-			guildUser = os.Getenv("USERNAME")
+		if guildUser == "" && profileLink != nil {
+			guildUser = profileLink.Username
 		}
 		guildSync, err := client.SyncGuild(clientID, guildUser)
 		if err != nil {
@@ -168,18 +186,18 @@ func runCycle(client *api.Client, clientID string, watcher *collector.Watcher, s
 	// Detecção silenciosa do personagem local se ainda não tivermos a identidade.
 	if albionName == "" {
 		if detected := watcher.LikelyLocalPlayer(); detected != "" {
-			collector.PersistAlbionName(detected)
+			if collector.PersistAlbionName(detected) {
+				logger.Info("Personagem Albion alterado/detectado automaticamente: %s", detected)
+				clientID = collector.EnsureClientID()
+			}
 			albionName = detected
 			logger.Info("Personagem Albion identificado automaticamente: %s", albionName)
 		}
 	}
 
-	hostUser := os.Getenv("USERNAME")
-	identity := albionName
-	if identity == "" {
-		// Fallback temporário até detectar o personagem; o hub tenta casar por
-		// nome de usuário/personagem e, quando falha, mantém a observação sem perfil.
-		identity = hostUser
+	identity := strings.TrimSpace(albionName)
+	if identity == "" && profileLink != nil {
+		identity = profileLink.Username
 	}
 
 	meta := map[string]any{
@@ -189,6 +207,10 @@ func runCycle(client *api.Client, clientID string, watcher *collector.Watcher, s
 		"albionName":  albionName,
 		"hostUser":    hostUser,
 		"gameLogPath": watcher.Path(),
+	}
+	if profileLink != nil {
+		meta["profileId"] = profileLink.ProfileID
+		meta["profileLinked"] = true
 	}
 	if sniffer != nil {
 		ready, capErr := sniffer.Status()
@@ -233,13 +255,24 @@ func runCycle(client *api.Client, clientID string, watcher *collector.Watcher, s
 		}
 	}
 
+	var guildBankReadings []collector.GuildBankReading
+	if sniffer != nil {
+		guildBankReadings = sniffer.DrainGuildBankReadings()
+		if len(guildBankReadings) > 0 {
+			logger.Info("Banco guilda: %d leitura(s) detectada(s) via Photon", len(guildBankReadings))
+		}
+	}
+
 	meta["mob_fame_thresholds"] = getMobFameThresholds()
 
 	// Finaliza a identidade com a detecção via Photon (Join) capturada neste
 	// ciclo — fonte mais confiável que a heurística de logs.
 	if albionName == "" && sniffer != nil {
 		if detected := sniffer.DetectedCharacter(); detected != "" {
-			collector.PersistAlbionName(detected)
+			if collector.PersistAlbionName(detected) {
+				logger.Info("Personagem Albion alterado/detectado via rede (Join): %s", detected)
+				clientID = collector.EnsureClientID()
+			}
 			albionName = detected
 			identity = detected
 			meta["username"] = identity
@@ -248,15 +281,30 @@ func runCycle(client *api.Client, clientID string, watcher *collector.Watcher, s
 		}
 	}
 
+	// Recarrega vínculo — o usuário pode parear pela bandeja durante o ciclo
+	// (ex.: enquanto o sync de preços ainda roda).
+	if link := collector.LoadProfileLink(); link != nil {
+		profileLink = link
+		if identity == "" {
+			identity = link.Username
+			meta["username"] = identity
+		}
+		meta["profileId"] = link.ProfileID
+		meta["profileLinked"] = true
+	}
+
+	warnIdentityIssues(albionName, hostUser, profileLink != nil)
+
 	if extra := deriveDynamicMobKillsFromFame(observations, getMobFameThresholds()); len(extra) > 0 {
 		observations = append(observations, extra...)
 		logger.Info("Photon: %d kill(s) inferido(s) por fama PvE", len(extra))
 	}
 
-	// Carimba a identidade em todas as observações (inclui heurísticas de rede
-	// e mob kills dinâmicos que não trazem o personagem no log) para que o hub
-	// consiga atribuir o progresso ao perfil correto.
-	stampObservationIdentity(observations, identity)
+	profileID := ""
+	if profileLink != nil {
+		profileID = profileLink.ProfileID
+	}
+	stampObservationIdentity(observations, identity, profileID)
 
 	if logPath := watcher.Path(); logPath != "" {
 		lines, parsed := watcher.LastReadStats()
@@ -277,33 +325,24 @@ func runCycle(client *api.Client, clientID string, watcher *collector.Watcher, s
 		} else {
 			logger.Warn("Logs Albion: %v", err)
 		}
-		if _, telErr := client.SendTelemetry(api.TelemetryPayload{
+		sendTelemetry(client, api.TelemetryPayload{
 			ClientID:     clientID,
 			Observations: []api.Observation{},
 			Meta:         meta,
-		}); telErr != nil {
-			logger.Warn("Heartbeat: %v", telErr)
-		}
+		})
 	} else if len(observations) > 0 {
-		inserted, telErr := client.SendTelemetry(api.TelemetryPayload{
+		sendTelemetry(client, api.TelemetryPayload{
 			ClientID:     clientID,
 			Observations: observations,
 			Meta:         meta,
 		})
-		if telErr != nil {
-			logger.Warn("Telemetria: %v", telErr)
-		} else {
-			logger.Info("%d observações locais enviadas", inserted)
-		}
 	} else {
 		logger.Info("Nenhuma observação nova no log do Albion neste ciclo")
-		if _, telErr := client.SendTelemetry(api.TelemetryPayload{
+		sendTelemetry(client, api.TelemetryPayload{
 			ClientID:     clientID,
 			Observations: []api.Observation{},
 			Meta:         meta,
-		}); telErr != nil {
-			logger.Warn("Heartbeat: %v", telErr)
-		}
+		})
 	}
 
 	if err := client.SyncEvents(); err != nil {
@@ -316,20 +355,6 @@ func runCycle(client *api.Client, clientID string, watcher *collector.Watcher, s
 
 	lastOK.Store(time.Now().Unix())
 	logger.Info("Ciclo concluído em %.1fs — Watching Albion", time.Since(start).Seconds())
-}
-
-func stampObservationIdentity(obs []api.Observation, username string) {
-	if strings.TrimSpace(username) == "" {
-		return
-	}
-	for i := range obs {
-		if obs[i].Payload == nil {
-			obs[i].Payload = map[string]any{}
-		}
-		if v, ok := obs[i].Payload["username"]; !ok || strings.TrimSpace(toStr(v)) == "" {
-			obs[i].Payload["username"] = username
-		}
-	}
 }
 
 func toStr(v any) string {
@@ -447,11 +472,10 @@ func syncPricesLocal(client *api.Client) (total int, failedBatches int) {
 func TriggerNow() {
 	go func() {
 		client := api.New()
-		clientID := collector.EnsureClientID()
 		watcher := collector.NewWatcher()
 		sniffer := collector.NewPassiveSniffer()
 		last := time.Time{}.Add(-config.GuildEvery)
-		runCycle(client, clientID, watcher, sniffer, &last)
+		runCycle(client, watcher, sniffer, &last)
 	}()
 }
 
@@ -557,13 +581,22 @@ func deriveDynamicMobKillsFromFame(observations []api.Observation, thresholds []
 
 		out = append(out, api.Observation{
 			Type:         "mob_kill",
-			ObservedAt:   time.Now().UTC().Format(time.RFC3339),
+			ObservedAt:   firstNonEmpty(obs.ObservedAt, time.Now().UTC().Format(time.RFC3339)),
 			ValueNumeric: 1,
 			Payload:      payload,
 		})
 	}
 
 	return out
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if strings.TrimSpace(v) != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 func numberFromAny(v any) (int, bool) {

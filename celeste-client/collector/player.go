@@ -12,11 +12,10 @@ import (
 //
 // Ordem de resolução (silenciosa, sem exigir chave do usuário):
 //  1. Variável de ambiente ANACONDA_ALBION_NAME (definida pelo instalador/usuário).
-//  2. Arquivo persistido albion-name.txt em %LOCALAPPDATA%/VENUM-Anaconda.
+//  2. Arquivo persistido albion-name.txt na pasta ativa (perfil ou personagem).
 //  3. Nome detectado automaticamente dos logs do Albion (ator mais frequente).
 //
-// O nome do Windows (USERNAME) NÃO é usado como identidade de jogador porque
-// raramente corresponde ao nome do personagem no Albion.
+// O nome do Windows (USERNAME) NÃO é usado como identidade de jogador.
 
 var (
 	albionNameMu   sync.RWMutex
@@ -24,13 +23,22 @@ var (
 )
 
 func albionNamePath() string {
-	base := filepath.Join(os.Getenv("LOCALAPPDATA"), "VENUM-Anaconda")
-	_ = os.MkdirAll(base, 0o755)
-	return filepath.Join(base, "albion-name.txt")
+	dir := activeAlbionStorageDir()
+	_ = os.MkdirAll(dir, 0o755)
+	return filepath.Join(dir, "albion-name.txt")
+}
+
+func activeAlbionStorageDir() string {
+	return ResolvedStorageDir(currentCachedAlbionName())
+}
+
+func currentCachedAlbionName() string {
+	albionNameMu.RLock()
+	defer albionNameMu.RUnlock()
+	return albionNameOnce
 }
 
 // ResolveAlbionName retorna o nome do personagem Albion conhecido (env > arquivo).
-// Retorna string vazia se ainda não foi possível identificar.
 func ResolveAlbionName() string {
 	if v := strings.TrimSpace(os.Getenv("ANACONDA_ALBION_NAME")); v != "" {
 		return v
@@ -56,22 +64,24 @@ func ResolveAlbionName() string {
 }
 
 // PersistAlbionName grava o nome detectado para uso nos próximos ciclos.
-// Não sobrescreve um nome definido via ANACONDA_ALBION_NAME.
-func PersistAlbionName(name string) {
+func PersistAlbionName(name string) bool {
 	name = strings.TrimSpace(name)
 	if name == "" {
-		return
+		return false
 	}
 	if strings.TrimSpace(os.Getenv("ANACONDA_ALBION_NAME")) != "" {
-		return
+		return false
 	}
 
+	prev := ResolveAlbionName()
+	changed := !strings.EqualFold(prev, name)
+
 	albionNameMu.Lock()
-	changed := albionNameOnce != name
 	albionNameOnce = name
 	albionNameMu.Unlock()
 
-	if changed {
+	if changed || prev == "" {
 		_ = os.WriteFile(albionNamePath(), []byte(name), 0o600)
 	}
+	return changed
 }

@@ -174,25 +174,32 @@ const MissionCard = ({ mission, userId, isParticipating, onParticipationChange }
         </span>
       </div>
 
-      {/* Action Button */}
-      {isParticipating ? (
-        <button
-          onClick={handleLeave}
-          disabled={loading}
-          className="w-full bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 font-medium py-2 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors"
-        >
-          <X className="w-4 h-4" />
-          {loading ? 'Saindo...' : 'Sair da Missão'}
-        </button>
+      {/* Ação — missões individuais rastreiam automaticamente via Anaconda */}
+      {isGroup ? (
+        isParticipating ? (
+          <button
+            onClick={handleLeave}
+            disabled={loading}
+            className="w-full bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 font-medium py-2 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors"
+          >
+            <X className="w-4 h-4" />
+            {loading ? 'Saindo...' : 'Sair da Missão'}
+          </button>
+        ) : (
+          <button
+            onClick={handleParticipate}
+            disabled={loading}
+            className="w-full bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/30 font-medium py-2 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors"
+          >
+            <Check className="w-4 h-4" />
+            {loading ? 'Entrando...' : 'Participar'}
+          </button>
+        )
       ) : (
-        <button
-          onClick={handleParticipate}
-          disabled={loading}
-          className="w-full bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/30 font-medium py-2 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors"
-        >
+        <div className="w-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 font-medium py-2 px-4 rounded-lg flex items-center justify-center gap-2 text-sm">
           <Check className="w-4 h-4" />
-          {loading ? 'Entrando...' : 'Participar'}
-        </button>
+          Rastreamento automático via Anaconda
+        </div>
       )}
     </div>
   );

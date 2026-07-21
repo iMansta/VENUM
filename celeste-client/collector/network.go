@@ -40,6 +40,10 @@ type PassiveSniffer struct {
 
 	lastTotalFameFix int64
 	combatObs        []api.Observation
+
+	guildBankSession  *guildBankSession
+	guildBankReadings []GuildBankReading
+	guildBankDebug    []map[string]any
 }
 
 func NewPassiveSniffer() *PassiveSniffer {
@@ -54,22 +58,20 @@ func NewPassiveSniffer() *PassiveSniffer {
 // onPhotonResponse captura o nome do personagem local a partir da resposta da
 // operação Join. Não coleta dados de outros jogadores.
 func (s *PassiveSniffer) onPhotonResponse(opCode byte, _ int16, _ string, params map[byte]interface{}) {
-	if opCode != opJoinResponse || params == nil {
-		return
+	if opCode == opJoinResponse && params != nil {
+		name, _ := params[2].(string)
+		name = strings.TrimSpace(name)
+		if name != "" {
+			guild, _ := params[58].(string)
+			s.mu.Lock()
+			s.detectedChar = name
+			if g := strings.TrimSpace(guild); g != "" {
+				s.detectedGuild = g
+			}
+			s.mu.Unlock()
+		}
 	}
-	name, _ := params[2].(string)
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return
-	}
-	guild, _ := params[58].(string)
-
-	s.mu.Lock()
-	s.detectedChar = name
-	if g := strings.TrimSpace(guild); g != "" {
-		s.detectedGuild = g
-	}
-	s.mu.Unlock()
+	s.handleGuildBankPhotonResponse(opCode, params)
 }
 
 // DetectedCharacter retorna o nome do personagem Albion local identificado via
@@ -128,7 +130,7 @@ func (s *PassiveSniffer) CaptureWindow(window time.Duration, maxPackets int) ([]
 	}
 	defer handle.Close()
 
-	_ = handle.SetBPFFilter("udp")
+	_ = handle.SetBPFFilter("udp port 5056")
 
 	packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
 	packetSource.NoCopy = true
@@ -178,10 +180,9 @@ func (s *PassiveSniffer) CaptureWindow(window time.Duration, maxPackets int) ([]
 		if likelyAlbionPorts[srcPort] || likelyAlbionPorts[dstPort] {
 			albionPackets++
 			albionBytes += payloadLen
-			// Porta 5056 = protocolo de jogo (Photon). Alimenta o parser para
-			// identificar o personagem local silenciosamente.
 			if srcPort == 5056 || dstPort == 5056 {
 				s.feedPhoton(udp.Payload)
+				s.handleGuildBankRawPayload(udp.Payload)
 			}
 		}
 	}

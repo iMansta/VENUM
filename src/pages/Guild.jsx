@@ -55,6 +55,8 @@ const formatSourceLabel = (source) => {
   switch (source) {
     case 'admin_anaconda':
       return 'Anaconda Admin';
+    case 'admin_panel':
+      return 'Painel Admin';
     case 'gameinfo_guild_detail':
       return 'GameInfo API';
     case 'guild_sync_fallback':

@@ -289,15 +289,96 @@ type TelemetryPayload struct {
 	Meta         map[string]any `json:"meta,omitempty"`
 }
 
-func (c *Client) SendTelemetry(payload TelemetryPayload) (int, error) {
-	var out struct {
-		OK       bool `json:"ok"`
-		Inserted int  `json:"inserted"`
-	}
+type TelemetryResponse struct {
+	OK        bool     `json:"ok"`
+	Inserted  int      `json:"inserted"`
+	Warnings  []Warning `json:"warnings"`
+}
+
+type Warning struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
+type PairingRedeemResponse struct {
+	OK                  bool   `json:"ok"`
+	ProfileID           string `json:"profileId"`
+	Username            string `json:"username"`
+	AlbionCharacterName string `json:"albionCharacterName"`
+	Error               string `json:"error"`
+}
+
+func (c *Client) SendTelemetry(payload TelemetryPayload) (*TelemetryResponse, error) {
+	var out TelemetryResponse
 	if err := c.do(http.MethodPost, "telemetry", payload, &out); err != nil {
-		return 0, err
+		return nil, err
 	}
-	return out.Inserted, nil
+	return &out, nil
+}
+
+type GuildBankPayload struct {
+	ClientID            string         `json:"clientId"`
+	GuildID             string         `json:"guildId,omitempty"`
+	SilverBalance       int64          `json:"silverBalance"`
+	ProfileID           string         `json:"profileId,omitempty"`
+	DedupeWindowSeconds int            `json:"dedupeWindowSeconds,omitempty"`
+	Meta                map[string]any `json:"meta,omitempty"`
+}
+
+type GuildBankResponse struct {
+	OK                    bool   `json:"ok"`
+	Inserted              bool   `json:"inserted"`
+	HistoryID             string `json:"historyId"`
+	SkippedReason         string `json:"skippedReason"`
+	SilverBalance         any    `json:"silverBalance"`
+	GuildID               string `json:"guildId"`
+	CollectedByProfileID  string `json:"collectedByProfileId"`
+	ProfileSource         string `json:"profileSource"`
+	Error                 string `json:"error"`
+	Code                  string `json:"code"`
+}
+
+func (c *Client) SubmitGuildBankBalance(payload GuildBankPayload) (*GuildBankResponse, error) {
+	var out GuildBankResponse
+	if err := c.do(http.MethodPost, "guild-bank", payload, &out); err != nil {
+		return nil, err
+	}
+	if !out.OK {
+		if out.Error != "" {
+			return &out, fmt.Errorf("%s", out.Error)
+		}
+		return &out, fmt.Errorf("hub recusou saldo do banco da guilda")
+	}
+	return &out, nil
+}
+
+// SendGuildBankBalance envia saldo para a API Celeste (wrapper standalone).
+func SendGuildBankBalance(apiURL, agentToken string, payload GuildBankPayload) error {
+	client := &Client{
+		base:  strings.TrimRight(apiURL, "/"),
+		token: agentToken,
+		http:  newResilientHTTPClient(),
+	}
+	_, err := client.SubmitGuildBankBalance(payload)
+	return err
+}
+
+func (c *Client) RedeemPairingToken(clientID, token string) (*PairingRedeemResponse, error) {
+	var out PairingRedeemResponse
+	body := map[string]string{
+		"clientId": clientID,
+		"token":    token,
+	}
+	if err := c.do(http.MethodPost, "pair-redeem", body, &out); err != nil {
+		return nil, err
+	}
+	if !out.OK {
+		if out.Error != "" {
+			return nil, fmt.Errorf("%s", out.Error)
+		}
+		return nil, fmt.Errorf("pareamento recusado")
+	}
+	return &out, nil
 }
 
 func (c *Client) SubmitGuildAdminMetrics(body any, pairingToken string, out any) error {

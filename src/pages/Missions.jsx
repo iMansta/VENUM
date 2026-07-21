@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import MissionList from '@/components/guild/missions/MissionList';
+import AnacondaPairingPanel from '@/components/guild/AnacondaPairingPanel';
 
 /**
  * Missions page - Display and manage guild missions
@@ -22,7 +23,12 @@ const Missions = ({ userId, userRole }) => {
     );
   }
 
-  return <MissionList userId={userId} userRole={userRole} />;
+  return (
+    <div className="space-y-6">
+      <AnacondaPairingPanel />
+      <MissionList userId={userId} userRole={userRole} />
+    </div>
+  );
 };
 
 export default Missions;

@@ -1,4 +1,4 @@
-import { createGuildAdminPairingToken, submitGuildAdminMetricsFromSession } from '../server/guildAdminService.mjs';
+import { createCelestePairingToken } from '../server/celestePairingService.mjs';
 
 const cors = (res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -25,38 +25,21 @@ export default async function handler(req, res) {
     return;
   }
 
-  const action = req.body?.action || req.query?.action || 'generate-token';
   const accessToken = readAccessToken(req);
-
   if (!accessToken) {
     res.status(401).json({ ok: false, error: 'Sessão obrigatória' });
     return;
   }
 
   try {
-    if (action === 'generate-token') {
-      const result = await createGuildAdminPairingToken(accessToken);
-      if (!result.ok) {
-        res.status(result.status || 400).json(result);
-        return;
-      }
-      res.status(200).json(result);
+    const result = await createCelestePairingToken(accessToken);
+    if (!result.ok) {
+      res.status(result.status || 400).json(result);
       return;
     }
-
-    if (action === 'submit-metrics') {
-      const result = await submitGuildAdminMetricsFromSession(accessToken, req.body || {});
-      if (!result.ok) {
-        res.status(result.status || 400).json(result);
-        return;
-      }
-      res.status(200).json(result);
-      return;
-    }
-
-    res.status(400).json({ ok: false, error: `Ação desconhecida: ${action}` });
+    res.status(200).json(result);
   } catch (err) {
-    console.error('[api/guild-admin]', err);
+    console.error('[api/celeste-pairing]', err);
     res.status(500).json({ ok: false, error: err.message || 'Erro interno' });
   }
 }

@@ -72,7 +72,7 @@
 
     <form method="post" action="/submit">
       <label for="pairingToken">Token de pareamento (gerado no painel admin)</label>
-      <input id="pairingToken" name="pairingToken" placeholder="Ex: AB12CD34" autocomplete="off" />
+      <input id="pairingToken" name="pairingToken" placeholder="Ex: AB12CD34" autocomplete="off" value="{{.PairingToken}}" />
 
       <label for="silverAmount">Prata da guilda</label>
       <input id="silverAmount" name="silverAmount" inputmode="numeric" placeholder="Ex: 125000000" value="{{.SilverAmount}}" />
